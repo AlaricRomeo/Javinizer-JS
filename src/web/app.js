@@ -1,6 +1,48 @@
 let currentItem = null;
 
 // ─────────────────────────────
+// Sistema Dirty Tracking
+// ─────────────────────────────
+let dirtyFields = new Set();
+
+function markFieldDirty(fieldId) {
+  dirtyFields.add(fieldId);
+  const field = document.getElementById(fieldId);
+  if (field) {
+    field.classList.add('dirty');
+  }
+  updateSaveButton();
+}
+
+function clearDirtyFields() {
+  dirtyFields.forEach(fieldId => {
+    const field = document.getElementById(fieldId);
+    if (field) {
+      field.classList.remove('dirty');
+    }
+  });
+  dirtyFields.clear();
+  updateSaveButton();
+}
+
+function updateSaveButton() {
+  const saveBtn = document.getElementById('saveItem');
+  const badge = document.getElementById('changesBadge');
+  const count = dirtyFields.size;
+
+  if (count > 0) {
+    saveBtn.classList.add('has-changes');
+    badge.textContent = count;
+    badge.style.display = 'flex';
+    saveBtn.disabled = false;
+  } else {
+    saveBtn.classList.remove('has-changes');
+    badge.style.display = 'none';
+    saveBtn.disabled = true;
+  }
+}
+
+// ─────────────────────────────
 // Sistema notifiche
 // ─────────────────────────────
 function showNotification(message, type = "info") {
@@ -249,6 +291,7 @@ function bindField(fieldId, itemKey) {
   el.value = currentItem[itemKey] || "";
   el.oninput = () => {
     currentItem[itemKey] = el.value;
+    markFieldDirty(fieldId);
     updateDebugJson();
   };
 }
@@ -262,6 +305,7 @@ function bindArrayField(fieldId, itemKey) {
   el.oninput = () => {
     const value = el.value.trim();
     currentItem[itemKey] = value ? value.split(",").map(s => s.trim()) : [];
+    markFieldDirty(fieldId);
     updateDebugJson();
   };
 }
@@ -405,6 +449,9 @@ document.getElementById("actorEditSave").onclick = () => {
     currentItem.actor[editingActorIndex] = actorData;
   }
 
+  // Marca actors come modificato
+  markFieldDirty("actor");
+
   renderActors();
   updateDebugJson();
   closeActorModal();
@@ -415,6 +462,10 @@ document.getElementById("actorEditRemove").onclick = () => {
     const actorName = currentItem.actor[editingActorIndex].name || "questo attore";
     if (confirm(`Rimuovere ${actorName}?`)) {
       currentItem.actor.splice(editingActorIndex, 1);
+
+      // Marca actors come modificato
+      markFieldDirty("actor");
+
       renderActors();
       updateDebugJson();
       closeActorModal();
@@ -468,6 +519,7 @@ function renderItem(item) {
     ratingEl.oninput = () => {
       if (!currentItem.rating) currentItem.rating = {};
       currentItem.rating.value = parseFloat(ratingEl.value) || 0;
+      markFieldDirty("rating");
       updateDebugJson();
     };
   }
@@ -493,9 +545,13 @@ function renderItem(item) {
     titleEl.oninput = () => {
       currentItem.title = titleEl.value;
       displayNameEl.value = `[${currentItem.id || ""}] - ${titleEl.value}`;
+      markFieldDirty("title");
       updateDebugJson();
     };
   }
+
+  // Clear dirty fields quando carichiamo un nuovo item
+  clearDirtyFields();
 
   // Debug JSON
   updateDebugJson();
@@ -513,30 +569,60 @@ document.getElementById("prev").onclick = () =>
 
 // Salva item modificato
 document.getElementById("saveItem").onclick = async () => {
+  const saveBtn = document.getElementById("saveItem");
+  const saveText = document.getElementById("saveItemText");
+  const originalText = saveText.textContent;
+
+  // Verifica che ci siano modifiche
+  if (dirtyFields.size === 0) {
+    showNotification(window.i18n ? window.i18n.t("messages.noChanges") : "Nessuna modifica da salvare", "info");
+    return;
+  }
+
   const changes = getChanges(originalItem, currentItem);
 
   if (Object.keys(changes).length === 0) {
-    alert("Nessuna modifica da salvare");
+    showNotification(window.i18n ? window.i18n.t("messages.noChanges") : "Nessuna modifica da salvare", "info");
     return;
   }
 
-  const res = await fetch("/item/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ changes })
-  });
+  // Disabilita bottone durante salvataggio
+  saveBtn.disabled = true;
+  saveText.textContent = window.i18n ? window.i18n.t("messages.saving") : "⏳ Salvataggio...";
 
-  const data = await res.json();
+  try {
+    const res = await fetch("/item/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changes })
+    });
 
-  if (!data.ok) {
-    alert(data.error);
-    return;
+    const data = await res.json();
+
+    if (!data.ok) {
+      showNotification(data.error, "error");
+      saveBtn.disabled = false;
+      saveText.textContent = originalText;
+      return;
+    }
+
+    // Successo
+    showNotification(window.i18n ? window.i18n.t("messages.saved") : "✓ Modifiche salvate", "success");
+
+    // Clear dirty fields
+    clearDirtyFields();
+
+    // Ricarica item aggiornato per sincronizzare con server
+    setTimeout(() => {
+      loadItem("/item/current");
+      saveText.textContent = originalText;
+    }, 500);
+
+  } catch (err) {
+    showNotification("Errore durante il salvataggio", "error");
+    saveBtn.disabled = false;
+    saveText.textContent = originalText;
   }
-
-  alert("Salvato");
-
-  // ricarica item aggiornato
-  loadItem("/item/current");
 };
 
 // ─────────────────────────────
