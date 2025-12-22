@@ -6,7 +6,7 @@ services:
     container_name: javinizer-js
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "4004:4004"
     volumes:
       # Config persistente
       - ./config.json:/config/config.json

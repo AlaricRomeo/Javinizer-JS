@@ -38,7 +38,7 @@ nano config.json
 npm start
 ```
 
-The web interface will be available at `http://localhost:3000`
+The web interface will be available at `http://localhost:4004`
 
 ### Docker
 
