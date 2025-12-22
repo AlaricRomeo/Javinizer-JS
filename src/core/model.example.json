@@ -1,0 +1,52 @@
+{
+  "id": "",
+  "code": "",
+
+  "title": "",
+  "originalTitle": "",
+
+  "releaseDate": "",
+  "runtime": null,
+
+  "studio": "",
+  "label": "",
+  "series": "",
+  "director": "",
+
+  "plot": "",
+  "tagline": "",
+  "contentRating": "XXX",
+
+  "genres": [],
+  "tags": [],
+
+  "rating": {
+    "value": null,
+    "votes": null
+  },
+
+  "actor": [
+    {
+      "name": "",
+      "altName": "",
+      "role": "",
+      "thumb": ""
+    }
+  ],
+
+  "images": {
+    "poster": "",
+    "fanart": []
+  },
+
+  "local": {
+    "path": "",
+    "files": []
+  },
+
+  "meta": {
+    "createdAt": "",
+    "updatedAt": "",
+    "locked": false
+  }
+}

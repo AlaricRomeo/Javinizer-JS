@@ -1,0 +1,46 @@
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Configuration files (contengono path locali)
+config.json
+*.bak
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+.directory
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build artifacts (se in futuro aggiungi build step)
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Docker
+.dockerignore
+docker-compose.override.yml

@@ -1,0 +1,81 @@
+{
+  "app": {
+    "title": "Javinizer-js"
+  },
+  "nav": {
+    "config": "Configurazione",
+    "about": "Info"
+  },
+  "sections": {
+    "fanart": "Fanart",
+    "libraryPath": "Library Path",
+    "scraperPanel": "Scraper Panel (in arrivo)",
+    "basicInfo": "Informazioni di Base",
+    "production": "Produzione",
+    "rating": "Rating e Classificazione",
+    "categories": "Categorie",
+    "mediaUrls": "Media URLs",
+    "actors": "Attori"
+  },
+  "fields": {
+    "id": "ID",
+    "displayName": "Display Name",
+    "title": "Titolo",
+    "alternateTitle": "Titolo Alternativo",
+    "description": "Descrizione",
+    "director": "Regista",
+    "releaseDate": "Data Uscita",
+    "runtime": "Durata (minuti)",
+    "series": "Serie",
+    "maker": "Maker",
+    "label": "Label",
+    "rating": "Rating",
+    "contentRating": "Content Rating",
+    "genres": "Generi (separati da virgola)",
+    "tags": "Tags (separati da virgola)",
+    "coverUrl": "Cover URL",
+    "screenshotUrl": "Screenshot URL",
+    "trailerUrl": "Trailer URL"
+  },
+  "buttons": {
+    "save": "💾 Salva Modifiche",
+    "addActor": "+ Aggiungi Attore",
+    "cancel": "Annulla",
+    "select": "Seleziona",
+    "remove": "Rimuovi",
+    "browse": "📁"
+  },
+  "placeholders": {
+    "noImage": "Nessuna immagine",
+    "noSubfolders": "Nessuna sottocartella",
+    "actorName": "Nome dell'attore",
+    "altName": "Nome alternativo",
+    "role": "Actress"
+  },
+  "messages": {
+    "libraryPathHelp": "Clicca sul pulsante per selezionare la cartella della libreria",
+    "selectDirectory": "Seleziona Directory",
+    "upDirectory": "⬆ Su",
+    "selectThisFolder": "Seleziona questa cartella",
+    "pathUpdated": "✓ Library path aggiornato e salvato",
+    "pathUpdateError": "✗ Errore nel salvataggio",
+    "saving": "⏳ Salvataggio...",
+    "noChanges": "Nessuna modifica da salvare",
+    "saved": "Salvato",
+    "removeActor": "Rimuovere",
+    "missingName": "Nome mancante"
+  },
+  "actorModal": {
+    "title": "Modifica Attore",
+    "name": "Nome",
+    "altName": "Nome Alternativo (giapponese, ecc.)",
+    "role": "Ruolo",
+    "thumbUrl": "Thumb URL",
+    "preview": "Anteprima",
+    "note": "\"Select Existing\" sarà implementato in futuro per selezionare attori già presenti nel database."
+  },
+  "settings": {
+    "language": "Lingua",
+    "selectLanguage": "Seleziona lingua"
+  }
+}

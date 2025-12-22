@@ -1,0 +1,81 @@
+{
+  "app": {
+    "title": "Javinizer-js"
+  },
+  "nav": {
+    "config": "Configuration",
+    "about": "About"
+  },
+  "sections": {
+    "fanart": "Fanart",
+    "libraryPath": "Library Path",
+    "scraperPanel": "Scraper Panel (coming soon)",
+    "basicInfo": "Basic Information",
+    "production": "Production",
+    "rating": "Rating & Classification",
+    "categories": "Categories",
+    "mediaUrls": "Media URLs",
+    "actors": "Actors"
+  },
+  "fields": {
+    "id": "ID",
+    "displayName": "Display Name",
+    "title": "Title",
+    "alternateTitle": "Alternate Title",
+    "description": "Description",
+    "director": "Director",
+    "releaseDate": "Release Date",
+    "runtime": "Runtime (minutes)",
+    "series": "Series",
+    "maker": "Maker",
+    "label": "Label",
+    "rating": "Rating",
+    "contentRating": "Content Rating",
+    "genres": "Genres (comma separated)",
+    "tags": "Tags (comma separated)",
+    "coverUrl": "Cover URL",
+    "screenshotUrl": "Screenshot URL",
+    "trailerUrl": "Trailer URL"
+  },
+  "buttons": {
+    "save": "💾 Save Changes",
+    "addActor": "+ Add Actor",
+    "cancel": "Cancel",
+    "select": "Select",
+    "remove": "Remove",
+    "browse": "📁"
+  },
+  "placeholders": {
+    "noImage": "No image",
+    "noSubfolders": "No subfolders",
+    "actorName": "Actor name",
+    "altName": "Alternate name",
+    "role": "Actress"
+  },
+  "messages": {
+    "libraryPathHelp": "Click the button to select the library folder",
+    "selectDirectory": "Select Directory",
+    "upDirectory": "⬆ Up",
+    "selectThisFolder": "Select this folder",
+    "pathUpdated": "✓ Library path updated and saved",
+    "pathUpdateError": "✗ Error saving",
+    "saving": "⏳ Saving...",
+    "noChanges": "No changes to save",
+    "saved": "Saved",
+    "removeActor": "Remove",
+    "missingName": "Missing name"
+  },
+  "actorModal": {
+    "title": "Edit Actor",
+    "name": "Name",
+    "altName": "Alternate Name (japanese, etc.)",
+    "role": "Role",
+    "thumbUrl": "Thumb URL",
+    "preview": "Preview",
+    "note": "\"Select Existing\" will be implemented in the future to select actors already in the database."
+  },
+  "settings": {
+    "language": "Language",
+    "selectLanguage": "Select language"
+  }
+}
