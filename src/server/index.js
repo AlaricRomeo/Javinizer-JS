@@ -19,6 +19,23 @@ app.use("/", express.static(
 ));
 
 // ─────────────────────────────
+// Serve media files from library
+// ─────────────────────────────
+app.use("/media", (req, res) => {
+  const fs = require("fs");
+  // Rimuove il prefisso /media/ dall'URL
+  const requestedPath = decodeURIComponent(req.url.substring(1));
+
+  // Verifica che il file esista
+  if (!fs.existsSync(requestedPath)) {
+    return res.status(404).send("File not found");
+  }
+
+  // Invia il file
+  res.sendFile(requestedPath);
+});
+
+// ─────────────────────────────
 // API routes
 // ─────────────────────────────
 app.use("/item", itemRoutes);

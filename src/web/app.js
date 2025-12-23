@@ -28,6 +28,10 @@ function clearDirtyFields() {
 function updateSaveButton() {
   const saveBtn = document.getElementById('saveItem');
   const badge = document.getElementById('changesBadge');
+
+  // Protezione: se gli elementi non esistono ancora, esci
+  if (!saveBtn || !badge) return;
+
   const count = dirtyFields.size;
 
   if (count > 0) {
@@ -360,11 +364,15 @@ let editingActorIndex = null;
 function openActorModal(index = null) {
   editingActorIndex = index;
   const modal = document.getElementById("actorEditModal");
+  const modalTitle = document.querySelector("#actorEditContent h2");
   const removeBtn = document.getElementById("actorEditRemove");
   const previewDiv = document.getElementById("actorEditPreview");
 
   // Se index è null, stiamo aggiungendo un nuovo attore
   if (index === null) {
+    // Cambia titolo del modal
+    modalTitle.textContent = window.i18n ? window.i18n.t("actorModal.titleAdd") : "Aggiungi Attore";
+
     document.getElementById("actorEditName").value = "";
     document.getElementById("actorEditAltName").value = "";
     document.getElementById("actorEditRole").value = "Actress";
@@ -373,6 +381,9 @@ function openActorModal(index = null) {
     previewDiv.style.display = "none";
   } else {
     // Stiamo editando un attore esistente
+    // Cambia titolo del modal
+    modalTitle.textContent = window.i18n ? window.i18n.t("actorModal.title") : "Modifica Attore";
+
     const actor = currentItem.actor[index];
     document.getElementById("actorEditName").value = actor.name || "";
     document.getElementById("actorEditAltName").value = actor.altName || "";
@@ -401,6 +412,12 @@ function updateActorPreview(url) {
   const previewImg = document.getElementById("actorEditPreviewImg");
   const placeholder = document.getElementById("actorEditPreviewPlaceholder");
 
+  // Protezione: verifica che gli elementi esistano
+  if (!previewDiv || !previewImg || !placeholder) {
+    console.warn("Preview elements not found in DOM");
+    return;
+  }
+
   if (url && url.trim() !== "") {
     previewDiv.style.display = "block";
     previewImg.src = url;
@@ -422,69 +439,6 @@ function editActor(index) {
   openActorModal(index);
 }
 
-// Aggiungi nuovo attore (apre modal vuoto)
-document.getElementById("addActor").onclick = () => {
-  if (!currentItem.actor) {
-    currentItem.actor = [];
-  }
-  openActorModal(null);
-};
-
-// Event listeners per Actor Edit Modal
-document.getElementById("actorEditCancel").onclick = closeActorModal;
-
-document.getElementById("actorEditSave").onclick = () => {
-  const name = document.getElementById("actorEditName").value;
-  const altName = document.getElementById("actorEditAltName").value;
-  const role = document.getElementById("actorEditRole").value || "Actress";
-  const thumb = document.getElementById("actorEditThumb").value;
-
-  const actorData = { name, altName, role, thumb };
-
-  if (editingActorIndex === null) {
-    // Aggiungi nuovo attore
-    currentItem.actor.push(actorData);
-  } else {
-    // Modifica attore esistente
-    currentItem.actor[editingActorIndex] = actorData;
-  }
-
-  // Marca actors come modificato
-  markFieldDirty("actor");
-
-  renderActors();
-  updateDebugJson();
-  closeActorModal();
-};
-
-document.getElementById("actorEditRemove").onclick = () => {
-  if (editingActorIndex !== null) {
-    const actorName = currentItem.actor[editingActorIndex].name || "questo attore";
-    if (confirm(`Rimuovere ${actorName}?`)) {
-      currentItem.actor.splice(editingActorIndex, 1);
-
-      // Marca actors come modificato
-      markFieldDirty("actor");
-
-      renderActors();
-      updateDebugJson();
-      closeActorModal();
-    }
-  }
-};
-
-// Chiudi modal cliccando sullo sfondo
-document.getElementById("actorEditOverlay").onclick = (e) => {
-  if (e.target.id === "actorEditOverlay") {
-    closeActorModal();
-  }
-};
-
-// Update preview quando cambia thumb URL
-document.getElementById("actorEditThumb").oninput = (e) => {
-  updateActorPreview(e.target.value);
-};
-
 // ─────────────────────────────
 // Renderizza i dati
 // ─────────────────────────────
@@ -493,13 +447,6 @@ function renderItem(item) {
 
   // Informazioni di base
   bindField("id", "id");
-
-  // Display Name (computed: [ID] - Title)
-  const displayNameEl = document.getElementById("displayName");
-  if (displayNameEl) {
-    displayNameEl.value = `[${item.id || ""}] - ${item.title || ""}`;
-  }
-
   bindField("title", "title");
   bindField("alternateTitle", "originalTitle"); // alternateTitle maps to originalTitle
   bindField("description", "plot"); // description maps to plot
@@ -535,20 +482,21 @@ function renderItem(item) {
   bindField("screenshotUrl", "screenshotUrl");
   bindField("trailerUrl", "trailerUrl");
 
+  // Fanart
+  const fanartImg = document.getElementById("fanartImage");
+  const fanartPlaceholder = document.getElementById("fanartPlaceholder");
+  if (item.images && item.images.fanart && item.images.fanart.length > 0) {
+    const fanartPath = item.images.fanart[0];
+    fanartImg.src = `/media/${encodeURIComponent(fanartPath)}`;
+    fanartImg.style.display = "block";
+    fanartPlaceholder.style.display = "none";
+  } else {
+    fanartImg.style.display = "none";
+    fanartPlaceholder.style.display = "block";
+  }
+
   // Actors
   renderActors();
-
-  // Update display name when title or id changes
-  const titleEl = document.getElementById("title");
-  const idEl = document.getElementById("id");
-  if (titleEl) {
-    titleEl.oninput = () => {
-      currentItem.title = titleEl.value;
-      displayNameEl.value = `[${currentItem.id || ""}] - ${titleEl.value}`;
-      markFieldDirty("title");
-      updateDebugJson();
-    };
-  }
 
   // Clear dirty fields quando carichiamo un nuovo item
   clearDirtyFields();
@@ -561,17 +509,45 @@ function renderItem(item) {
 // ─────────────────────────────
 // Navigazione
 // ─────────────────────────────
-document.getElementById("next").onclick = () =>
-  loadItem("/item/next");
+function setupEventHandlers() {
+  document.getElementById("next").onclick = () =>
+    loadItem("/item/next");
 
-document.getElementById("prev").onclick = () =>
-  loadItem("/item/prev");
+  document.getElementById("prev").onclick = () =>
+    loadItem("/item/prev");
 
-// Salva item modificato
-document.getElementById("saveItem").onclick = async () => {
-  const saveBtn = document.getElementById("saveItem");
-  const saveText = document.getElementById("saveItemText");
-  const originalText = saveText.textContent;
+  // Event listener per cambio lingua
+  document.getElementById("languageSelector").onchange = async (e) => {
+    const newLang = e.target.value;
+    await window.i18n.changeLanguage(newLang);
+
+    // Riapplica i bindings per aggiornare le labels
+    if (window.applyI18nBindings) {
+      window.applyI18nBindings();
+    }
+
+    // Ricarica l'item corrente per aggiornare eventuali testi dinamici
+    if (currentItem) {
+      renderItem(currentItem);
+    }
+  };
+
+  // Salva item modificato
+  document.getElementById("saveItem").onclick = async () => {
+    console.log("Save button clicked");
+    const saveBtn = document.getElementById("saveItem");
+    console.log("saveBtn:", saveBtn);
+    console.log("saveBtn.innerHTML:", saveBtn ? saveBtn.innerHTML : "null");
+    const saveText = document.getElementById("saveItemText");
+    console.log("saveText:", saveText);
+
+    if (!saveText) {
+      console.error("saveItemText element not found - DOM might have been replaced");
+      console.error("Available spans in saveBtn:", saveBtn ? saveBtn.querySelectorAll("span") : "no saveBtn");
+      return;
+    }
+
+    const originalText = saveText.textContent;
 
   // Verifica che ci siano modifiche
   if (dirtyFields.size === 0) {
@@ -623,12 +599,82 @@ document.getElementById("saveItem").onclick = async () => {
     saveBtn.disabled = false;
     saveText.textContent = originalText;
   }
-};
+  };
+
+  // ─────────────────────────────
+  // Actor Event Handlers
+  // ─────────────────────────────
+
+  // Aggiungi nuovo attore (apre modal vuoto)
+  document.getElementById("addActor").onclick = () => {
+    if (!currentItem.actor) {
+      currentItem.actor = [];
+    }
+    openActorModal(null);
+  };
+
+  // Event listeners per Actor Edit Modal
+  document.getElementById("actorEditCancel").onclick = closeActorModal;
+
+  document.getElementById("actorEditSave").onclick = () => {
+    const name = document.getElementById("actorEditName").value;
+    const altName = document.getElementById("actorEditAltName").value;
+    const role = document.getElementById("actorEditRole").value || "Actress";
+    const thumb = document.getElementById("actorEditThumb").value;
+
+    const actorData = { name, altName, role, thumb };
+
+    if (editingActorIndex === null) {
+      // Aggiungi nuovo attore
+      currentItem.actor.push(actorData);
+    } else {
+      // Modifica attore esistente
+      currentItem.actor[editingActorIndex] = actorData;
+    }
+
+    // Marca actors come modificato
+    markFieldDirty("actor");
+
+    renderActors();
+    updateDebugJson();
+    closeActorModal();
+  };
+
+  document.getElementById("actorEditRemove").onclick = () => {
+    if (editingActorIndex !== null) {
+      const actorName = currentItem.actor[editingActorIndex].name || "questo attore";
+      if (confirm(`Rimuovere ${actorName}?`)) {
+        currentItem.actor.splice(editingActorIndex, 1);
+
+        // Marca actors come modificato
+        markFieldDirty("actor");
+
+        renderActors();
+        updateDebugJson();
+        closeActorModal();
+      }
+    }
+  };
+
+  // Chiudi modal cliccando sullo sfondo
+  document.getElementById("actorEditOverlay").onclick = (e) => {
+    if (e.target.id === "actorEditOverlay") {
+      closeActorModal();
+    }
+  };
+
+  // Update preview quando cambia thumb URL
+  document.getElementById("actorEditThumb").oninput = (e) => {
+    updateActorPreview(e.target.value);
+  };
+}
 
 // ─────────────────────────────
 // Inizializzazione i18n
 // ─────────────────────────────
 async function initializeApp() {
+  // Setup event handlers
+  setupEventHandlers();
   // Carica config per ottenere la lingua
   const configRes = await fetch("/item/config");
   const configData = await configRes.json();
@@ -658,16 +704,7 @@ async function initializeApp() {
   loadItem("/item/current");
 }
 
-// Event listener per cambio lingua
-document.getElementById("languageSelector").onchange = async (e) => {
-  const newLang = e.target.value;
-  await window.i18n.changeLanguage(newLang);
-
-  // Ricarica per aggiornare labels dinamiche
-  location.reload();
-};
-
 // ─────────────────────────────
 // Primo caricamento
 // ─────────────────────────────
-initializeApp();
+document.addEventListener('DOMContentLoaded', initializeApp);

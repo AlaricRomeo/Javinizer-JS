@@ -19,7 +19,6 @@
   },
   "fields": {
     "id": "ID",
-    "displayName": "Display Name",
     "title": "Titolo",
     "alternateTitle": "Titolo Alternativo",
     "description": "Descrizione",
@@ -67,6 +66,7 @@
   },
   "actorModal": {
     "title": "Modifica Attore",
+    "titleAdd": "Aggiungi Attore",
     "name": "Nome",
     "altName": "Nome Alternativo (giapponese, ecc.)",
     "role": "Ruolo",

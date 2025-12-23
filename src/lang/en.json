@@ -19,7 +19,6 @@
   },
   "fields": {
     "id": "ID",
-    "displayName": "Display Name",
     "title": "Title",
     "alternateTitle": "Alternate Title",
     "description": "Description",
@@ -67,6 +66,7 @@
   },
   "actorModal": {
     "title": "Edit Actor",
+    "titleAdd": "Add Actor",
     "name": "Name",
     "altName": "Alternate Name (japanese, etc.)",
     "role": "Role",

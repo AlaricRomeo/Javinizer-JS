@@ -24,7 +24,6 @@ function applyI18nBindings() {
 
   // Fields labels
   setLabelFor("id", t("fields.id"));
-  setLabelFor("displayName", t("fields.displayName"));
   setLabelFor("title", t("fields.title"));
   setLabelFor("alternateTitle", t("fields.alternateTitle"));
   setLabelFor("description", t("fields.description"));
@@ -43,7 +42,7 @@ function applyI18nBindings() {
   setLabelFor("trailerUrl", t("fields.trailerUrl"));
 
   // Buttons
-  setText("#saveItem", t("buttons.save"));
+  setText("#saveItemText", t("buttons.save"));
   setText("#addActor", t("buttons.addActor"));
 
   // Placeholders
