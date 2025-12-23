@@ -13,6 +13,13 @@ class LibraryReader {
    * (una cartella è valida se contiene almeno un file .nfo)
    */
   loadLibrary() {
+    // Verifica che il path esista
+    if (!fs.existsSync(this.rootPath)) {
+      this.items = [];
+      this.currentIndex = -1;
+      return;
+    }
+
     const entries = fs.readdirSync(this.rootPath, { withFileTypes: true });
 
     this.items = entries
@@ -54,25 +61,23 @@ class LibraryReader {
   }
 
   /**
-   * Vai all'item successivo
+   * Vai all'item successivo (navigazione circolare)
    */
   getNext() {
-    if (this.currentIndex < this.items.length - 1) {
-      this.currentIndex++;
-      return this.getCurrent();
-    }
-    return null;
+    if (this.items.length === 0) return null;
+
+    this.currentIndex = (this.currentIndex + 1) % this.items.length;
+    return this.getCurrent();
   }
 
   /**
-   * Vai all'item precedente
+   * Vai all'item precedente (navigazione circolare)
    */
   getPrevious() {
-    if (this.currentIndex > 0) {
-      this.currentIndex--;
-      return this.getCurrent();
-    }
-    return null;
+    if (this.items.length === 0) return null;
+
+    this.currentIndex = (this.currentIndex - 1 + this.items.length) % this.items.length;
+    return this.getCurrent();
   }
 
   /**

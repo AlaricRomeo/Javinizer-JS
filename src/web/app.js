@@ -1,4 +1,5 @@
 let currentItem = null;
+let currentMode = "edit"; // "edit" or "scrape"
 
 // ─────────────────────────────
 // Sistema Dirty Tracking
@@ -6,11 +7,26 @@ let currentItem = null;
 let dirtyFields = new Set();
 
 function markFieldDirty(fieldId) {
-  dirtyFields.add(fieldId);
+  // Verifica che originalItem esista
+  if (!originalItem) return;
+
+  const currentValue = currentItem[fieldId];
+  const originalValue = originalItem[fieldId];
+
+  // Confronta i valori (gestisce array e oggetti)
+  const isDifferent = JSON.stringify(currentValue) !== JSON.stringify(originalValue);
+
+  // Cerca l'elemento DOM (potrebbe non esistere per campi come "actor")
   const field = document.getElementById(fieldId);
-  if (field) {
-    field.classList.add('dirty');
+
+  if (isDifferent) {
+    dirtyFields.add(fieldId);
+    if (field) field.classList.add('dirty');
+  } else {
+    dirtyFields.delete(fieldId);
+    if (field) field.classList.remove('dirty');
   }
+
   updateSaveButton();
 }
 
@@ -22,7 +38,17 @@ function clearDirtyFields() {
     }
   });
   dirtyFields.clear();
-  updateSaveButton();
+
+  // In scrape mode il bottone rimane sempre abilitato
+  if (currentMode === "scrape") {
+    const saveBtn = document.getElementById("saveItem");
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.classList.add("has-changes");
+    }
+  } else {
+    updateSaveButton();
+  }
 }
 
 function updateSaveButton() {
@@ -49,7 +75,7 @@ function updateSaveButton() {
 // ─────────────────────────────
 // Sistema notifiche
 // ─────────────────────────────
-function showNotification(message, type = "info") {
+function showNotification(message, type = "info", duration = 5000) {
   // Crea elemento notifica
   const notification = document.createElement("div");
   notification.textContent = message;
@@ -64,6 +90,7 @@ function showNotification(message, type = "info") {
     z-index: 2000;
     animation: slideIn 0.3s ease-out;
     box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    white-space: pre-line;
   `;
 
   // Colore in base al tipo
@@ -77,11 +104,11 @@ function showNotification(message, type = "info") {
 
   document.body.appendChild(notification);
 
-  // Rimuovi dopo 3 secondi
+  // Rimuovi dopo il tempo specificato
   setTimeout(() => {
     notification.style.animation = "slideOut 0.3s ease-in";
     setTimeout(() => notification.remove(), 300);
-  }, 3000);
+  }, duration);
 }
 
 // Carica il config
@@ -224,26 +251,199 @@ document.getElementById("dirBrowserOverlay").onclick = (e) => {
 // ─────────────────────────────
 let originalItem = null;
 
+// ─────────────────────────────
+// Mode Management
+// ─────────────────────────────
+async function checkLibraryCount() {
+  try {
+    // Prima ricarica la libreria
+    await fetch("/item/reload", { method: "POST" });
+
+    // Poi conta
+    const res = await fetch("/item/count");
+    const data = await res.json();
+
+    const libraryStatus = document.getElementById("libraryStatus");
+    const count = data.ok ? data.count : 0;
+
+    if (libraryStatus) {
+      if (count > 0) {
+        libraryStatus.textContent = `${count} NFO file${count > 1 ? 's' : ''} nella libreria`;
+        libraryStatus.style.color = "#667eea";
+      } else {
+        libraryStatus.textContent = "Nessun NFO nella libreria";
+        libraryStatus.style.color = "#999";
+      }
+    }
+
+    // Se siamo in edit mode e count = 0, svuota l'interfaccia
+    if (currentMode === "edit" && count === 0) {
+      clearUI();
+    }
+
+    return count;
+  } catch (err) {
+    console.error("Error checking library count:", err);
+    return 0;
+  }
+}
+
+async function checkScrapeAvailability() {
+  try {
+    // Prima ricarica i file JSON
+    await fetch("/item/scrape/reload", { method: "POST" });
+
+    // Poi conta
+    const res = await fetch("/item/scrape/count");
+    const data = await res.json();
+
+    const scrapeStatus = document.getElementById("scrapeStatus");
+    const count = data.ok ? data.count : 0;
+
+    if (scrapeStatus) {
+      if (count > 0) {
+        scrapeStatus.textContent = `${count} item${count > 1 ? 's' : ''} disponibili`;
+        scrapeStatus.style.color = "#28a745";
+      } else {
+        scrapeStatus.textContent = "No items available";
+        scrapeStatus.style.color = "#999";
+      }
+    }
+
+    // Se siamo in scrape mode e count = 0, svuota l'interfaccia
+    if (currentMode === "scrape" && count === 0) {
+      clearUI();
+    }
+
+    return count;
+  } catch (err) {
+    console.error("Error checking scrape availability:", err);
+    return 0;
+  }
+}
+
+async function switchMode(newMode) {
+  if (currentMode === newMode) return;
+
+  currentMode = newMode;
+
+  // Aggiorna UI dei bottoni
+  const editBtn = document.getElementById("modeEdit");
+  const scrapeBtn = document.getElementById("modeScrape");
+  const saveBtn = document.getElementById("saveItem");
+  const deleteBtn = document.getElementById("deleteItem");
+
+  if (newMode === "edit") {
+    editBtn.classList.add("active");
+    scrapeBtn.classList.remove("active");
+    // Nascondi bottone delete in edit mode
+    if (deleteBtn) deleteBtn.style.display = "none";
+    await loadItemForMode("/item/current");
+    // In edit mode il bottone salva è abilitato solo con dirty fields
+    updateSaveButton();
+  } else {
+    editBtn.classList.remove("active");
+    scrapeBtn.classList.add("active");
+    const loaded = await loadItemForMode("/item/scrape/current");
+    // In scrape mode mostra il bottone delete solo se c'è un item
+    if (deleteBtn) {
+      deleteBtn.style.display = loaded ? "block" : "none";
+    }
+    // In scrape mode il bottone salva è abilitato solo se c'è un item
+    if (saveBtn && loaded) {
+      saveBtn.disabled = false;
+      saveBtn.classList.add("has-changes");
+    } else if (saveBtn && !loaded) {
+      saveBtn.disabled = true;
+      saveBtn.classList.remove("has-changes");
+    }
+  }
+}
+
+async function loadItemForMode(url) {
+  return await loadItem(url);
+}
+
+// ─────────────────────────────
+// Clear UI
+// ─────────────────────────────
+function clearUI() {
+  // Svuota tutti i campi di testo
+  const textFields = [
+    "id", "title", "alternateTitle", "description",
+    "director", "releaseDate", "runtime", "series", "maker", "label",
+    "rating", "contentRating",
+    "genres", "tags",
+    "coverUrl", "screenshotUrl", "trailerUrl"
+  ];
+
+  textFields.forEach(fieldId => {
+    const field = document.getElementById(fieldId);
+    if (field) field.value = "";
+  });
+
+  // Svuota ID corrente
+  const currentIdEl = document.getElementById("current-id");
+  if (currentIdEl) currentIdEl.textContent = "";
+
+  // Nascondi fanart, mostra placeholder
+  const fanartImg = document.getElementById("fanartImage");
+  const fanartPlaceholder = document.getElementById("fanartPlaceholder");
+  if (fanartImg) {
+    fanartImg.style.display = "none";
+    fanartImg.src = "";
+  }
+  if (fanartPlaceholder) {
+    fanartPlaceholder.style.display = "block";
+  }
+
+  // Svuota lista attori
+  const actorsList = document.getElementById("actorsList");
+  if (actorsList) {
+    actorsList.innerHTML = "";
+  }
+
+  // Clear dirty fields
+  clearDirtyFields();
+
+  // Debug JSON - svuota
+  const debugJson = document.getElementById("debugJson");
+  if (debugJson) {
+    debugJson.textContent = "{}";
+  }
+}
+
+// ─────────────────────────────
+// Load Item
+// ─────────────────────────────
 async function loadItem(url) {
   const res = await fetch(url);
   const data = await res.json();
 
   if (!data.ok) {
     alert(data.error);
-    return;
+    return false;
   }
 
   currentItem = data.item;
 
   if (currentItem === null) {
-    alert("Nessun item disponibile");
-    return;
+    // Svuota l'interfaccia
+    clearUI();
+
+    // In scrape mode non mostriamo alert, solo disabilitiamo il bottone
+    if (currentMode === "scrape") {
+      return false;
+    }
+    // In edit mode mostra anche un messaggio (opzionale, puoi rimuoverlo se preferisci)
+    return false;
   }
 
   // snapshot originale
   originalItem = JSON.parse(JSON.stringify(currentItem));
 
   renderItem(currentItem);
+  return true;
 }
 
 function getChanges(original, modified) {
@@ -295,7 +495,7 @@ function bindField(fieldId, itemKey) {
   el.value = currentItem[itemKey] || "";
   el.oninput = () => {
     currentItem[itemKey] = el.value;
-    markFieldDirty(fieldId);
+    markFieldDirty(itemKey); // Usa itemKey invece di fieldId
     updateDebugJson();
   };
 }
@@ -309,7 +509,7 @@ function bindArrayField(fieldId, itemKey) {
   el.oninput = () => {
     const value = el.value.trim();
     currentItem[itemKey] = value ? value.split(",").map(s => s.trim()) : [];
-    markFieldDirty(fieldId);
+    markFieldDirty(itemKey); // Usa itemKey invece di fieldId
     updateDebugJson();
   };
 }
@@ -510,11 +710,20 @@ function renderItem(item) {
 // Navigazione
 // ─────────────────────────────
 function setupEventHandlers() {
-  document.getElementById("next").onclick = () =>
-    loadItem("/item/next");
+  // Mode toggle buttons
+  document.getElementById("modeEdit").onclick = () => switchMode("edit");
+  document.getElementById("modeScrape").onclick = () => switchMode("scrape");
 
-  document.getElementById("prev").onclick = () =>
-    loadItem("/item/prev");
+  // Navigation buttons - usano route diverse in base alla modalità
+  document.getElementById("next").onclick = () => {
+    const url = currentMode === "edit" ? "/item/next" : "/item/scrape/next";
+    loadItem(url);
+  };
+
+  document.getElementById("prev").onclick = () => {
+    const url = currentMode === "edit" ? "/item/prev" : "/item/scrape/prev";
+    loadItem(url);
+  };
 
   // Event listener per cambio lingua
   document.getElementById("languageSelector").onchange = async (e) => {
@@ -532,73 +741,157 @@ function setupEventHandlers() {
     }
   };
 
+  // Bottone "Scrape Now!" - avvia lo scraper
+  document.getElementById("scrapeNow").onclick = async () => {
+    showNotification("Funzione scraper in arrivo! 🚀", "info");
+    // TODO: Implementare l'avvio dello scraper
+  };
+
+  // Bottone "Delete Item" - elimina il JSON corrente in scrape mode
+  document.getElementById("deleteItem").onclick = async () => {
+    if (currentMode !== "scrape") return;
+
+    if (!confirm("Sei sicuro di voler eliminare questo item?")) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/item/scrape/current", {
+        method: "DELETE"
+      });
+
+      const data = await res.json();
+
+      if (!data.ok) {
+        showNotification("Errore durante l'eliminazione", "error");
+        return;
+      }
+
+      showNotification("Item eliminato", "success");
+
+      // Aggiorna il contatore
+      await checkScrapeAvailability();
+
+      // Carica il prossimo item disponibile
+      const deleteBtn = document.getElementById("deleteItem");
+      const loaded = await loadItem("/item/scrape/current");
+
+      // Mostra/nascondi bottone delete in base alla disponibilità
+      if (deleteBtn) {
+        deleteBtn.style.display = loaded ? "block" : "none";
+      }
+
+    } catch (err) {
+      showNotification("Errore durante l'eliminazione", "error");
+    }
+  };
+
   // Salva item modificato
   document.getElementById("saveItem").onclick = async () => {
-    console.log("Save button clicked");
     const saveBtn = document.getElementById("saveItem");
-    console.log("saveBtn:", saveBtn);
-    console.log("saveBtn.innerHTML:", saveBtn ? saveBtn.innerHTML : "null");
     const saveText = document.getElementById("saveItemText");
-    console.log("saveText:", saveText);
 
     if (!saveText) {
       console.error("saveItemText element not found - DOM might have been replaced");
-      console.error("Available spans in saveBtn:", saveBtn ? saveBtn.querySelectorAll("span") : "no saveBtn");
       return;
     }
 
     const originalText = saveText.textContent;
 
-  // Verifica che ci siano modifiche
-  if (dirtyFields.size === 0) {
-    showNotification(window.i18n ? window.i18n.t("messages.noChanges") : "Nessuna modifica da salvare", "info");
-    return;
-  }
+    // Disabilita bottone durante salvataggio
+    saveBtn.disabled = true;
+    saveText.textContent = window.i18n ? window.i18n.t("messages.saving") : "⏳ Salvataggio...";
 
-  const changes = getChanges(originalItem, currentItem);
+    try {
+      if (currentMode === "scrape") {
+        // SCRAPE MODE: Salva completo (crea cartella, sposta video, genera NFO, scarica immagini)
+        const res = await fetch("/item/scrape/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ item: currentItem })
+        });
 
-  if (Object.keys(changes).length === 0) {
-    showNotification(window.i18n ? window.i18n.t("messages.noChanges") : "Nessuna modifica da salvare", "info");
-    return;
-  }
+        const data = await res.json();
 
-  // Disabilita bottone durante salvataggio
-  saveBtn.disabled = true;
-  saveText.textContent = window.i18n ? window.i18n.t("messages.saving") : "⏳ Salvataggio...";
+        if (!data.ok) {
+          showNotification(data.error, "error");
+          saveBtn.disabled = false;
+          saveText.textContent = originalText;
+          return;
+        }
 
-  try {
-    const res = await fetch("/item/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ changes })
-    });
+        // Successo
+        let message = "✓ Item salvato con successo";
+        let duration = 3000; // default
+        if (data.results && data.results.warnings && data.results.warnings.length > 0) {
+          message += `\n\nWarnings:\n${data.results.warnings.join("\n")}`;
+          duration = 6000; // Mostra i warning più a lungo
+        }
+        showNotification(message, "success", duration);
 
-    const data = await res.json();
+        // Clear dirty fields
+        clearDirtyFields();
 
-    if (!data.ok) {
-      showNotification(data.error, "error");
+        // Carica il prossimo item in scrape mode
+        setTimeout(() => {
+          loadItem("/item/scrape/current");
+          saveText.textContent = originalText;
+          // Aggiorna il contatore scrape
+          checkScrapeAvailability();
+        }, 1000);
+
+      } else {
+        // EDIT MODE: Salva solo le modifiche al NFO esistente
+        // Verifica che ci siano modifiche
+        if (dirtyFields.size === 0) {
+          showNotification(window.i18n ? window.i18n.t("messages.noChanges") : "Nessuna modifica da salvare", "info");
+          saveBtn.disabled = false;
+          saveText.textContent = originalText;
+          return;
+        }
+
+        const changes = getChanges(originalItem, currentItem);
+
+        if (Object.keys(changes).length === 0) {
+          showNotification(window.i18n ? window.i18n.t("messages.noChanges") : "Nessuna modifica da salvare", "info");
+          saveBtn.disabled = false;
+          saveText.textContent = originalText;
+          return;
+        }
+
+        const res = await fetch("/item/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ changes })
+        });
+
+        const data = await res.json();
+
+        if (!data.ok) {
+          showNotification(data.error, "error");
+          saveBtn.disabled = false;
+          saveText.textContent = originalText;
+          return;
+        }
+
+        // Successo
+        showNotification(window.i18n ? window.i18n.t("messages.saved") : "✓ Modifiche salvate", "success");
+
+        // Clear dirty fields
+        clearDirtyFields();
+
+        // Ricarica item aggiornato per sincronizzare con server
+        setTimeout(() => {
+          loadItem("/item/current");
+          saveText.textContent = originalText;
+        }, 500);
+      }
+
+    } catch (err) {
+      showNotification("Errore durante il salvataggio", "error");
       saveBtn.disabled = false;
       saveText.textContent = originalText;
-      return;
     }
-
-    // Successo
-    showNotification(window.i18n ? window.i18n.t("messages.saved") : "✓ Modifiche salvate", "success");
-
-    // Clear dirty fields
-    clearDirtyFields();
-
-    // Ricarica item aggiornato per sincronizzare con server
-    setTimeout(() => {
-      loadItem("/item/current");
-      saveText.textContent = originalText;
-    }, 500);
-
-  } catch (err) {
-    showNotification("Errore durante il salvataggio", "error");
-    saveBtn.disabled = false;
-    saveText.textContent = originalText;
-  }
   };
 
   // ─────────────────────────────
@@ -699,6 +992,16 @@ async function initializeApp() {
     // Popola campo library path
     document.getElementById("libraryPath").value = configData.config.libraryPath || "";
   }
+
+  // Verifica disponibilità modalità scrape e libreria
+  checkLibraryCount();
+  checkScrapeAvailability();
+
+  // Polling automatico ogni 5 secondi per aggiornare entrambi i contatori
+  setInterval(() => {
+    checkLibraryCount();
+    checkScrapeAvailability();
+  }, 5000);
 
   // Carica primo item
   loadItem("/item/current");

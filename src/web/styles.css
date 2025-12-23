@@ -147,18 +147,79 @@ body {
   font-size: 11px;
   margin-top: 5px;
 }
-/* Scraper placeholder */
+/* Scraper panel */
 .scraper-panel {
   background: white;
   padding: 15px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  min-height: 150px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #999;
-  font-style: italic;
+}
+.scraper-panel h3 {
+  font-size: 14px;
+  color: #667eea;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.scraper-panel .mode-toggle {
+  background: #f0f0f0;
+  border-radius: 4px;
+  padding: 2px;
+  display: inline-flex;
+  gap: 0;
+}
+.scraper-panel .mode-btn {
+  background: transparent;
+  color: #666;
+  border: none;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+.scraper-panel .mode-btn:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+.scraper-panel .mode-btn.active {
+  background: #667eea;
+  color: white;
+}
+.scraper-panel .mode-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.scrape-now-btn {
+  background: #f59e0b;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.scrape-now-btn:hover {
+  background: #d97706;
+}
+.scrape-now-btn:active {
+  transform: scale(0.98);
+}
+.delete-item-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.delete-item-btn:hover {
+  background: #c82333;
+}
+.delete-item-btn:active {
+  transform: scale(0.98);
 }
 /* Colonna destra */
 .right-column {
@@ -329,11 +390,10 @@ button:disabled {
   opacity: 0.6;
 }
 #saveItem.has-changes {
-  background: #ff9800;
-  animation: pulse 2s infinite;
+  background: #28a745;
 }
 #saveItem.has-changes:hover {
-  background: #f57c00;
+  background: #218838;
 }
 .changes-badge {
   position: absolute;
@@ -350,10 +410,6 @@ button:disabled {
   font-size: 12px;
   font-weight: bold;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-}
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7); }
-  50% { box-shadow: 0 0 0 10px rgba(255, 152, 0, 0); }
 }
 .actor-item {
   border: 1px solid #ddd;

@@ -11,11 +11,17 @@ const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
 // Core
 const LibraryReader = require("../core/libraryReader");
+const ScrapeReader = require("../core/scrapeReader");
+const ScrapeSaver = require("../core/scrapeSaver");
 const { saveNfoPatch } = require("../core/saveNfo");
 
 // istanza con PATH REALE
 const libraryReader = new LibraryReader(config.libraryPath);
 libraryReader.loadLibrary();
+
+// istanza ScrapeReader
+const scrapeReader = new ScrapeReader();
+scrapeReader.loadScrapeItems();
 
 // ─────────────────────────────
 // helper risposta standard
@@ -77,6 +83,32 @@ router.get("/prev", async (req, res) => {
     res.json(ok(model));
   } catch (err) {
     res.json(fail(err.message));
+  }
+});
+
+// ─────────────────────────────
+// POST /reload
+// Ricarica la libreria
+// ─────────────────────────────
+router.post("/reload", (req, res) => {
+  try {
+    libraryReader.loadLibrary();
+    res.json({ ok: true, count: libraryReader.count() });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// GET /count
+// Restituisce il numero di NFO nella libreria
+// ─────────────────────────────
+router.get("/count", (req, res) => {
+  try {
+    const count = libraryReader.count();
+    res.json({ ok: true, count });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
   }
 });
 
@@ -213,6 +245,129 @@ router.post("/save", async (req, res) => {
   }
 });
 
+// ─────────────────────────────
+// SCRAPE MODE ROUTES
+// ─────────────────────────────
 
+// GET /scrape/current
+router.get("/scrape/current", (req, res) => {
+  try {
+    const item = scrapeReader.getCurrent();
+    if (!item) {
+      return res.json(ok(null));
+    }
+    res.json(ok(item.data)); // Restituisce solo i dati, non i metadati scrape
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// GET /scrape/next
+router.get("/scrape/next", (req, res) => {
+  try {
+    const item = scrapeReader.getNext();
+    if (!item) {
+      return res.json(ok(null));
+    }
+    res.json(ok(item.data));
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// GET /scrape/prev
+router.get("/scrape/prev", (req, res) => {
+  try {
+    const item = scrapeReader.getPrevious();
+    if (!item) {
+      return res.json(ok(null));
+    }
+    res.json(ok(item.data));
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// DELETE /scrape/current
+router.delete("/scrape/current", (req, res) => {
+  try {
+    const result = scrapeReader.deleteCurrent();
+    res.json(result);
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// GET /scrape/count
+router.get("/scrape/count", (req, res) => {
+  try {
+    const count = scrapeReader.getCount();
+    res.json({ ok: true, count });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// POST /scrape/reload
+router.post("/scrape/reload", (req, res) => {
+  try {
+    scrapeReader.loadScrapeItems();
+    res.json({ ok: true, count: scrapeReader.getCount() });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// POST /scrape/save
+// Salva l'item corrente in scrape mode (crea cartella, sposta video, genera NFO, scarica immagini)
+router.post("/scrape/save", async (req, res) => {
+  try {
+    // Ottieni l'item corrente con i dati modificati dal client
+    const modifiedData = req.body.item;
+
+    // Ottieni l'item originale dallo scrapeReader
+    const currentScrapeItem = scrapeReader.getCurrent();
+
+    if (!currentScrapeItem) {
+      return res.json(fail("No scrape item loaded"));
+    }
+
+    // Merge dei dati modificati con quelli originali
+    const itemToSave = { ...currentScrapeItem.data, ...modifiedData };
+
+    // Crea istanza ScrapeSaver con config aggiornata
+    const currentConfig = loadConfig();
+    const saver = new ScrapeSaver(currentConfig);
+
+    // Salva l'item
+    const results = await saver.saveItem(itemToSave, currentScrapeItem);
+
+    if (results.success) {
+      // Rimuovi il file JSON dalla lista (è stato processato)
+      scrapeReader.deleteCurrent();
+
+      // Ricarica la libreria per mostrare il nuovo item
+      libraryReader.loadLibrary();
+
+      res.json({
+        ok: true,
+        message: "Item saved successfully",
+        results: {
+          folder: results.folder,
+          video: results.video ? path.basename(results.video) : null,
+          nfo: results.nfo ? path.basename(results.nfo) : null,
+          fanart: results.fanart ? path.basename(results.fanart) : null,
+          poster: results.poster ? path.basename(results.poster) : null,
+          warnings: results.errors
+        }
+      });
+    } else {
+      res.json(fail(`Save failed: ${results.errors.join(", ")}`));
+    }
+
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
 
 module.exports = router;

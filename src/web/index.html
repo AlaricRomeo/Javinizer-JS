@@ -55,11 +55,19 @@
         <button id="browseLibrary" type="button">📁</button>
       </div>
       <small>Clicca sul pulsante per selezionare la cartella della libreria</small>
+      <p id="libraryStatus" style="margin-top: 10px; font-size: 12px; color: #666;">Caricamento...</p>
     </div>
 
-    <!-- Scraper Panel Placeholder -->
+    <!-- Scraper Panel -->
     <div class="scraper-panel">
-      Scraper Panel (coming soon)
+      <h3>Scraper Mode</h3>
+      <div class="mode-toggle">
+        <button id="modeEdit" class="mode-btn active">EDIT</button>
+        <button id="modeScrape" class="mode-btn">SCRAPE</button>
+      </div>
+      <p id="scrapeStatus" style="margin-top: 10px; font-size: 12px; color: #666;">No items available</p>
+      <button id="scrapeNow" class="scrape-now-btn" style="margin-top: 10px; width: 100%;">🔍 Scrape Now!</button>
+      <button id="deleteItem" class="delete-item-btn" style="margin-top: 10px; width: 100%; display: none;">🗑️ Delete Item</button>
     </div>
 
   </div>

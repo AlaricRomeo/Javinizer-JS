@@ -1,0 +1,57 @@
+{
+  "scrapedAt": "2025-01-15T10:30:00Z",
+  "sources": ["javlibrary"],
+  "videoFile": "/tmp/TEST-001.mp4",
+  "data": {
+    "id": "TEST-002",
+    "code": "TEST-002",
+    "title": "Test Video Title",
+    "originalTitle": "テストビデオタイトル",
+    "releaseDate": "2025-01-15",
+    "runtime": 120,
+    "studio": "Test Studio",
+    "label": "Test Label",
+    "series": "Test Series",
+    "director": "Test Director",
+    "plot": "This is a test description for the scraped video.",
+    "tagline": "",
+    "contentRating": "XXX",
+    "genres": ["Drama", "Romance"],
+    "tags": ["HD", "Sample"],
+    "rating": {
+      "value": 8.5,
+      "votes": 100
+    },
+    "actor": [
+      {
+        "name": "Test Actor 1",
+        "altName": "テストアクター1",
+        "role": "Actress",
+        "thumb": "https://via.placeholder.com/150"
+      },
+      {
+        "name": "Test Actor 2",
+        "altName": "テストアクター2",
+        "role": "Actress",
+        "thumb": "https://via.placeholder.com/150"
+      }
+    ],
+    "images": {
+      "poster": "",
+      "fanart": []
+    },
+    "coverUrl": "https://via.placeholder.com/800x600",
+    "screenshotUrl": "",
+    "trailerUrl": "",
+    "local": {
+      "path": "",
+      "files": [],
+      "video": ""
+    },
+    "meta": {
+      "createdAt": "",
+      "updatedAt": "",
+      "locked": false
+    }
+  }
+}

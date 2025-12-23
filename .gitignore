@@ -7,6 +7,9 @@ yarn-error.log
 config.json
 *.bak
 
+# Data directory (file JSON generati dagli scraper)
+data/scrape/*.json
+
 # Logs
 logs/
 *.log
@@ -27,6 +30,7 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+todo.md
 
 # Build artifacts (se in futuro aggiungi build step)
 dist/

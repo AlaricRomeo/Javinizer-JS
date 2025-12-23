@@ -12,7 +12,7 @@ function applyI18nBindings() {
   // Sezioni
   setText("#fanart-container h3", t("sections.fanart"));
   setText(".config-panel h3", t("sections.libraryPath"));
-  setText(".scraper-panel", t("sections.scraperPanel"));
+  setText(".scraper-panel h3", t("sections.scraperPanel"));
 
   // Form sections
   setText(".form-section:nth-of-type(1) h3", t("sections.basicInfo"));
