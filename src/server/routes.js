@@ -118,7 +118,10 @@ router.get("/count", (req, res) => {
 router.get("/config", (req, res) => {
   try {
     const config = loadConfig();
-    res.json({ ok: true, config });
+    // Assicurati che mode e scrapers esistano sempre
+    if (!config.mode) config.mode = "scrape";
+    if (!config.scrapers) config.scrapers = [];
+    res.json(config);
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
@@ -202,10 +205,16 @@ router.post("/config", (req, res) => {
       });
     }
 
-    // Mantieni la lingua esistente se non specificata
+    // Mantieni i valori esistenti se non specificati
     const currentConfig = loadConfig();
     if (!newConfig.language) {
       newConfig.language = currentConfig.language || "en";
+    }
+    if (!newConfig.mode) {
+      newConfig.mode = currentConfig.mode || "scrape";
+    }
+    if (!newConfig.scrapers) {
+      newConfig.scrapers = currentConfig.scrapers || [];
     }
 
     saveConfig(newConfig);
@@ -367,6 +376,142 @@ router.post("/scrape/save", async (req, res) => {
 
   } catch (err) {
     res.json(fail(err.message));
+  }
+});
+
+// ─────────────────────────────
+// POST /item/scrape/start
+// Avvia lo scraping e restituisce SSE (Server-Sent Events) per il progress
+// ─────────────────────────────
+router.post("/scrape/start", (req, res) => {
+  // Setup SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Funzione helper per inviare eventi
+  const sendEvent = (event, data) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Avvia scraping
+  const { spawn } = require('child_process');
+  const scraperPath = path.join(__dirname, '../core/scraperManager.js');
+
+  sendEvent('start', { message: 'Starting ScraperManager...' });
+
+  const child = spawn('node', [scraperPath], {
+    stdio: ['ignore', 'pipe', 'pipe']  // stdin=ignore, stdout=pipe, stderr=pipe
+  });
+
+  let stdout = '';
+  let stderr = '';
+
+  // Cattura stdout (JSON finale)
+  child.stdout.on('data', (data) => {
+    stdout += data.toString();
+  });
+
+  // Cattura stderr (progress logs) e invia come eventi SSE
+  child.stderr.on('data', (data) => {
+    const lines = data.toString().split('\n').filter(l => l.trim());
+    lines.forEach(line => {
+      stderr += line + '\n';
+
+      // Invia ogni log line come evento progress
+      sendEvent('progress', { message: line });
+    });
+  });
+
+  // Handle completion
+  child.on('close', (code) => {
+    if (code === 0) {
+      sendEvent('complete', {
+        message: 'Scraping completed successfully',
+        exitCode: code
+      });
+    } else {
+      sendEvent('error', {
+        message: `Scraping failed with exit code ${code}`,
+        exitCode: code
+      });
+    }
+
+    res.end();
+  });
+
+  // Handle errors
+  child.on('error', (error) => {
+    sendEvent('error', {
+      message: `Failed to start scraper: ${error.message}`
+    });
+    res.end();
+  });
+
+  // Cleanup on client disconnect
+  req.on('close', () => {
+    if (!child.killed) {
+      child.kill();
+    }
+  });
+});
+
+// ─────────────────────────────
+// POST /item/scrape/clear-cache
+// Pulisce la cache di tutti gli scraper
+// ─────────────────────────────
+router.post("/scrape/clear-cache", async (req, res) => {
+  try {
+    // Scrapers are now organized in subdirectories (movies, actors, etc.)
+    const scrapersBaseDir = path.join(__dirname, '../../scrapers');
+    const scraperTypes = fs.readdirSync(scrapersBaseDir).filter(name => {
+      const typePath = path.join(scrapersBaseDir, name);
+      return fs.statSync(typePath).isDirectory() && name !== 'README.md';
+    });
+
+    let clearedCount = 0;
+
+    // Iterate through each scraper type (movies, actors, etc.)
+    for (const scraperType of scraperTypes) {
+      const typeDir = path.join(scrapersBaseDir, scraperType);
+      const scrapers = fs.readdirSync(typeDir);
+
+      for (const scraper of scrapers) {
+        // Skip template, schema, and non-directories
+        if (scraper === '_template' || scraper.endsWith('.js') || scraper.endsWith('.md')) continue;
+
+        const scraperPath = path.join(typeDir, scraper);
+        const stat = fs.statSync(scraperPath);
+
+        if (!stat.isDirectory()) continue;
+
+        // Check for common cache directories
+        const cacheDirs = [
+          path.join(scraperPath, '.browser-data'),
+          path.join(scraperPath, '.cache'),
+          path.join(scraperPath, 'cache')
+        ];
+
+        for (const cacheDir of cacheDirs) {
+          if (fs.existsSync(cacheDir)) {
+            // Remove cache directory recursively
+            fs.rmSync(cacheDir, { recursive: true, force: true });
+            console.error(`[ClearCache] Removed: ${cacheDir}`);
+            clearedCount++;
+          }
+        }
+      }
+    }
+
+    res.json({
+      ok: true,
+      message: `Cleared ${clearedCount} cache director${clearedCount === 1 ? 'y' : 'ies'}`
+    });
+
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
   }
 });
 

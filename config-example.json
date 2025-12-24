@@ -1,0 +1,20 @@
+{
+  "libraryPath": "/mnt/Jav/to/_prova",
+  "mode": "scrape",
+  "language": "it",
+
+  "_comment_scrapers": "List of enabled scrapers in priority order (first = highest priority)",
+  "scrapers": [
+    "javlibrary",
+    "r18dev"
+  ],
+
+  "_comment_fieldPriorities": "Optional: Override priority for specific fields",
+  "fieldPriorities": {
+    "title": ["r18dev", "javlibrary"],
+    "description": ["javlibrary", "r18dev"],
+    "coverUrl": ["r18dev", "javlibrary"]
+  },
+
+  "_comment_fallback": "For fields not listed above, use the global scrapers order"
+}

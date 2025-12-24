@@ -1,0 +1,466 @@
+#!/usr/bin/env node
+
+/**
+ * ScraperManager
+ *
+ * Orchestrates multiple video scrapers and merges their JSON outputs.
+ * - Reads DVD IDs from library path (file names up to first space)
+ * - Executes enabled scrapers sequentially
+ * - Merges results based on priority rules
+ * - Saves individual JSON files to data/scrape/{id}.json
+ */
+
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+// ─────────────────────────────
+// Configuration Loading
+// ─────────────────────────────
+
+/**
+ * Load config.json from disk
+ */
+function loadConfig() {
+  const configPath = path.join(__dirname, '../../config.json');
+
+  if (!fs.existsSync(configPath)) {
+    throw new Error('config.json not found');
+  }
+
+  const configData = fs.readFileSync(configPath, 'utf-8');
+  return JSON.parse(configData);
+}
+
+// ─────────────────────────────
+// Library Reading
+// ─────────────────────────────
+
+/**
+ * Extract DVD codes from library path
+ * - Reads all files in libraryPath
+ * - Skips directories
+ * - Extracts ID from filename (everything before first space or entire name if no space)
+ *
+ * @param {string} libraryPath - Path to library directory
+ * @returns {string[]} - Array of unique DVD codes
+ */
+function extractCodesFromLibrary(libraryPath) {
+  if (!fs.existsSync(libraryPath)) {
+    throw new Error(`Library path not found: ${libraryPath}`);
+  }
+
+  const files = fs.readdirSync(libraryPath);
+  const codes = new Set();
+
+  files.forEach(file => {
+    const filePath = path.join(libraryPath, file);
+    const stats = fs.statSync(filePath);
+
+    // Skip directories
+    if (stats.isDirectory()) {
+      return;
+    }
+
+    // Extract code from filename (up to first space)
+    const spaceIndex = file.indexOf(' ');
+    const code = spaceIndex === -1 ? file : file.substring(0, spaceIndex);
+
+    // Remove file extension if present
+    const codeWithoutExt = code.replace(/\.[^.]+$/, '');
+
+    if (codeWithoutExt) {
+      codes.add(codeWithoutExt);
+    }
+  });
+
+  return Array.from(codes);
+}
+
+// ─────────────────────────────
+// Scraper Execution
+// ─────────────────────────────
+
+/**
+ * Execute a single scraper for given codes
+ * Returns the JSON output from stdout
+ *
+ * INTERACTIVE SCRAPER SUPPORT:
+ * - Scrapers can be interactive (e.g., require user input, open browser)
+ * - stdin is inherited from parent terminal (user can type/press ENTER)
+ * - stderr is inherited (messages are visible to user)
+ * - stdout is captured for JSON parsing
+ * - NO timeouts - waits indefinitely for scraper to complete
+ *
+ * @param {string} scraperName - Name of the scraper
+ * @param {string[]} codes - Array of DVD codes to scrape
+ * @returns {Promise<object[]>} - Parsed JSON array from scraper stdout
+ */
+function executeScraper(scraperName, codes) {
+  return new Promise((resolve, reject) => {
+    // Scrapers are now in scrapers/movies/ subdirectory
+    const scraperPath = path.join(__dirname, '../../scrapers/movies', scraperName, 'run.js');
+
+    // Check if scraper exists
+    if (!fs.existsSync(scraperPath)) {
+      console.error(`[ScraperManager] Scraper not found: ${scraperPath}`);
+      // Return minimal results for all codes
+      resolve(codes.map(code => ({ code })));
+      return;
+    }
+
+    console.error(`[ScraperManager] Executing scraper: ${scraperName}`);
+    console.error(`[ScraperManager] Codes: ${codes.join(', ')}`);
+
+    // Spawn scraper process with full interactive support
+    // - stdin: 'inherit' -> user can type, press ENTER, interact with prompts
+    // - stdout: 'pipe' -> capture JSON output for parsing
+    // - stderr: 'inherit' -> user sees all messages, progress, instructions
+    const child = spawn('node', [scraperPath, ...codes], {
+      stdio: ['inherit', 'pipe', 'inherit']
+    });
+
+    let stdout = '';
+
+    // Collect stdout
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    // Handle process exit
+    child.on('close', (code) => {
+      if (code !== 0) {
+        console.error(`[ScraperManager] Scraper ${scraperName} exited with code ${code}`);
+        // Return minimal results
+        resolve(codes.map(c => ({ code: c })));
+        return;
+      }
+
+      // Parse JSON output
+      try {
+        const results = JSON.parse(stdout);
+        console.error(`[ScraperManager] Scraper ${scraperName} completed successfully`);
+        resolve(Array.isArray(results) ? results : [results]);
+      } catch (error) {
+        console.error(`[ScraperManager] Failed to parse JSON from ${scraperName}: ${error.message}`);
+        resolve(codes.map(c => ({ code: c })));
+      }
+    });
+
+    // Handle process error
+    child.on('error', (error) => {
+      console.error(`[ScraperManager] Failed to execute ${scraperName}: ${error.message}`);
+      resolve(codes.map(c => ({ code: c })));
+    });
+  });
+}
+
+// ─────────────────────────────
+// Data Cleaning
+// ─────────────────────────────
+
+/**
+ * Remove null, undefined, empty strings, and empty arrays from object
+ *
+ * @param {any} obj - Object to clean
+ * @returns {any} - Cleaned object
+ */
+function cleanJson(obj) {
+  if (obj === null || obj === undefined) {
+    return undefined;
+  }
+
+  if (Array.isArray(obj)) {
+    const cleaned = obj
+      .map(cleanJson)
+      .filter(item => item !== undefined);
+    return cleaned.length > 0 ? cleaned : undefined;
+  }
+
+  if (typeof obj === 'object') {
+    const cleaned = {};
+
+    for (const [key, value] of Object.entries(obj)) {
+      const cleanedValue = cleanJson(value);
+
+      if (cleanedValue !== undefined) {
+        cleaned[key] = cleanedValue;
+      }
+    }
+
+    return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+  }
+
+  // Primitives: remove empty strings
+  if (obj === '') {
+    return undefined;
+  }
+
+  return obj;
+}
+
+// ─────────────────────────────
+// Data Merging
+// ─────────────────────────────
+
+/**
+ * Get priority order for a specific field
+ *
+ * @param {string} fieldName - Name of the field
+ * @param {object} config - Configuration object
+ * @returns {string[]} - Ordered list of scraper names for this field
+ */
+function getFieldPriority(fieldName, config) {
+  // Check if field has explicit priority
+  if (config.fieldPriorities && config.fieldPriorities[fieldName]) {
+    return config.fieldPriorities[fieldName];
+  }
+
+  // Use global scraper order as fallback
+  return config.scrapers || [];
+}
+
+/**
+ * Merge data from multiple scrapers for a single DVD code
+ *
+ * @param {string} code - DVD code
+ * @param {object[]} scraperResults - Array of {scraperName, data} objects
+ * @param {object} config - Configuration object
+ * @returns {object} - Merged object (cleaned)
+ */
+function mergeResults(code, scraperResults, config) {
+  // Start with code field
+  const merged = { code };
+
+  // Collect all available fields
+  const allFields = new Set();
+  scraperResults.forEach(({ data }) => {
+    Object.keys(data).forEach(field => {
+      if (field !== 'code' && field !== 'dvd_id') {
+        allFields.add(field);
+      }
+    });
+  });
+
+  // For each field, select value based on priority
+  allFields.forEach(fieldName => {
+    const priority = getFieldPriority(fieldName, config);
+
+    // Find first scraper in priority order that provides this field
+    for (const scraperName of priority) {
+      const scraperResult = scraperResults.find(r => r.scraperName === scraperName);
+
+      if (scraperResult && scraperResult.data[fieldName] !== undefined) {
+        const value = scraperResult.data[fieldName];
+
+        // Only add non-empty values
+        if (value !== null && value !== '' && !(Array.isArray(value) && value.length === 0)) {
+          merged[fieldName] = value;
+          break; // Found value, stop looking
+        }
+      }
+    }
+  });
+
+  // Clean the merged result to remove any empty values
+  return cleanJson(merged) || { code };
+}
+
+// ─────────────────────────────
+// File Saving
+// ─────────────────────────────
+//
+// NOTE: Scrapers are now responsible for returning data in standard format.
+// See scrapers/movies/schema.js for the expected format.
+// ScraperManager no longer performs field name normalization.
+
+/**
+ * Save scraped data to data/scrape/{code}.json with wrapper structure
+ *
+ * @param {string} code - DVD code
+ * @param {object} data - Scraped and merged data
+ * @param {string[]} sources - List of scraper names used
+ * @param {string} libraryPath - Path to library directory
+ */
+function saveToFile(code, data, sources, libraryPath) {
+  const outputDir = path.join(__dirname, '../../data/scrape');
+
+  // Ensure output directory exists
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  // Find video file in library
+  let videoFile = '';
+  if (libraryPath && fs.existsSync(libraryPath)) {
+    const files = fs.readdirSync(libraryPath);
+    const matchingFile = files.find(file => {
+      const fileCode = file.split(' ')[0].replace(/\.[^.]+$/, '');
+      return fileCode.toLowerCase() === code.toLowerCase();
+    });
+    if (matchingFile) {
+      videoFile = path.join(libraryPath, matchingFile);
+    }
+  }
+
+  // Create wrapper structure matching WebUI expected format
+  // Scrapers already return data in standard format (see schema.js)
+  const wrappedData = {
+    scrapedAt: new Date().toISOString(),
+    sources: sources || [],
+    videoFile: videoFile,
+    data: data
+  };
+
+  const outputPath = path.join(outputDir, `${code}.json`);
+  fs.writeFileSync(outputPath, JSON.stringify(wrappedData, null, 2), 'utf-8');
+
+  console.error(`[ScraperManager] Saved: ${outputPath}`);
+}
+
+// ─────────────────────────────
+// Main Orchestration
+// ─────────────────────────────
+
+/**
+ * Main scraping function
+ *
+ * @param {string[]} codes - Array of DVD codes to scrape
+ * @returns {Promise<object[]>} - Array of merged results
+ */
+async function scrapeAll(codes) {
+  const config = loadConfig();
+
+  // Get list of enabled scrapers
+  const enabledScrapers = config.scrapers || [];
+
+  if (enabledScrapers.length === 0) {
+    console.error('[ScraperManager] No scrapers enabled in config.json');
+    return codes.map(code => ({ code }));
+  }
+
+  console.error(`[ScraperManager] Enabled scrapers: ${enabledScrapers.join(', ')}`);
+  console.error(`[ScraperManager] Scraping ${codes.length} code(s): ${codes.join(', ')}`);
+
+  // Execute all enabled scrapers sequentially
+  const scraperOutputs = [];
+
+  for (const scraperName of enabledScrapers) {
+    const results = await executeScraper(scraperName, codes);
+    scraperOutputs.push({
+      scraperName,
+      results
+    });
+  }
+
+  // Group results by code
+  const resultsByCode = {};
+
+  codes.forEach(code => {
+    resultsByCode[code] = [];
+  });
+
+  // Collect data from each scraper for each code
+  scraperOutputs.forEach(({ scraperName, results }) => {
+    results.forEach(data => {
+      // Match by code or dvd_id field
+      const code = data.code || data.dvd_id;
+
+      // Normalize: ensure data has 'code' field
+      if (!data.code && data.dvd_id) {
+        data.code = data.dvd_id;
+      }
+
+      // Find matching code (case-insensitive)
+      const matchingCode = codes.find(c => c.toUpperCase() === (code || '').toUpperCase());
+
+      if (matchingCode && resultsByCode[matchingCode]) {
+        resultsByCode[matchingCode].push({
+          scraperName,
+          data
+        });
+      }
+    });
+  });
+
+  // Merge results for each code and save to files
+  const finalResults = [];
+
+  for (const code of codes) {
+    const scraperResults = resultsByCode[code] || [];
+    const merged = mergeResults(code, scraperResults, config);
+
+    // Collect which scrapers provided data for this code
+    const usedScrapers = scraperResults.map(r => r.scraperName);
+
+    // Save to file with wrapper structure
+    saveToFile(code, merged, usedScrapers, config.libraryPath);
+
+    finalResults.push(merged);
+  }
+
+  return finalResults;
+}
+
+// ─────────────────────────────
+// CLI Entry Point
+// ─────────────────────────────
+
+async function main() {
+  try {
+    const config = loadConfig();
+
+    // Extract codes from library path
+    const libraryPath = config.libraryPath;
+
+    if (!libraryPath) {
+      throw new Error('libraryPath not specified in config.json');
+    }
+
+    console.error(`[ScraperManager] Reading library: ${libraryPath}`);
+
+    const codes = extractCodesFromLibrary(libraryPath);
+
+    if (codes.length === 0) {
+      console.error('[ScraperManager] No files found in library');
+      process.exit(0);
+    }
+
+    console.error(`[ScraperManager] Found ${codes.length} file(s) to scrape`);
+
+    // Filter out already scraped codes
+    const outputDir = path.join(__dirname, '../../data/scrape');
+    const codesToScrape = codes.filter(code => {
+      const jsonPath = path.join(outputDir, `${code}.json`);
+      const exists = fs.existsSync(jsonPath);
+      if (exists) {
+        console.error(`[ScraperManager] Skipping ${code} - already scraped`);
+      }
+      return !exists;
+    });
+
+    if (codesToScrape.length === 0) {
+      console.error('[ScraperManager] All files already scraped. Nothing to do.');
+      process.exit(0);
+    }
+
+    console.error(`[ScraperManager] Scraping ${codesToScrape.length} new file(s), skipped ${codes.length - codesToScrape.length}`);
+
+    // Execute scraping
+    const results = await scrapeAll(codesToScrape);
+
+    console.error(`[ScraperManager] Completed. Saved ${results.length} JSON file(s) to data/scrape/`);
+
+  } catch (error) {
+    console.error(`[ScraperManager] Fatal error: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+// Run if executed directly
+if (require.main === module) {
+  main();
+}
+
+// Export for use as module
+module.exports = { scrapeAll, extractCodesFromLibrary };

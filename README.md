@@ -151,14 +151,63 @@ See `src/lang/README.md` for details.
 - `GET /item/lang/:code` - Get translation file
 - `GET /item/browse?path=...` - Browse directories
 
+## ScraperManager
+
+Javinizer-js includes a modular scraping system that automatically scrapes metadata for your entire library.
+
+### Quick Start
+
+```bash
+# Scrape all files in your library
+node src/core/scraperManager.js
+```
+
+The ScraperManager will:
+1. Read all files from your `libraryPath`
+2. Extract DVD codes from filenames
+3. Execute enabled scrapers
+4. Save merged JSON files to `data/scrape/{code}.json`
+
+### Available Scrapers
+
+- **javlibrary** - Scrapes javlibrary.com (interactive, Cloudflare)
+- **r18dev** - Scrapes r18.dev (automatic)
+
+### Add New Scraper
+
+```bash
+# Copy template
+cp -r scrapers/_template scrapers/myscraper
+
+# Implement scraping logic in scrape.js
+# ...
+
+# Enable in config.json
+# Add "myscraper" to scrapers array
+
+# Done! No ScraperManager changes needed
+```
+
+**No code changes needed!** Each scraper is an independent plugin.
+
+### Documentation
+
+- **[SCRAPER_MANAGER_USAGE.md](SCRAPER_MANAGER_USAGE.md)** - How to use ScraperManager
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and philosophy
+- **[SCRAPER_MANAGER.md](SCRAPER_MANAGER.md)** - Technical details
+- **[SCRAPER_IMPLEMENTATION_GUIDE.md](SCRAPER_IMPLEMENTATION_GUIDE.md)** - Create new scrapers
+- **[scrapers/README.md](scrapers/README.md)** - Scrapers overview
+
 ## Roadmap
 
-- [ ] Scraper integration (planned)
+- [x] Scraper integration (✅ completed)
+- [x] Plugin-based scraper architecture (✅ completed)
 - [ ] Fanart display support
 - [ ] Actor database with autocomplete
 - [ ] Batch operations
 - [ ] Image management (cover, screenshots)
 - [ ] Advanced search and filtering
+- [ ] WebUI integration with ScraperManager
 
 ## Contributing
 

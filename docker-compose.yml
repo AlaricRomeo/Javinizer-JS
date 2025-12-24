@@ -15,10 +15,12 @@ services:
     environment:
       - NODE_ENV=production
       - TZ=Europe/Rome
-    # Opzionale: limiti risorse
+    # Required for Puppeteer/Chromium
+    shm_size: '2gb'
+    # Resource limits (increased for Chromium)
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 2G
         reservations:
-          memory: 256M
+          memory: 512M

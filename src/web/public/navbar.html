@@ -1,0 +1,48 @@
+<div class="status-bar">
+  <h1 data-i18n="app.title">Javinizer-js</h1>
+  <div class="links">
+    <select id="languageSelector" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 14px; margin-right: 15px;">
+      <option value="en">English</option>
+      <option value="it">Italiano</option>
+    </select>
+    <a href="/" data-i18n="nav.home">Home</a>
+    <a href="/public/config.html" data-i18n="nav.config">Config</a>
+    <a href="#" data-i18n="nav.about">About</a>
+  </div>
+</div>
+
+<style>
+.status-bar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.status-bar h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.status-bar .links {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.status-bar .links a {
+  color: white;
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.2s;
+}
+
+.status-bar .links a:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+</style>

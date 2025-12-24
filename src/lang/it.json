@@ -3,6 +3,7 @@
     "title": "Javinizer-js"
   },
   "nav": {
+    "home": "Home",
     "config": "Configurazione",
     "about": "Info"
   },
@@ -77,5 +78,27 @@
   "settings": {
     "language": "Lingua",
     "selectLanguage": "Seleziona lingua"
+  },
+  "config": {
+    "pageTitle": "Configurazione",
+    "pageSubtitle": "Gestisci le impostazioni di Javinizer-js",
+    "backToHome": "← Torna alla Home",
+    "generalSettings": "Impostazioni Generali",
+    "initialLibraryPath": "Percorso Library Iniziale",
+    "libraryPathHelp": "La directory principale dove è archiviata la tua libreria JAV (può essere cambiata dall'interfaccia principale)",
+    "initialMode": "Modalità Operativa Iniziale",
+    "modeHelp": "Modalità predefinita all'avvio (può essere cambiata dall'interfaccia principale)",
+    "scrapeMode": "Modalità Scrape",
+    "scrapeModeDesc": "Recupera metadati da fonti online e salva in file JSON",
+    "editMode": "Modalità Edit",
+    "editModeDesc": "Carica file JSON esistenti per modifica e gestione",
+    "videoScrapers": "Video Scrapers",
+    "scraperNames": "Nomi Scraper (separati da virgola)",
+    "scraperHelp": "Lista degli scraper abilitati in ordine di priorità (primo = priorità massima).",
+    "availableScrapers": "Scraper disponibili:",
+    "saveConfig": "💾 Salva Configurazione",
+    "saveSuccess": "Configurazione salvata con successo!",
+    "saveFailed": "Errore nel salvataggio della configurazione",
+    "loadFailed": "Errore nel caricamento della configurazione"
   }
 }

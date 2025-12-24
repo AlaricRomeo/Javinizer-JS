@@ -6,12 +6,15 @@ let currentMode = "edit"; // "edit" or "scrape"
 // ─────────────────────────────
 let dirtyFields = new Set();
 
-function markFieldDirty(fieldId) {
+function markFieldDirty(fieldId, itemKey = null) {
   // Verifica che originalItem esista
   if (!originalItem) return;
 
-  const currentValue = currentItem[fieldId];
-  const originalValue = originalItem[fieldId];
+  // Se itemKey non è fornito, usa fieldId come fallback (retrocompatibilità)
+  const key = itemKey || fieldId;
+
+  const currentValue = currentItem[key];
+  const originalValue = originalItem[key];
 
   // Confronta i valori (gestisce array e oggetti)
   const isDifferent = JSON.stringify(currentValue) !== JSON.stringify(originalValue);
@@ -327,6 +330,9 @@ async function switchMode(newMode) {
 
   currentMode = newMode;
 
+  // Pulisci UI prima del cambio mode
+  clearUI();
+
   // Aggiorna UI dei bottoni
   const editBtn = document.getElementById("modeEdit");
   const scrapeBtn = document.getElementById("modeScrape");
@@ -392,6 +398,7 @@ function clearUI() {
   if (fanartImg) {
     fanartImg.style.display = "none";
     fanartImg.src = "";
+    fanartImg.onerror = null; // Rimuovi gestore errori
   }
   if (fanartPlaceholder) {
     fanartPlaceholder.style.display = "block";
@@ -495,7 +502,7 @@ function bindField(fieldId, itemKey) {
   el.value = currentItem[itemKey] || "";
   el.oninput = () => {
     currentItem[itemKey] = el.value;
-    markFieldDirty(itemKey); // Usa itemKey invece di fieldId
+    markFieldDirty(fieldId, itemKey); // Passa sia fieldId che itemKey
     updateDebugJson();
   };
 }
@@ -509,7 +516,7 @@ function bindArrayField(fieldId, itemKey) {
   el.oninput = () => {
     const value = el.value.trim();
     currentItem[itemKey] = value ? value.split(",").map(s => s.trim()) : [];
-    markFieldDirty(itemKey); // Usa itemKey invece di fieldId
+    markFieldDirty(fieldId, itemKey); // Passa sia fieldId che itemKey
     updateDebugJson();
   };
 }
@@ -539,13 +546,29 @@ function renderActors() {
     const thumbUrl = actor.thumb || "";
     const hasThumb = thumbUrl !== "";
 
+    // Creazione della card con immagine
     actorCard.innerHTML = `
-      <div class="thumbnail">
-        ${hasThumb ? `<img src="${thumbUrl}" alt="${actor.name || 'Actor'}">` : '👤'}
-      </div>
+      <div class="thumbnail"></div>
       <div class="name">${actor.name || 'Nome mancante'}</div>
       <div class="role">${actor.role || 'Actress'}</div>
     `;
+
+    // Aggiungi l'immagine con gestione dell'errore
+    const thumbnailDiv = actorCard.querySelector('.thumbnail');
+    if (hasThumb) {
+      const img = document.createElement('img');
+      img.src = thumbUrl;
+      img.alt = actor.name || 'Actor';
+
+      // Gestisci errore caricamento immagine
+      img.onerror = () => {
+        thumbnailDiv.innerHTML = '👤';
+      };
+
+      thumbnailDiv.appendChild(img);
+    } else {
+      thumbnailDiv.innerHTML = '👤';
+    }
 
     // Click per aprire modal di editing
     actorCard.onclick = () => {
@@ -682,17 +705,46 @@ function renderItem(item) {
   bindField("screenshotUrl", "screenshotUrl");
   bindField("trailerUrl", "trailerUrl");
 
-  // Fanart
+  // Fanart - logica diversa per edit mode e scrape mode
   const fanartImg = document.getElementById("fanartImage");
   const fanartPlaceholder = document.getElementById("fanartPlaceholder");
-  if (item.images && item.images.fanart && item.images.fanart.length > 0) {
-    const fanartPath = item.images.fanart[0];
-    fanartImg.src = `/media/${encodeURIComponent(fanartPath)}`;
-    fanartImg.style.display = "block";
-    fanartPlaceholder.style.display = "none";
+
+  if (currentMode === "scrape") {
+    // In scrape mode usa coverUrl come fanart
+    if (item.coverUrl) {
+      fanartImg.src = item.coverUrl;
+      // Gestisci errore caricamento immagine
+      fanartImg.onerror = () => {
+        fanartImg.style.display = "none";
+        fanartPlaceholder.style.display = "block";
+      };
+      fanartImg.style.display = "block";
+      fanartPlaceholder.style.display = "none";
+    } else {
+      fanartImg.style.display = "none";
+      fanartPlaceholder.style.display = "block";
+    }
   } else {
-    fanartImg.style.display = "none";
-    fanartPlaceholder.style.display = "block";
+    // In edit mode usa fanart.jpg dalla stessa cartella del .nfo
+    if (item.local && item.local.path) {
+      // Cerca fanart.jpg nella stessa cartella del .nfo
+      const fanartPath = `${item.local.path}/fanart.jpg`;
+
+      fanartImg.src = `/media/${encodeURIComponent(fanartPath)}`;
+
+      // Gestisci errore caricamento immagine
+      fanartImg.onerror = () => {
+        // Se fanart.jpg non esiste, mostra placeholder
+        fanartImg.style.display = "none";
+        fanartPlaceholder.style.display = "block";
+      };
+
+      fanartImg.style.display = "block";
+      fanartPlaceholder.style.display = "none";
+    } else {
+      fanartImg.style.display = "none";
+      fanartPlaceholder.style.display = "block";
+    }
   }
 
   // Actors
@@ -725,11 +777,8 @@ function setupEventHandlers() {
     loadItem(url);
   };
 
-  // Event listener per cambio lingua
-  document.getElementById("languageSelector").onchange = async (e) => {
-    const newLang = e.target.value;
-    await window.i18n.changeLanguage(newLang);
-
+  // Event listener per cambio lingua (gestito tramite evento custom dal navbar)
+  window.addEventListener("languageChanged", () => {
     // Riapplica i bindings per aggiornare le labels
     if (window.applyI18nBindings) {
       window.applyI18nBindings();
@@ -739,12 +788,35 @@ function setupEventHandlers() {
     if (currentItem) {
       renderItem(currentItem);
     }
-  };
+  });
 
   // Bottone "Scrape Now!" - avvia lo scraper
   document.getElementById("scrapeNow").onclick = async () => {
-    showNotification("Funzione scraper in arrivo! 🚀", "info");
-    // TODO: Implementare l'avvio dello scraper
+    startScraping();
+  };
+
+  // Bottone "Clear Scrapers Cache" - pulisce la cache di tutti gli scraper
+  document.getElementById("clearCache").onclick = async () => {
+    if (!confirm("Sei sicuro di voler pulire la cache di tutti gli scraper?")) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/item/scrape/clear-cache", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        showNotification(data.message, "success");
+      } else {
+        showNotification("Errore: " + data.error, "error");
+      }
+    } catch (err) {
+      showNotification("Errore durante la pulizia della cache", "error");
+    }
   };
 
   // Bottone "Delete Item" - elimina il JSON corrente in scrape mode
@@ -1005,6 +1077,131 @@ async function initializeApp() {
 
   // Carica primo item
   loadItem("/item/current");
+}
+
+// ─────────────────────────────
+// Scraping Functions
+// ─────────────────────────────
+
+/**
+ * Start scraping process with real-time feedback
+ */
+async function startScraping() {
+  const modal = document.getElementById('scrapingModal');
+  const progressDiv = document.getElementById('scrapingProgress');
+  const closeBtn = document.getElementById('scrapingClose');
+
+  // Show modal
+  modal.style.display = 'block';
+  progressDiv.innerHTML = '<div style="color: #667eea;">🚀 Starting scraping...</div>';
+  closeBtn.style.display = 'none';
+
+  try {
+    // Fetch with streaming
+    const response = await fetch('/item/scrape/start', {
+      method: 'POST',
+      headers: {
+        'Accept': 'text/event-stream'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    // Read stream
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      // Decode chunk and add to buffer
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete events in buffer
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop(); // Keep incomplete event in buffer
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        // Parse SSE event
+        const eventMatch = line.match(/^event: (\w+)\ndata: (.+)$/s);
+        if (eventMatch) {
+          const [, eventType, dataStr] = eventMatch;
+          const data = JSON.parse(dataStr);
+
+          handleScrapingEvent(progressDiv, closeBtn, eventType, data);
+        }
+      }
+    }
+
+  } catch (error) {
+    appendProgress(progressDiv, '❌ Error: ' + error.message, 'error');
+    closeBtn.style.display = 'block';
+  }
+
+  // Close button handler
+  closeBtn.onclick = () => {
+    modal.style.display = 'none';
+  };
+}
+
+/**
+ * Handle scraping event
+ */
+function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
+  switch (eventType) {
+    case 'start':
+      appendProgress(progressDiv, data.message, 'info');
+      break;
+
+    case 'progress':
+      // Highlight "Executing scraper" in red
+      const type = data.message.includes('Executing scraper') ? 'executing' : 'progress';
+      appendProgress(progressDiv, data.message, type);
+      break;
+
+    case 'complete':
+      appendProgress(progressDiv, '✅ ' + data.message, 'success');
+      closeBtn.style.display = 'block';
+      break;
+
+    case 'error':
+      appendProgress(progressDiv, '❌ ' + data.message, 'error');
+      closeBtn.style.display = 'block';
+      break;
+  }
+}
+
+/**
+ * Append progress message to the progress div
+ */
+function appendProgress(div, message, type) {
+  const colors = {
+    info: '#667eea',
+    progress: '#333',
+    executing: '#dc3545',  // Red for "Executing scraper"
+    success: '#28a745',
+    error: '#dc3545'
+  };
+
+  const line = document.createElement('div');
+  line.style.color = colors[type] || '#333';
+  line.style.marginBottom = '4px';
+  line.style.fontWeight = type === 'executing' ? 'bold' : 'normal';
+  line.textContent = message;
+
+  div.appendChild(line);
+
+  // Auto-scroll to bottom
+  div.scrollTop = div.scrollHeight;
 }
 
 // ─────────────────────────────
