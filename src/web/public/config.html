@@ -207,6 +207,141 @@
             color: #721c24;
             border: 1px solid #f5c6cb;
         }
+
+        .secondary-button {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .secondary-button:hover {
+            background: #5a6268;
+        }
+
+        .priority-field {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+
+        .priority-field-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .priority-field-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .priority-field-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .priority-field-actions button {
+            padding: 4px 10px;
+            font-size: 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #667eea;
+            color: white;
+            transition: background 0.2s;
+        }
+
+        .priority-field-actions button:hover {
+            background: #5568d3;
+        }
+
+        .priority-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .priority-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            cursor: move;
+            transition: all 0.2s;
+        }
+
+        .priority-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+        }
+
+        .priority-item.dragging {
+            opacity: 0.5;
+        }
+
+        .priority-number {
+            min-width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .priority-scraper-name {
+            flex: 1;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .priority-controls {
+            display: flex;
+            gap: 4px;
+        }
+
+        .priority-controls button {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: #f0f0f0;
+            color: #666;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 1;
+            transition: all 0.2s;
+        }
+
+        .priority-controls button:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .priority-controls button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .priority-controls button:disabled:hover {
+            background: #f0f0f0;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -268,6 +403,20 @@
                     </div>
                 </div>
 
+                <!-- Metadata Priorities -->
+                <div class="section">
+                    <div class="section-title">🎯 Metadata Field Priorities</div>
+                    <div class="info-text" style="margin-bottom: 20px;">
+                        Configure which scraper takes priority for each metadata field. Drag to reorder or use default priority (first scraper in list above).
+                    </div>
+
+                    <div id="fieldPriorities"></div>
+
+                    <button type="button" class="secondary-button" id="resetPriorities" style="margin-top: 15px;">
+                        🔄 Reset All to Default
+                    </button>
+                </div>
+
                 <!-- Save Button -->
                 <button type="submit" class="save-button" data-i18n="config.saveConfig">💾 Save Configuration</button>
             </form>
@@ -287,42 +436,6 @@
             });
         });
 
-        // Form submission
-        document.getElementById('configForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const formData = new FormData(e.target);
-
-            // Parse scrapers from comma-separated string
-            const scrapersInput = formData.get('scrapers');
-            const scrapers = scrapersInput
-                .split(',')
-                .map(s => s.trim())
-                .filter(s => s.length > 0);
-
-            const newConfig = {
-                libraryPath: formData.get('libraryPath'),
-                mode: formData.get('mode'),
-                scrapers: scrapers
-            };
-
-            try {
-                const response = await fetch('/item/config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(newConfig)
-                });
-
-                if (response.ok) {
-                    showMessage(i18n.t('config.saveSuccess'), 'success');
-                } else {
-                    showMessage(i18n.t('config.saveFailed'), 'error');
-                }
-            } catch (error) {
-                showMessage(i18n.t('config.saveFailed'), 'error');
-            }
-        });
-
         // Show status message
         function showMessage(message, type) {
             const statusEl = document.getElementById('statusMessage');
@@ -335,7 +448,221 @@
             }, 5000);
         }
 
-        // Initialize i18n and load config
+        // ─────────────────────────────────────────────────────────────
+        // Field Priority Management
+        // ─────────────────────────────────────────────────────────────
+
+        // Define configurable metadata fields (from schema.js)
+        const CONFIGURABLE_FIELDS = [
+            { key: 'title', label: 'Title' },
+            { key: 'originalTitle', label: 'Original Title' },
+            { key: 'releaseDate', label: 'Release Date' },
+            { key: 'runtime', label: 'Runtime' },
+            { key: 'studio', label: 'Studio' },
+            { key: 'label', label: 'Label' },
+            { key: 'series', label: 'Series' },
+            { key: 'director', label: 'Director' },
+            { key: 'plot', label: 'Plot/Description' },
+            { key: 'tagline', label: 'Tagline' },
+            { key: 'contentRating', label: 'Content Rating' },
+            { key: 'genres', label: 'Genres' },
+            { key: 'tags', label: 'Tags' },
+            { key: 'actor', label: 'Actors/Actresses' },
+            { key: 'rating', label: 'Rating' },
+            { key: 'coverUrl', label: 'Cover Image' },
+            { key: 'screenshotUrl', label: 'Screenshots' },
+            { key: 'trailerUrl', label: 'Trailer' },
+            { key: 'images', label: 'Images Gallery' }
+        ];
+
+        // Current field priorities (loaded from config)
+        let fieldPriorities = {};
+
+        /**
+         * Render the field priorities UI
+         */
+        function renderFieldPriorities() {
+            const container = document.getElementById('fieldPriorities');
+            if (!container) return;
+
+            const scrapers = config.scrapers || [];
+            if (scrapers.length === 0) {
+                container.innerHTML = '<div class="info-text">Please configure scrapers first.</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+
+            CONFIGURABLE_FIELDS.forEach(field => {
+                const fieldDiv = document.createElement('div');
+                fieldDiv.className = 'priority-field';
+                fieldDiv.dataset.field = field.key;
+
+                // Get priority for this field (or use default scraper order)
+                const priority = fieldPriorities[field.key] || [...scrapers];
+
+                // Build header
+                const header = document.createElement('div');
+                header.className = 'priority-field-header';
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'priority-field-name';
+                nameDiv.textContent = field.label;
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'priority-field-actions';
+
+                const resetBtn = document.createElement('button');
+                resetBtn.textContent = '🔄 Reset';
+                resetBtn.type = 'button';
+                resetBtn.onclick = () => resetFieldPriority(field.key);
+
+                actionsDiv.appendChild(resetBtn);
+                header.appendChild(nameDiv);
+                header.appendChild(actionsDiv);
+
+                // Build priority list
+                const listDiv = document.createElement('div');
+                listDiv.className = 'priority-list';
+                listDiv.dataset.field = field.key;
+
+                priority.forEach((scraper, index) => {
+                    const item = createPriorityItem(scraper, index, priority.length, field.key);
+                    listDiv.appendChild(item);
+                });
+
+                fieldDiv.appendChild(header);
+                fieldDiv.appendChild(listDiv);
+                container.appendChild(fieldDiv);
+            });
+        }
+
+        /**
+         * Create a priority item element
+         */
+        function createPriorityItem(scraper, index, total, fieldKey) {
+            const item = document.createElement('div');
+            item.className = 'priority-item';
+            item.draggable = true;
+            item.dataset.scraper = scraper;
+            item.dataset.index = index;
+
+            // Priority number badge
+            const number = document.createElement('div');
+            number.className = 'priority-number';
+            number.textContent = index + 1;
+
+            // Scraper name
+            const name = document.createElement('div');
+            name.className = 'priority-scraper-name';
+            name.textContent = scraper;
+
+            // Controls
+            const controls = document.createElement('div');
+            controls.className = 'priority-controls';
+
+            const upBtn = document.createElement('button');
+            upBtn.textContent = '▲';
+            upBtn.type = 'button';
+            upBtn.disabled = index === 0;
+            upBtn.onclick = () => movePriority(fieldKey, index, index - 1);
+
+            const downBtn = document.createElement('button');
+            downBtn.textContent = '▼';
+            downBtn.type = 'button';
+            downBtn.disabled = index === total - 1;
+            downBtn.onclick = () => movePriority(fieldKey, index, index + 1);
+
+            controls.appendChild(upBtn);
+            controls.appendChild(downBtn);
+
+            item.appendChild(number);
+            item.appendChild(name);
+            item.appendChild(controls);
+
+            // Drag and drop event handlers
+            item.addEventListener('dragstart', handleDragStart);
+            item.addEventListener('dragover', handleDragOver);
+            item.addEventListener('drop', (e) => handleDrop(e, fieldKey));
+            item.addEventListener('dragend', handleDragEnd);
+
+            return item;
+        }
+
+        /**
+         * Move a scraper up or down in priority
+         */
+        function movePriority(fieldKey, fromIndex, toIndex) {
+            const priority = fieldPriorities[fieldKey] || [...config.scrapers];
+            const [item] = priority.splice(fromIndex, 1);
+            priority.splice(toIndex, 0, item);
+            fieldPriorities[fieldKey] = priority;
+            renderFieldPriorities();
+        }
+
+        /**
+         * Reset a field to default priority (global scraper order)
+         */
+        function resetFieldPriority(fieldKey) {
+            delete fieldPriorities[fieldKey];
+            renderFieldPriorities();
+        }
+
+        /**
+         * Reset all fields to default priority
+         */
+        document.getElementById('resetPriorities')?.addEventListener('click', () => {
+            if (confirm('Reset all field priorities to default scraper order?')) {
+                fieldPriorities = {};
+                renderFieldPriorities();
+            }
+        });
+
+        // ─────────────────────────────────────────────────────────────
+        // Drag and Drop Handlers
+        // ─────────────────────────────────────────────────────────────
+
+        let draggedElement = null;
+
+        function handleDragStart(e) {
+            draggedElement = e.target;
+            e.target.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', e.target.innerHTML);
+        }
+
+        function handleDragOver(e) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+            e.dataTransfer.dropEffect = 'move';
+            return false;
+        }
+
+        function handleDrop(e, fieldKey) {
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+
+            if (draggedElement !== e.target && e.target.classList.contains('priority-item')) {
+                const fromIndex = parseInt(draggedElement.dataset.index);
+                const toIndex = parseInt(e.target.dataset.index);
+
+                movePriority(fieldKey, fromIndex, toIndex);
+            }
+
+            return false;
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+            draggedElement = null;
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Update init() to load and render field priorities
+        // ─────────────────────────────────────────────────────────────
+
         async function init() {
             try {
                 // Load config first to get the language
@@ -365,13 +692,74 @@
                 // Set scrapers
                 const scrapersArray = config.scrapers || [];
                 document.getElementById('scrapers').value = scrapersArray.join(', ');
+
+                // Load field priorities
+                fieldPriorities = config.fieldPriorities || {};
+                renderFieldPriorities();
+
+                // Watch for scraper changes to re-render priorities
+                document.getElementById('scrapers').addEventListener('blur', () => {
+                    const scrapersInput = document.getElementById('scrapers').value;
+                    const newScrapers = scrapersInput
+                        .split(',')
+                        .map(s => s.trim())
+                        .filter(s => s.length > 0);
+
+                    if (JSON.stringify(newScrapers) !== JSON.stringify(config.scrapers)) {
+                        config.scrapers = newScrapers;
+                        renderFieldPriorities();
+                    }
+                });
             } catch (error) {
                 console.error('Init failed:', error);
                 showMessage(i18n.t('config.loadFailed'), 'error');
             }
         }
 
-        // Make sure i18n is loaded
+        // ─────────────────────────────────────────────────────────────
+        // Update form submission to include field priorities
+        // ─────────────────────────────────────────────────────────────
+
+        document.getElementById('configForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData(e.target);
+
+            // Parse scrapers from comma-separated string
+            const scrapersInput = formData.get('scrapers');
+            const scrapers = scrapersInput
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+
+            const newConfig = {
+                libraryPath: formData.get('libraryPath'),
+                mode: formData.get('mode'),
+                scrapers: scrapers,
+                fieldPriorities: fieldPriorities  // Include field priorities
+            };
+
+            try {
+                const response = await fetch('/item/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newConfig)
+                });
+
+                if (response.ok) {
+                    showMessage(i18n.t('config.saveSuccess'), 'success');
+                } else {
+                    showMessage(i18n.t('config.saveFailed'), 'error');
+                }
+            } catch (error) {
+                showMessage(i18n.t('config.saveFailed'), 'error');
+            }
+        });
+
+        // ─────────────────────────────────────────────────────────────
+        // Initialize when i18n is loaded
+        // ─────────────────────────────────────────────────────────────
+
         if (typeof i18n === 'undefined') {
             console.error('i18n is not loaded!');
         } else {
