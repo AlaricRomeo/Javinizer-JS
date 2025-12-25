@@ -32,20 +32,12 @@ async function scrape(codes) {
         console.error(`[TEMPLATE] Warning: ${code} output doesn't match schema`);
       }
 
-      // Clean and add to results
-      const cleaned = cleanJson(data);
-
-      // Only add if we got more than just the code
-      if (Object.keys(cleaned).length > 1) {
-        results.push(cleaned);
-      } else {
-        console.error(`[TEMPLATE] No data found for ${code}`);
-        results.push({ code });
-      }
+      // Add to results (keep full schema structure)
+      results.push(data);
 
     } catch (error) {
       console.error(`[TEMPLATE] Error scraping ${code}: ${error.message}`);
-      results.push({ code });
+      results.push(createEmptyMovie(code));
     }
   }
 
@@ -100,45 +92,6 @@ async function scrapeSingleCode(code) {
 
   // Placeholder implementation
   throw new Error('Not implemented - replace this with your scraping logic');
-}
-
-/**
- * Clean JSON object - remove null, undefined, empty strings, empty arrays
- * @param {object} obj - Object to clean
- * @returns {object} - Cleaned object
- */
-function cleanJson(obj) {
-  if (obj === null || obj === undefined) {
-    return undefined;
-  }
-
-  if (Array.isArray(obj)) {
-    const cleaned = obj
-      .map(cleanJson)
-      .filter(item => item !== undefined);
-    return cleaned.length > 0 ? cleaned : undefined;
-  }
-
-  if (typeof obj === 'object') {
-    const cleaned = {};
-
-    for (const [key, value] of Object.entries(obj)) {
-      const cleanedValue = cleanJson(value);
-
-      if (cleanedValue !== undefined) {
-        cleaned[key] = cleanedValue;
-      }
-    }
-
-    return Object.keys(cleaned).length > 0 ? cleaned : undefined;
-  }
-
-  // Primitives: remove empty strings
-  if (obj === '') {
-    return undefined;
-  }
-
-  return obj;
 }
 
 module.exports = { scrape };

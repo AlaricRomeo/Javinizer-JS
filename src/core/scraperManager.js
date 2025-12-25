@@ -156,52 +156,11 @@ function executeScraper(scraperName, codes) {
 }
 
 // ─────────────────────────────
-// Data Cleaning
-// ─────────────────────────────
-
-/**
- * Remove null, undefined, empty strings, and empty arrays from object
- *
- * @param {any} obj - Object to clean
- * @returns {any} - Cleaned object
- */
-function cleanJson(obj) {
-  if (obj === null || obj === undefined) {
-    return undefined;
-  }
-
-  if (Array.isArray(obj)) {
-    const cleaned = obj
-      .map(cleanJson)
-      .filter(item => item !== undefined);
-    return cleaned.length > 0 ? cleaned : undefined;
-  }
-
-  if (typeof obj === 'object') {
-    const cleaned = {};
-
-    for (const [key, value] of Object.entries(obj)) {
-      const cleanedValue = cleanJson(value);
-
-      if (cleanedValue !== undefined) {
-        cleaned[key] = cleanedValue;
-      }
-    }
-
-    return Object.keys(cleaned).length > 0 ? cleaned : undefined;
-  }
-
-  // Primitives: remove empty strings
-  if (obj === '') {
-    return undefined;
-  }
-
-  return obj;
-}
-
-// ─────────────────────────────
 // Data Merging
 // ─────────────────────────────
+//
+// NOTE: Scrapers return data in standard format (see schema.js).
+// ScraperManager keeps all fields (even empty ones) to match WebUI expectations.
 
 /**
  * Get priority order for a specific field
@@ -262,8 +221,8 @@ function mergeResults(code, scraperResults, config) {
     }
   });
 
-  // Clean the merged result to remove any empty values
-  return cleanJson(merged) || { code };
+  // Return merged result with full schema (scrapers already provide standard format)
+  return merged;
 }
 
 // ─────────────────────────────
