@@ -18,7 +18,8 @@ function convertToStandardFormat(data, code) {
   if (!data) return movie;
 
   // Basic fields - using r18.dev field names
-  movie.title = data.title_en || data.title || '';
+  // Prefer uncensored title if available
+  movie.title = data.title_en_uncensored || data.title_en || data.title || '';
   movie.originalTitle = data.title_ja || data.originalTitle || data.japaneseTitle || '';
   movie.releaseDate = data.release_date || data.releaseDate || data.dvdReleaseDate || '';
   movie.runtime = data.runtime_mins || data.runtime || data.duration || 0;
@@ -28,9 +29,10 @@ function convertToStandardFormat(data, code) {
   movie.label = data.label_name_en || data.label || '';
   movie.series = data.series_name_en || data.series || '';
 
-  // Director - r18.dev has array of directors
+  // Director - r18.dev has array of directors, take first one
   if (Array.isArray(data.directors) && data.directors.length > 0) {
-    movie.director = data.directors.map(d => d.name_en || d.name || '').filter(n => n).join(', ');
+    const firstDirector = data.directors[0];
+    movie.director = firstDirector.name_romaji || firstDirector.name_en || firstDirector.name || '';
   } else if (data.director) {
     movie.director = data.director;
   }
@@ -69,25 +71,74 @@ function convertToStandardFormat(data, code) {
     };
   }
 
-  // Actors - r18.dev uses 'actresses' field
-  if (Array.isArray(data.actresses) || Array.isArray(data.actors) || Array.isArray(data.cast)) {
-    const actorsList = data.actresses || data.actors || data.cast || [];
-    movie.actor = actorsList.map(actor => {
+  // Actors - r18.dev has separate 'actors' and 'actresses' arrays, merge them
+  const allActors = [];
+
+  // Add actresses (female performers)
+  if (Array.isArray(data.actresses)) {
+    data.actresses.forEach(actor => {
       if (typeof actor === 'string') {
-        return {
+        allActors.push({
           name: actor,
           altName: '',
           role: 'Actress',
           thumb: ''
-        };
+        });
+      } else {
+        allActors.push({
+          name: actor.name_romaji || actor.name_en || actor.name || '',
+          altName: actor.name_kanji || actor.name_ja || actor.altName || actor.japaneseName || '',
+          role: 'Actress',
+          thumb: actor.image_url || actor.thumb || actor.image || ''
+        });
       }
-      return {
-        name: actor.name_romaji || actor.name_en || actor.name || '',
-        altName: actor.name_kanji || actor.name_ja || actor.altName || actor.japaneseName || '',
-        role: actor.role || 'Actress',
-        thumb: actor.image_url || actor.thumb || actor.image || ''
-      };
     });
+  }
+
+  // Add actors (male performers)
+  if (Array.isArray(data.actors)) {
+    data.actors.forEach(actor => {
+      if (typeof actor === 'string') {
+        allActors.push({
+          name: actor,
+          altName: '',
+          role: 'Actor',
+          thumb: ''
+        });
+      } else {
+        allActors.push({
+          name: actor.name_romaji || actor.name_en || actor.name || '',
+          altName: actor.name_kanji || actor.name_ja || actor.altName || actor.japaneseName || '',
+          role: 'Actor',
+          thumb: actor.image_url || actor.thumb || actor.image || ''
+        });
+      }
+    });
+  }
+
+  // Fallback to 'cast' if both are empty
+  if (allActors.length === 0 && Array.isArray(data.cast)) {
+    data.cast.forEach(actor => {
+      if (typeof actor === 'string') {
+        allActors.push({
+          name: actor,
+          altName: '',
+          role: 'Actor',
+          thumb: ''
+        });
+      } else {
+        allActors.push({
+          name: actor.name_romaji || actor.name_en || actor.name || '',
+          altName: actor.name_kanji || actor.name_ja || actor.altName || actor.japaneseName || '',
+          role: actor.role || 'Actor',
+          thumb: actor.image_url || actor.thumb || actor.image || ''
+        });
+      }
+    });
+  }
+
+  if (allActors.length > 0) {
+    movie.actor = allActors;
   }
 
   // Images - r18.dev uses specific field names
