@@ -29,11 +29,22 @@ async function main() {
       console.log(JSON.stringify([results], null, 2));
     }
 
+    // Set a timeout to force exit if process doesn't exit normally
+    // This handles cases where browser cleanup hangs
+    setTimeout(() => {
+      console.error('[Run] Force exit: Process cleanup took too long');
+      process.exit(0);
+    }, 5000);
+
   } catch (error) {
     console.error(`[Error] ${error.message}`);
     // On error, output minimal JSON array
     console.log(JSON.stringify(codes.map(code => ({ code })), null, 2));
-    process.exit(1);
+
+    // Force exit after error
+    setTimeout(() => {
+      process.exit(1);
+    }, 5000);
   }
 }
 

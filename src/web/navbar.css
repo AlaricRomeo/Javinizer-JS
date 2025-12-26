@@ -1,0 +1,33 @@
+.status-bar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.status-bar h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.status-bar .links {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.status-bar .links a {
+  color: white;
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.2s;
+}
+
+.status-bar .links a:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}

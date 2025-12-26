@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="config.pageTitle">Configuration</title>
+    <link rel="stylesheet" href="navbar.css">
+    <link rel="stylesheet" href="config.css">
+    <script src="i18n.js"></script>
+    <script src="navbar-loader.js"></script>
+</head>
+<body>
+    <!-- Navbar will be loaded here by navbar-loader.js -->
+
+    <div class="container">
+        <div class="header">
+            <h1 data-i18n="config.pageTitle">⚙️ Configuration</h1>
+            <p data-i18n="config.pageSubtitle">Manage your Javinizer-js settings</p>
+        </div>
+
+        <div class="content">
+            <div id="statusMessage" class="status-message"></div>
+
+            <form id="configForm">
+                <!-- General Settings -->
+                <div class="section">
+                    <div class="section-title" data-i18n="config.generalSettings">General Settings</div>
+                    <div class="info-text" style="margin-bottom: 20px;">
+                        Library path is now configured from the main interface and saved automatically.
+                    </div>
+                </div>
+
+
+                <!-- Video Scrapers -->
+                <div class="section">
+                    <div class="section-title" data-i18n="config.videoScrapers">Video Scrapers</div>
+
+                    <div class="form-group">
+                        <label for="scrapers" data-i18n="config.scraperNames">Scraper Names (comma-separated)</label>
+                        <input type="text" id="scrapers" name="scrapers" placeholder="javlibrary, r18dev">
+                        <div class="info-text">
+                            <span data-i18n="config.scraperHelp">List of enabled scrapers in priority order (first = highest priority).</span><br>
+                            <span data-i18n="config.availableScrapers">Available scrapers:</span> <strong>javlibrary</strong>, <strong>r18dev</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metadata Priorities -->
+                <div class="section">
+                    <div class="section-title">🎯 Metadata Field Priorities</div>
+                    <div class="info-text" style="margin-bottom: 20px;">
+                        Configure scraper priority for specific fields (comma-separated, first = highest priority). Leave empty to use default scraper order.
+                    </div>
+
+                    <div class="priority-fields" id="fieldPrioritiesContainer"></div>
+                </div>
+
+                <!-- Save Button -->
+                <button type="submit" class="save-button" data-i18n="config.saveConfig">💾 Save Configuration</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let config = {};
+
+        // Fields from WebUI
+        const METADATA_FIELDS = [
+            { key: 'title', label: 'Title' },
+            { key: 'alternateTitle', label: 'Alternate Title' },
+            { key: 'description', label: 'Description' },
+            { key: 'director', label: 'Director' },
+            { key: 'releaseDate', label: 'Release Date' },
+            { key: 'runtime', label: 'Runtime' },
+            { key: 'series', label: 'Series' },
+            { key: 'maker', label: 'Maker' },
+            { key: 'label', label: 'Label' },
+            { key: 'rating', label: 'Rating' },
+            { key: 'contentRating', label: 'Content Rating' },
+            { key: 'genres', label: 'Genres' },
+            { key: 'tags', label: 'Tags' },
+            { key: 'coverUrl', label: 'Cover URL' },
+            { key: 'screenshotUrl', label: 'Screenshot URL' },
+            { key: 'trailerUrl', label: 'Trailer URL' }
+        ];
+
+
+        // Render field priority inputs
+        function renderFieldPriorities() {
+            const container = document.getElementById('fieldPrioritiesContainer');
+            container.innerHTML = '';
+
+            METADATA_FIELDS.forEach(field => {
+                const row = document.createElement('div');
+                row.className = 'priority-field-row';
+
+                const label = document.createElement('div');
+                label.className = 'priority-field-label';
+                label.textContent = field.label;
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'priority-field-input';
+                input.dataset.field = field.key;
+                input.placeholder = 'Default order';
+
+                // Load existing priority
+                const fieldPriorities = config.fieldPriorities || {};
+                if (fieldPriorities[field.key]) {
+                    input.value = fieldPriorities[field.key].join(', ');
+                }
+
+                row.appendChild(label);
+                row.appendChild(input);
+                container.appendChild(row);
+            });
+        }
+
+        // Collect field priorities from inputs
+        function collectFieldPriorities() {
+            const fieldPriorities = {};
+            const inputs = document.querySelectorAll('.priority-field-input');
+
+            inputs.forEach(input => {
+                const fieldKey = input.dataset.field;
+                const value = input.value.trim();
+
+                if (value) {
+                    // Parse CSV
+                    const scrapers = value.split(',').map(s => s.trim()).filter(s => s);
+                    if (scrapers.length > 0) {
+                        fieldPriorities[fieldKey] = scrapers;
+                    }
+                }
+            });
+
+            return fieldPriorities;
+        }
+
+        // Form submission
+        document.getElementById('configForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData(e.target);
+
+            // Parse scrapers from comma-separated string
+            const scrapersInput = formData.get('scrapers');
+            const scrapers = scrapersInput
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+
+            // Collect field priorities
+            const fieldPriorities = collectFieldPriorities();
+
+            // Get current config to preserve libraryPath and mode
+            const currentConfigResponse = await fetch('/item/config');
+            const currentConfigData = await currentConfigResponse.json();
+            const currentConfig = currentConfigData.config || currentConfigData;
+
+            const newConfig = {
+                libraryPath: currentConfig.libraryPath || '',  // Preserve existing libraryPath
+                mode: currentConfig.mode || 'scrape',  // Preserve current mode
+                language: currentConfig.language || 'en',  // Preserve language
+                scrapers: scrapers,
+                fieldPriorities: fieldPriorities
+            };
+
+            try {
+                const response = await fetch('/item/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newConfig)
+                });
+
+                if (response.ok) {
+                    showMessage(i18n.t('config.saveSuccess'), 'success');
+                } else {
+                    showMessage(i18n.t('config.saveFailed'), 'error');
+                }
+            } catch (error) {
+                showMessage(i18n.t('config.saveFailed'), 'error');
+            }
+        });
+
+        // Show status message
+        function showMessage(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${type}`;
+            statusEl.style.display = 'block';
+
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 5000);
+        }
+
+        // Initialize i18n and load config
+        async function init() {
+            try {
+                // Load config first to get the language
+                const response = await fetch('/item/config');
+                const cfgData = await response.json();
+                const cfg = cfgData.config || cfgData;
+
+                // Get language from config.json
+                const savedLang = cfg.language || 'en';
+                console.log('Loading language from config:', savedLang);
+
+                await i18n.changeLanguage(savedLang);
+                console.log('Language changed to:', savedLang);
+
+                // Apply translations
+                i18n.applyTranslations();
+                console.log('Translations applied');
+
+                // Now populate the form with config data
+                config = cfg;
+
+                // Set scrapers
+                const scrapersArray = config.scrapers || [];
+                document.getElementById('scrapers').value = scrapersArray.join(', ');
+
+                // Render field priorities
+                renderFieldPriorities();
+            } catch (error) {
+                console.error('Init failed:', error);
+                showMessage(i18n.t('config.loadFailed'), 'error');
+            }
+        }
+
+        // Make sure i18n is loaded
+        if (typeof i18n === 'undefined') {
+            console.error('i18n is not loaded!');
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

@@ -121,7 +121,7 @@ router.get("/config", (req, res) => {
     // Assicurati che mode e scrapers esistano sempre
     if (!config.mode) config.mode = "scrape";
     if (!config.scrapers) config.scrapers = [];
-    res.json(config);
+    res.json({ ok: true, config });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
@@ -198,15 +198,11 @@ router.post("/config", (req, res) => {
   try {
     const newConfig = req.body;
 
-    if (!newConfig.libraryPath) {
-      return res.json({
-        ok: false,
-        error: "libraryPath mancante"
-      });
-    }
-
     // Mantieni i valori esistenti se non specificati
     const currentConfig = loadConfig();
+    if (!newConfig.libraryPath && currentConfig.libraryPath) {
+      newConfig.libraryPath = currentConfig.libraryPath;
+    }
     if (!newConfig.language) {
       newConfig.language = currentConfig.language || "en";
     }
@@ -216,11 +212,14 @@ router.post("/config", (req, res) => {
     if (!newConfig.scrapers) {
       newConfig.scrapers = currentConfig.scrapers || [];
     }
+    if (!newConfig.fieldPriorities && currentConfig.fieldPriorities) {
+      newConfig.fieldPriorities = currentConfig.fieldPriorities;
+    }
 
     saveConfig(newConfig);
 
     // 🔁 ricarica la libreria solo se il path è cambiato
-    if (newConfig.libraryPath !== currentConfig.libraryPath) {
+    if (newConfig.libraryPath && newConfig.libraryPath !== currentConfig.libraryPath) {
       libraryReader.rootPath = newConfig.libraryPath;
       libraryReader.loadLibrary();
     }
@@ -307,6 +306,34 @@ router.delete("/scrape/current", (req, res) => {
   }
 });
 
+// DELETE /scrape/all
+router.delete("/scrape/all", (req, res) => {
+  try {
+    const outputDir = path.join(__dirname, '../../data/scrape');
+
+    if (!fs.existsSync(outputDir)) {
+      return res.json({ ok: true, deleted: 0 });
+    }
+
+    const files = fs.readdirSync(outputDir);
+    const jsonFiles = files.filter(f => f.endsWith('.json'));
+
+    let deletedCount = 0;
+    jsonFiles.forEach(file => {
+      const filePath = path.join(outputDir, file);
+      fs.unlinkSync(filePath);
+      deletedCount++;
+    });
+
+    // Reload scrape reader
+    scrapeReader.loadScrapeItems();
+
+    res.json({ ok: true, deleted: deletedCount });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
 // GET /scrape/count
 router.get("/scrape/count", (req, res) => {
   try {
@@ -381,81 +408,134 @@ router.post("/scrape/save", async (req, res) => {
 
 // ─────────────────────────────
 // POST /item/scrape/start
-// Avvia lo scraping e restituisce SSE (Server-Sent Events) per il progress
+// Avvia lo scraping tramite WebSocket per comunicazione bidirezionale
 // ─────────────────────────────
-router.post("/scrape/start", (req, res) => {
-  // Setup SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
+router.post("/scrape/start", async (req, res) => {
+  const { EventEmitter } = require('events');
+  const { scrapeAll, extractCodesFromLibrary } = require('../core/scraperManager');
 
-  // Funzione helper per inviare eventi
-  const sendEvent = (event, data) => {
-    res.write(`event: ${event}\n`);
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-  };
+  try {
+    // Get config
+    const config = loadConfig();
 
-  // Avvia scraping
-  const { spawn } = require('child_process');
-  const scraperPath = path.join(__dirname, '../core/scraperManager.js');
+    // Extract codes from library path
+    const libraryPath = config.libraryPath;
 
-  sendEvent('start', { message: 'Starting ScraperManager...' });
-
-  const child = spawn('node', [scraperPath], {
-    stdio: ['ignore', 'pipe', 'pipe']  // stdin=ignore, stdout=pipe, stderr=pipe
-  });
-
-  let stdout = '';
-  let stderr = '';
-
-  // Cattura stdout (JSON finale)
-  child.stdout.on('data', (data) => {
-    stdout += data.toString();
-  });
-
-  // Cattura stderr (progress logs) e invia come eventi SSE
-  child.stderr.on('data', (data) => {
-    const lines = data.toString().split('\n').filter(l => l.trim());
-    lines.forEach(line => {
-      stderr += line + '\n';
-
-      // Invia ogni log line come evento progress
-      sendEvent('progress', { message: line });
-    });
-  });
-
-  // Handle completion
-  child.on('close', (code) => {
-    if (code === 0) {
-      sendEvent('complete', {
-        message: 'Scraping completed successfully',
-        exitCode: code
-      });
-    } else {
-      sendEvent('error', {
-        message: `Scraping failed with exit code ${code}`,
-        exitCode: code
-      });
+    if (!libraryPath) {
+      return res.json({ ok: false, error: 'libraryPath not specified in config.json' });
     }
 
-    res.end();
-  });
+    console.error(`[Routes] Reading library: ${libraryPath}`);
 
-  // Handle errors
-  child.on('error', (error) => {
-    sendEvent('error', {
-      message: `Failed to start scraper: ${error.message}`
-    });
-    res.end();
-  });
+    const codes = extractCodesFromLibrary(libraryPath);
 
-  // Cleanup on client disconnect
-  req.on('close', () => {
-    if (!child.killed) {
-      child.kill();
+    if (codes.length === 0) {
+      return res.json({ ok: false, error: 'No files found in library' });
     }
-  });
+
+    console.error(`[Routes] Found ${codes.length} file(s) to scrape`);
+
+    // Filter out already scraped codes
+    const outputDir = path.join(__dirname, '../../data/scrape');
+    const codesToScrape = codes.filter(code => {
+      const jsonPath = path.join(outputDir, `${code}.json`);
+      return !fs.existsSync(jsonPath);
+    });
+
+    if (codesToScrape.length === 0) {
+      return res.json({ ok: false, error: 'All files already scraped. Nothing to do.' });
+    }
+
+    console.error(`[Routes] Scraping ${codesToScrape.length} new file(s)`);
+
+    // Return immediate response with WebSocket ID
+    const scrapeId = Date.now().toString();
+    res.json({ ok: true, scrapeId, message: 'Scraping started. Connect to WebSocket for progress.' });
+
+    // Start scraping in background with WebSocket communication
+    const emitter = new EventEmitter();
+
+    // Broadcast events to all WebSocket clients
+    emitter.on('start', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) { // WebSocket.OPEN
+          client.send(JSON.stringify({ event: 'start', data, scrapeId }));
+        }
+      });
+    });
+
+    emitter.on('progress', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'progress', data, scrapeId }));
+        }
+      });
+    });
+
+    emitter.on('scraperError', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          // Send error to client
+          client.send(JSON.stringify({ event: 'scraperError', data, scrapeId }));
+
+          // Store callback to be called when user responds
+          if (data.callback) {
+            client.pendingScraperError = data.callback;
+          }
+        }
+      });
+    });
+
+    emitter.on('complete', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'complete', data, scrapeId }));
+        }
+      });
+    });
+
+    emitter.on('error', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'error', data, scrapeId }));
+        }
+      });
+    });
+
+    emitter.on('prompt', (data) => {
+      // Store callback for this prompt
+      const promptId = Date.now().toString();
+
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({
+            event: 'prompt',
+            data: {
+              promptId,
+              scraperName: data.scraperName,
+              promptType: data.promptType,
+              message: data.message
+            },
+            scrapeId
+          }));
+
+          // Store callback to be called when user responds
+          client.pendingPrompts = client.pendingPrompts || {};
+          client.pendingPrompts[promptId] = data.callback;
+        }
+      });
+    });
+
+    // Execute scraping
+    scrapeAll(codesToScrape, emitter).catch(error => {
+      console.error('[Routes] Scraping error:', error);
+      emitter.emit('error', { message: error.message });
+    });
+
+  } catch (error) {
+    console.error('[Routes] Error starting scrape:', error);
+    res.json({ ok: false, error: error.message });
+  }
 });
 
 // ─────────────────────────────

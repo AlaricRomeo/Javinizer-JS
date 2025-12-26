@@ -4,7 +4,7 @@
  */
 
 const cheerio = require('cheerio');
-const { createEmptyMovie } = require('../schema');
+const { createEmptyMovie, removeEmptyFields } = require('../schema');
 
 /**
  * Parse javlibrary HTML page
@@ -50,6 +50,20 @@ function parseHTML(html, code) {
       if (studio) movie.studio = studio;
     }
 
+    // Director
+    const directorRow = $('#video_director .text a');
+    if (directorRow.length) {
+      const director = directorRow.text().trim();
+      if (director) movie.director = director;
+    }
+
+    // Label
+    const labelRow = $('#video_label .text a');
+    if (labelRow.length) {
+      const label = labelRow.text().trim();
+      if (label) movie.label = label;
+    }
+
     // Genres
     const genres = [];
     $('#video_genres .genre').each((i, el) => {
@@ -92,10 +106,11 @@ function parseHTML(html, code) {
   } catch (error) {
     console.error(`[Parse] Error parsing HTML: ${error.message}`);
     // Return at least the basic movie structure with code
-    return createEmptyMovie(code);
+    return { code };
   }
 
-  return movie;
+  // Return only non-empty fields (so ScraperManager can distinguish "not available" from "empty")
+  return removeEmptyFields(movie);
 }
 
 module.exports = {

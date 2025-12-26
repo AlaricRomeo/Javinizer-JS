@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Javinizer-js</title>
+  <link rel="stylesheet" href="navbar.css">
   <link rel="stylesheet" href="styles.css">
   <script src="i18n.js"></script>
   <script src="navbar-loader.js"></script>
@@ -46,19 +47,23 @@
       </div>
       <small>Clicca sul pulsante per selezionare la cartella della libreria</small>
       <p id="libraryStatus" style="margin-top: 10px; font-size: 12px; color: #666;">Caricamento...</p>
+
+      <!-- Mode Toggle -->
+      <h3 style="margin-top: 20px;">Mode</h3>
+      <div class="mode-toggle">
+        <button id="modeEdit" class="mode-btn">EDIT</button>
+        <button id="modeScrape" class="mode-btn active">SCRAPE</button>
+      </div>
     </div>
 
     <!-- Scraper Panel -->
     <div class="scraper-panel">
-      <h3>Scraper Mode</h3>
-      <div class="mode-toggle">
-        <button id="modeEdit" class="mode-btn active">EDIT</button>
-        <button id="modeScrape" class="mode-btn">SCRAPE</button>
-      </div>
+      <h3>Scrape Panel</h3>
       <p id="scrapeStatus" style="margin-top: 10px; font-size: 12px; color: #666;">No items available</p>
       <button id="scrapeNow" class="scrape-now-btn" style="margin-top: 10px; width: 100%;">🔍 Scrape Now!</button>
       <button id="clearCache" class="clear-cache-btn" style="margin-top: 10px; width: 100%; background: #6c757d;">🗑️ Clear Scrapers Cache</button>
-      <button id="deleteItem" class="delete-item-btn" style="margin-top: 10px; width: 100%; display: none;">🗑️ Delete Item</button>
+      <button id="deleteItem" class="delete-item-btn" style="margin-top: 10px; width: 100%;">🗑️ Delete Item</button>
+      <button id="deleteAllItems" class="delete-all-items-btn" style="margin-top: 10px; width: 100%; background: #dc3545;">🗑️ Delete All Items</button>
     </div>
 
   </div>

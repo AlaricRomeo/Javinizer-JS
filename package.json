@@ -16,6 +16,7 @@
     "express": "^5.2.1",
     "puppeteer": "^24.34.0",
     "sharp": "^0.34.5",
+    "ws": "^8.18.3",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {

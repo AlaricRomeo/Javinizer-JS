@@ -7,7 +7,7 @@
  * IMPORTANT: Use the schema.js file to ensure your output matches the standard format!
  */
 
-const { createEmptyMovie, validateMovie } = require('../schema');
+const { createEmptyMovie, validateMovie, removeEmptyFields } = require('../schema');
 
 /**
  * Main scraping function
@@ -37,7 +37,8 @@ async function scrape(codes) {
 
     } catch (error) {
       console.error(`[TEMPLATE] Error scraping ${code}: ${error.message}`);
-      results.push(createEmptyMovie(code));
+      // On failure, return only code (signals scraper failed)
+      results.push({ code });
     }
   }
 
@@ -87,8 +88,8 @@ async function scrapeSingleCode(code) {
   // ];
   // movie.rating = { value: 8.5, votes: 100 };
   //
-  // Return the filled movie object:
-  // return movie;
+  // Return only non-empty fields (so ScraperManager can distinguish "not available" from "empty")
+  // return removeEmptyFields(movie);
 
   // Placeholder implementation
   throw new Error('Not implemented - replace this with your scraping logic');

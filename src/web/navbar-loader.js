@@ -8,7 +8,7 @@
 async function loadNavbar() {
   try {
     // Fetch navbar HTML
-    const response = await fetch('/public/navbar.html');
+    const response = await fetch('/navbar.html');
     const html = await response.text();
 
     // Create a container for the navbar at the top of body

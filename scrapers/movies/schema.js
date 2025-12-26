@@ -186,7 +186,75 @@ function validateMovie(data) {
   return true;
 }
 
+/**
+ * Remove empty fields from movie object
+ * Scrapers should return only populated fields (not empty schema)
+ * This allows ScraperManager to distinguish between "field not available" and "field empty"
+ *
+ * @param {object} movie - Movie object to clean
+ * @returns {object} - Movie object with only non-empty fields
+ */
+function removeEmptyFields(movie) {
+  const cleaned = {};
+
+  Object.keys(movie).forEach(key => {
+    const value = movie[key];
+
+    // Always keep code and id
+    if (key === 'code' || key === 'id') {
+      cleaned[key] = value;
+      return;
+    }
+
+    // Skip empty values
+    if (value === null || value === undefined || value === '') {
+      return;
+    }
+
+    // Skip empty arrays
+    if (Array.isArray(value) && value.length === 0) {
+      return;
+    }
+
+    // Skip empty objects (but keep objects with properties)
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      const keys = Object.keys(value);
+      if (keys.length === 0) {
+        return;
+      }
+      // For rating object, check if it has meaningful values
+      if (key === 'rating' && value.value === 0 && value.votes === 0) {
+        return;
+      }
+      // For images object, check if it has any non-empty values
+      if (key === 'images') {
+        const hasContent = value.poster || (Array.isArray(value.fanart) && value.fanart.length > 0);
+        if (!hasContent) {
+          return;
+        }
+      }
+      // For local/meta objects, check if they have any non-empty values
+      if (key === 'local' || key === 'meta') {
+        const hasContent = Object.values(value).some(v => {
+          if (Array.isArray(v)) return v.length > 0;
+          if (typeof v === 'boolean') return true;
+          return v !== '' && v !== null && v !== undefined;
+        });
+        if (!hasContent) {
+          return;
+        }
+      }
+    }
+
+    // Keep non-empty value
+    cleaned[key] = value;
+  });
+
+  return cleaned;
+}
+
 module.exports = {
   createEmptyMovie,
-  validateMovie
+  validateMovie,
+  removeEmptyFields
 };

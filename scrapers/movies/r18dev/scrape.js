@@ -4,7 +4,7 @@
  */
 
 const { searchCode, fetchJson, closeBrowser } = require('./browser');
-const { createEmptyMovie } = require('../schema');
+const { createEmptyMovie, removeEmptyFields } = require('../schema');
 
 /**
  * Convert r18.dev JSON format to standard movie format
@@ -153,7 +153,8 @@ function convertToStandardFormat(data, code) {
             Array.isArray(data.images) ? data.images : []
   };
 
-  return movie;
+  // Return only non-empty fields (so ScraperManager can distinguish "not available" from "empty")
+  return removeEmptyFields(movie);
 }
 
 /**
@@ -164,24 +165,21 @@ function convertToStandardFormat(data, code) {
 async function scrapeSingle(code) {
   console.error(`[R18Dev Scrape] Starting scrape for: ${code}`);
 
-  try {
-    // Search for the code to get content ID
-    const contentId = await searchCode(code);
+  // Search for the code to get content ID
+  const contentId = await searchCode(code);
 
-    // Fetch the JSON data
-    const data = await fetchJson(contentId);
+  // Fetch the JSON data
+  const data = await fetchJson(contentId);
 
-    // Convert to standard format
-    const movie = convertToStandardFormat(data, code);
+  // Convert to standard format
+  const movie = convertToStandardFormat(data, code);
 
-    console.error('[R18Dev Scrape] Scrape completed successfully');
-    return movie;
+  console.error('[R18Dev Scrape] Scrape completed successfully');
+  return movie;
 
-  } catch (error) {
-    console.error(`[R18Dev Scrape] Failed: ${error.message}`);
-    // On failure, return minimal movie structure with just code
-    return createEmptyMovie(code);
-  }
+  // Note: Errors are propagated up to caller
+  // - If scraper fails (network, parsing, etc.), it throws an exception
+  // - If scraper works but finds nothing, it returns { code } (via removeEmptyFields)
 }
 
 /**
@@ -217,14 +215,15 @@ async function scrape(codes) {
       } catch (error) {
         if (error.code === 'SESSION_LIMIT') {
           console.error('[R18Dev Scrape] Session limit reached. Please restart to continue.');
-          // Add remaining codes as failed
+          // Add remaining codes as failed (scraper error)
           for (let j = i; j < codes.length; j++) {
-            results.push({ code: codes[j] });
+            results.push({ code: codes[j], error: 'SESSION_LIMIT' });
           }
           break;
         }
-        // For other errors, add minimal result and continue
-        results.push({ code });
+        // For other errors, log and mark as failed (scraper error, not "not found")
+        console.error(`[R18Dev Scrape] Error scraping ${code}: ${error.message}`);
+        results.push({ code, error: error.message });
       }
 
       // Small delay between requests to be respectful

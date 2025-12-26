@@ -8,9 +8,11 @@
  * - Executes enabled scrapers sequentially
  * - Merges results based on priority rules
  * - Saves individual JSON files to data/scrape/{id}.json
+ * - Emits events for real-time progress updates and interactive prompts
  */
 
 const { spawn } = require('child_process');
+const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
 
@@ -87,51 +89,126 @@ function extractCodesFromLibrary(libraryPath) {
  *
  * INTERACTIVE SCRAPER SUPPORT:
  * - Scrapers can be interactive (e.g., require user input, open browser)
- * - stdin is inherited from parent terminal (user can type/press ENTER)
- * - stderr is inherited (messages are visible to user)
+ * - stderr is captured and emitted as progress events
  * - stdout is captured for JSON parsing
- * - NO timeouts - waits indefinitely for scraper to complete
+ * - Emits 'progress' events for real-time feedback
+ * - Emits 'scraperError' events when scraper fails
+ * - Supports interactive prompts via 'prompt' events
  *
  * @param {string} scraperName - Name of the scraper
  * @param {string[]} codes - Array of DVD codes to scrape
+ * @param {EventEmitter} emitter - Event emitter for progress updates (optional)
  * @returns {Promise<object[]>} - Parsed JSON array from scraper stdout
  */
-function executeScraper(scraperName, codes) {
+function executeScraper(scraperName, codes, emitter = null) {
   return new Promise((resolve, reject) => {
     // Scrapers are now in scrapers/movies/ subdirectory
     const scraperPath = path.join(__dirname, '../../scrapers/movies', scraperName, 'run.js');
 
     // Check if scraper exists
     if (!fs.existsSync(scraperPath)) {
-      console.error(`[ScraperManager] Scraper not found: ${scraperPath}`);
+      const message = `Scraper not found: ${scraperPath}`;
+      console.error(`[ScraperManager] ${message}`);
+      if (emitter) emitter.emit('scraperError', { scraperName, message });
       // Return minimal results for all codes
       resolve(codes.map(code => ({ code })));
       return;
     }
 
-    console.error(`[ScraperManager] Executing scraper: ${scraperName}`);
+    const message = `Executing scraper: ${scraperName}`;
+    console.error(`[ScraperManager] ${message}`);
     console.error(`[ScraperManager] Codes: ${codes.join(', ')}`);
+    if (emitter) emitter.emit('progress', { message: `${message} for ${codes.join(', ')}` });
 
-    // Spawn scraper process with full interactive support
-    // - stdin: 'inherit' -> user can type, press ENTER, interact with prompts
+    // Spawn scraper process
+    // - stdin: 'pipe' -> can send interactive responses
     // - stdout: 'pipe' -> capture JSON output for parsing
-    // - stderr: 'inherit' -> user sees all messages, progress, instructions
+    // - stderr: 'pipe' -> capture progress messages and emit them
     const child = spawn('node', [scraperPath, ...codes], {
-      stdio: ['inherit', 'pipe', 'inherit']
+      stdio: ['pipe', 'pipe', 'pipe']
     });
 
     let stdout = '';
+    let stdoutBuffer = '';
 
-    // Collect stdout
+    // Collect stdout and handle interactive prompts
     child.stdout.on('data', (data) => {
-      stdout += data.toString();
+      const chunk = data.toString();
+      stdoutBuffer += chunk;
+
+      // Check for interactive prompt messages (format: __PROMPT__:{"type":"confirm","message":"..."})
+      let promptMatch;
+      while ((promptMatch = stdoutBuffer.match(/__PROMPT__:(.+)\n/)) !== null) {
+        try {
+          const promptData = JSON.parse(promptMatch[1]);
+
+          // Remove prompt from buffer
+          stdoutBuffer = stdoutBuffer.replace(/__PROMPT__:.+\n/, '');
+
+          // Emit prompt event and wait for response
+          if (emitter) {
+            emitter.emit('prompt', {
+              scraperName,
+              promptType: promptData.type || 'confirm',
+              message: promptData.message || 'Waiting for user action...',
+              callback: (response) => {
+                // Send response to scraper via stdin
+                if (child.stdin.writable) {
+                  child.stdin.write(JSON.stringify({ response }) + '\n');
+                }
+              }
+            });
+          } else {
+            // No emitter - send automatic confirmation (for CLI mode)
+            if (child.stdin.writable) {
+              child.stdin.write(JSON.stringify({ response: true }) + '\n');
+            }
+          }
+        } catch (error) {
+          console.error(`[ScraperManager] Error parsing prompt: ${error.message}`);
+          break;
+        }
+      }
+
+      // Accumulate non-prompt content for final JSON parsing
+      // (stdoutBuffer now only contains non-prompt data after the while loop)
+      stdout = stdoutBuffer;
+    });
+
+    // Capture stderr (progress logs) and emit as events
+    child.stderr.on('data', (data) => {
+      const lines = data.toString().split('\n').filter(l => l.trim());
+      lines.forEach(line => {
+        console.error(line);
+        if (emitter) emitter.emit('progress', { message: line });
+      });
     });
 
     // Handle process exit
-    child.on('close', (code) => {
+    child.on('close', async (code) => {
       if (code !== 0) {
-        console.error(`[ScraperManager] Scraper ${scraperName} exited with code ${code}`);
-        // Return minimal results
+        const message = `Scraper ${scraperName} exited with code ${code}`;
+        console.error(`[ScraperManager] ${message}`);
+
+        // Ask user if they want to continue (via emitter callback)
+        if (emitter) {
+          const shouldContinue = await new Promise((resolvePrompt) => {
+            emitter.emit('scraperError', {
+              scraperName,
+              exitCode: code,
+              message,
+              callback: resolvePrompt  // Callback per ricevere risposta utente
+            });
+          });
+
+          if (!shouldContinue) {
+            // User chose to stop - reject to stop scraping
+            reject(new Error(`Scraping stopped by user after ${scraperName} failed`));
+            return;
+          }
+        }
+
+        // Return minimal results if user chose to continue
         resolve(codes.map(c => ({ code: c })));
         return;
       }
@@ -139,17 +216,55 @@ function executeScraper(scraperName, codes) {
       // Parse JSON output
       try {
         const results = JSON.parse(stdout);
-        console.error(`[ScraperManager] Scraper ${scraperName} completed successfully`);
+        const message = `Scraper ${scraperName} completed successfully`;
+        console.error(`[ScraperManager] ${message}`);
+        if (emitter) emitter.emit('progress', { message });
         resolve(Array.isArray(results) ? results : [results]);
       } catch (error) {
-        console.error(`[ScraperManager] Failed to parse JSON from ${scraperName}: ${error.message}`);
+        const message = `Failed to parse JSON from ${scraperName}: ${error.message}`;
+        console.error(`[ScraperManager] ${message}`);
+
+        // Ask user if they want to continue
+        if (emitter) {
+          const shouldContinue = await new Promise((resolvePrompt) => {
+            emitter.emit('scraperError', {
+              scraperName,
+              message,
+              callback: resolvePrompt
+            });
+          });
+
+          if (!shouldContinue) {
+            reject(new Error(`Scraping stopped by user after ${scraperName} failed to parse JSON`));
+            return;
+          }
+        }
+
         resolve(codes.map(c => ({ code: c })));
       }
     });
 
     // Handle process error
-    child.on('error', (error) => {
-      console.error(`[ScraperManager] Failed to execute ${scraperName}: ${error.message}`);
+    child.on('error', async (error) => {
+      const message = `Failed to execute ${scraperName}: ${error.message}`;
+      console.error(`[ScraperManager] ${message}`);
+
+      // Ask user if they want to continue
+      if (emitter) {
+        const shouldContinue = await new Promise((resolvePrompt) => {
+          emitter.emit('scraperError', {
+            scraperName,
+            message,
+            callback: resolvePrompt
+          });
+        });
+
+        if (!shouldContinue) {
+          reject(new Error(`Scraping stopped by user after ${scraperName} failed to execute`));
+          return;
+        }
+      }
+
       resolve(codes.map(c => ({ code: c })));
     });
   });
@@ -182,20 +297,28 @@ function getFieldPriority(fieldName, config) {
 /**
  * Merge data from multiple scrapers for a single DVD code
  *
+ * For each field, uses priority order from fieldPriorities (if configured)
+ * or default scraper order. Picks the first non-empty value from scrapers
+ * in priority order.
+ *
  * @param {string} code - DVD code
  * @param {object[]} scraperResults - Array of {scraperName, data} objects
  * @param {object} config - Configuration object
- * @returns {object} - Merged object (cleaned)
+ * @returns {object} - Merged object with all schema fields
  */
 function mergeResults(code, scraperResults, config) {
-  // Start with code field
-  const merged = { code };
+  // Import schema to ensure all fields are present
+  const { createEmptyMovie } = require('../../scrapers/movies/schema');
 
-  // Collect all available fields
+  // Start with empty movie structure (all fields present with defaults)
+  const merged = createEmptyMovie(code);
+
+  // Collect all available fields from all scrapers
   const allFields = new Set();
   scraperResults.forEach(({ data }) => {
     Object.keys(data).forEach(field => {
-      if (field !== 'code' && field !== 'dvd_id') {
+      // Skip internal fields and error field
+      if (field !== 'code' && field !== 'dvd_id' && field !== 'id' && field !== 'error') {
         allFields.add(field);
       }
     });
@@ -205,23 +328,31 @@ function mergeResults(code, scraperResults, config) {
   allFields.forEach(fieldName => {
     const priority = getFieldPriority(fieldName, config);
 
-    // Find first scraper in priority order that provides this field
+    // Find first scraper in priority order that provides a non-empty value
     for (const scraperName of priority) {
       const scraperResult = scraperResults.find(r => r.scraperName === scraperName);
 
       if (scraperResult && scraperResult.data[fieldName] !== undefined) {
         const value = scraperResult.data[fieldName];
 
-        // Only add non-empty values
-        if (value !== null && value !== '' && !(Array.isArray(value) && value.length === 0)) {
+        // Check if value is non-empty
+        const isEmpty = value === null ||
+                       value === '' ||
+                       (Array.isArray(value) && value.length === 0) ||
+                       (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
+
+        if (!isEmpty) {
           merged[fieldName] = value;
-          break; // Found value, stop looking
+          break; // Found non-empty value, stop looking
         }
       }
     }
   });
 
-  // Return merged result with full schema (scrapers already provide standard format)
+  // Ensure 'id' matches 'code' (schema requirement)
+  merged.id = code;
+
+  // Return merged result with full schema (all fields present)
   return merged;
 }
 
@@ -285,27 +416,36 @@ function saveToFile(code, data, sources, libraryPath) {
  * Main scraping function
  *
  * @param {string[]} codes - Array of DVD codes to scrape
+ * @param {EventEmitter} emitter - Event emitter for progress updates (optional)
  * @returns {Promise<object[]>} - Array of merged results
  */
-async function scrapeAll(codes) {
+async function scrapeAll(codes, emitter = null) {
   const config = loadConfig();
 
   // Get list of enabled scrapers
   const enabledScrapers = config.scrapers || [];
 
   if (enabledScrapers.length === 0) {
-    console.error('[ScraperManager] No scrapers enabled in config.json');
+    const message = 'No scrapers enabled in config.json';
+    console.error(`[ScraperManager] ${message}`);
+    if (emitter) emitter.emit('error', { message });
     return codes.map(code => ({ code }));
   }
 
-  console.error(`[ScraperManager] Enabled scrapers: ${enabledScrapers.join(', ')}`);
+  const message = `Enabled scrapers: ${enabledScrapers.join(', ')}`;
+  console.error(`[ScraperManager] ${message}`);
   console.error(`[ScraperManager] Scraping ${codes.length} code(s): ${codes.join(', ')}`);
+  if (emitter) emitter.emit('start', {
+    message: `Starting scrape for ${codes.length} code(s)`,
+    scrapers: enabledScrapers,
+    codes
+  });
 
   // Execute all enabled scrapers sequentially
   const scraperOutputs = [];
 
   for (const scraperName of enabledScrapers) {
-    const results = await executeScraper(scraperName, codes);
+    const results = await executeScraper(scraperName, codes, emitter);
     scraperOutputs.push({
       scraperName,
       results
@@ -356,6 +496,14 @@ async function scrapeAll(codes) {
     saveToFile(code, merged, usedScrapers, config.libraryPath);
 
     finalResults.push(merged);
+  }
+
+  // Emit completion event
+  if (emitter) {
+    emitter.emit('complete', {
+      message: `Scraping completed. Saved ${finalResults.length} JSON file(s)`,
+      count: finalResults.length
+    });
   }
 
   return finalResults;

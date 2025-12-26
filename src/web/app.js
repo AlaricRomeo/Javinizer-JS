@@ -1,5 +1,5 @@
 let currentItem = null;
-let currentMode = "edit"; // "edit" or "scrape"
+let currentMode = null; // "edit" or "scrape" - will be set in initializeApp
 
 // ─────────────────────────────
 // Sistema Dirty Tracking
@@ -128,22 +128,45 @@ async function loadConfig() {
     data.config.libraryPath || "";
 }
 
-// Salva il config (funzione helper)
-async function saveLibraryPath(libraryPath) {
-  const res = await fetch("/item/config", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ libraryPath })
-  });
+// Salva il mode nel config
+async function saveModeToConfig(mode) {
+  await saveConfigField('mode', mode);
+}
 
-  const data = await res.json();
+// Salva il config (funzione helper generica)
+async function saveConfigField(field, value) {
+  try {
+    // Carica config corrente
+    const res = await fetch("/item/config");
+    const data = await res.json();
 
-  if (!data.ok) {
-    alert("Errore: " + data.error);
+    if (!data.ok) return false;
+
+    const config = data.config;
+    config[field] = value;
+
+    // Salva config aggiornato
+    const saveRes = await fetch("/item/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config)
+    });
+
+    const saveData = await saveRes.json();
+    return saveData.ok;
+  } catch (err) {
+    console.error(`Error saving ${field}:`, err);
     return false;
   }
+}
 
-  return true;
+// Backward compatibility wrapper
+async function saveLibraryPath(libraryPath) {
+  const success = await saveConfigField('libraryPath', libraryPath);
+  if (!success) {
+    alert("Errore durante il salvataggio del percorso libreria");
+  }
+  return success;
 }
 
 
@@ -257,6 +280,19 @@ let originalItem = null;
 // ─────────────────────────────
 // Mode Management
 // ─────────────────────────────
+async function updateStatusDisplay(elementId, count, emptyMessage, filledMessageFn, color, emptyColor = "#999") {
+  const statusEl = document.getElementById(elementId);
+  if (!statusEl) return;
+
+  if (count > 0) {
+    statusEl.textContent = filledMessageFn(count);
+    statusEl.style.color = color;
+  } else {
+    statusEl.textContent = emptyMessage;
+    statusEl.style.color = emptyColor;
+  }
+}
+
 async function checkLibraryCount() {
   try {
     // Prima ricarica la libreria
@@ -265,19 +301,15 @@ async function checkLibraryCount() {
     // Poi conta
     const res = await fetch("/item/count");
     const data = await res.json();
-
-    const libraryStatus = document.getElementById("libraryStatus");
     const count = data.ok ? data.count : 0;
 
-    if (libraryStatus) {
-      if (count > 0) {
-        libraryStatus.textContent = `${count} NFO file${count > 1 ? 's' : ''} nella libreria`;
-        libraryStatus.style.color = "#667eea";
-      } else {
-        libraryStatus.textContent = "Nessun NFO nella libreria";
-        libraryStatus.style.color = "#999";
-      }
-    }
+    updateStatusDisplay(
+      "libraryStatus",
+      count,
+      "Nessun NFO nella libreria",
+      (c) => `${c} NFO file${c > 1 ? 's' : ''} nella libreria`,
+      "#667eea"
+    );
 
     // Se siamo in edit mode e count = 0, svuota l'interfaccia
     if (currentMode === "edit" && count === 0) {
@@ -299,19 +331,15 @@ async function checkScrapeAvailability() {
     // Poi conta
     const res = await fetch("/item/scrape/count");
     const data = await res.json();
-
-    const scrapeStatus = document.getElementById("scrapeStatus");
     const count = data.ok ? data.count : 0;
 
-    if (scrapeStatus) {
-      if (count > 0) {
-        scrapeStatus.textContent = `${count} item${count > 1 ? 's' : ''} disponibili`;
-        scrapeStatus.style.color = "#28a745";
-      } else {
-        scrapeStatus.textContent = "No items available";
-        scrapeStatus.style.color = "#999";
-      }
-    }
+    updateStatusDisplay(
+      "scrapeStatus",
+      count,
+      "No items available",
+      (c) => `${c} item${c > 1 ? 's' : ''} disponibili`,
+      "#28a745"
+    );
 
     // Se siamo in scrape mode e count = 0, svuota l'interfaccia
     if (currentMode === "scrape" && count === 0) {
@@ -326,35 +354,53 @@ async function checkScrapeAvailability() {
 }
 
 async function switchMode(newMode) {
-  if (currentMode === newMode) return;
+  // Se il mode è già impostato e uguale, non fare nulla
+  if (currentMode === newMode && currentMode !== null) return;
 
   currentMode = newMode;
+
+  // Salva il mode nel config.json
+  await saveModeToConfig(newMode);
 
   // Pulisci UI prima del cambio mode
   clearUI();
 
-  // Aggiorna UI dei bottoni
+  // Aggiorna UI dei bottoni mode
   const editBtn = document.getElementById("modeEdit");
   const scrapeBtn = document.getElementById("modeScrape");
   const saveBtn = document.getElementById("saveItem");
-  const deleteBtn = document.getElementById("deleteItem");
+  const scrapePanel = document.querySelector(".scraper-panel");
 
   if (newMode === "edit") {
+    // Edit mode
     editBtn.classList.add("active");
     scrapeBtn.classList.remove("active");
-    // Nascondi bottone delete in edit mode
-    if (deleteBtn) deleteBtn.style.display = "none";
+
+    // Disabilita il pannello scrape in edit mode
+    if (scrapePanel) {
+      scrapePanel.style.opacity = "0.5";
+      scrapePanel.style.pointerEvents = "none";
+    }
+
     await loadItemForMode("/item/current");
     // In edit mode il bottone salva è abilitato solo con dirty fields
     updateSaveButton();
   } else {
+    // Scrape mode
     editBtn.classList.remove("active");
     scrapeBtn.classList.add("active");
-    const loaded = await loadItemForMode("/item/scrape/current");
-    // In scrape mode mostra il bottone delete solo se c'è un item
-    if (deleteBtn) {
-      deleteBtn.style.display = loaded ? "block" : "none";
+
+    // Abilita il pannello scrape in scrape mode
+    if (scrapePanel) {
+      scrapePanel.style.opacity = "1";
+      scrapePanel.style.pointerEvents = "auto";
     }
+
+    const loaded = await loadItemForMode("/item/scrape/current");
+
+    // Aggiorna visibilità bottoni delete
+    updateDeleteButtons(loaded);
+
     // In scrape mode il bottone salva è abilitato solo se c'è un item
     if (saveBtn && loaded) {
       saveBtn.disabled = false;
@@ -366,6 +412,26 @@ async function switchMode(newMode) {
   }
 }
 
+// Funzione helper per aggiornare la visibilità dei bottoni delete
+function updateDeleteButtons(itemLoaded) {
+  const deleteBtn = document.getElementById("deleteItem");
+  const deleteAllBtn = document.getElementById("deleteAllItems");
+  const scrapeStatusEl = document.getElementById("scrapeStatus");
+
+  if (!deleteBtn || !deleteAllBtn) return;
+
+  // Estrai il numero di items dal testo dello status
+  const statusText = scrapeStatusEl ? scrapeStatusEl.textContent : "";
+  const match = statusText.match(/(\d+)\s+item/);
+  const scrapeCount = match ? parseInt(match[1]) : 0;
+
+  // Mostra deleteItem solo se c'è un item caricato
+  deleteBtn.style.display = itemLoaded ? "block" : "none";
+
+  // Mostra deleteAllItems solo se ci sono items disponibili
+  deleteAllBtn.style.display = (scrapeCount > 0) ? "block" : "none";
+}
+
 async function loadItemForMode(url) {
   return await loadItem(url);
 }
@@ -374,7 +440,7 @@ async function loadItemForMode(url) {
 // Clear UI
 // ─────────────────────────────
 function clearUI() {
-  // Svuota tutti i campi di testo
+  // Svuota tutti i campi di testo (TRANNE libraryPath che è gestito separatamente)
   const textFields = [
     "id", "title", "alternateTitle", "description",
     "director", "releaseDate", "runtime", "series", "maker", "label",
@@ -404,10 +470,15 @@ function clearUI() {
     fanartPlaceholder.style.display = "block";
   }
 
-  // Svuota lista attori
-  const actorsList = document.getElementById("actorsList");
-  if (actorsList) {
-    actorsList.innerHTML = "";
+  // Svuota griglia attori
+  const actorsGrid = document.getElementById("actors-grid");
+  if (actorsGrid) {
+    actorsGrid.innerHTML = "";
+  }
+
+  // Reset array attori in currentItem
+  if (currentItem) {
+    currentItem.actor = [];
   }
 
   // Clear dirty fields
@@ -531,6 +602,23 @@ function updateDebugJson() {
 // ─────────────────────────────
 // Gestione Actors (Grid Layout)
 // ─────────────────────────────
+function createActorThumbnail(thumbUrl, actorName) {
+  const thumbnailDiv = document.createElement('div');
+  thumbnailDiv.className = 'thumbnail';
+
+  if (thumbUrl) {
+    const img = document.createElement('img');
+    img.src = thumbUrl;
+    img.alt = actorName || 'Actor';
+    img.onerror = () => { thumbnailDiv.innerHTML = '👤'; };
+    thumbnailDiv.appendChild(img);
+  } else {
+    thumbnailDiv.innerHTML = '👤';
+  }
+
+  return thumbnailDiv;
+}
+
 function renderActors() {
   const actorsGrid = document.getElementById("actors-grid");
   actorsGrid.innerHTML = "";
@@ -543,37 +631,24 @@ function renderActors() {
     const actorCard = document.createElement("div");
     actorCard.className = "actor-card";
 
-    const thumbUrl = actor.thumb || "";
-    const hasThumb = thumbUrl !== "";
+    // Crea thumbnail
+    const thumbnail = createActorThumbnail(actor.thumb, actor.name);
+    actorCard.appendChild(thumbnail);
 
-    // Creazione della card con immagine
-    actorCard.innerHTML = `
-      <div class="thumbnail"></div>
-      <div class="name">${actor.name || 'Nome mancante'}</div>
-      <div class="role">${actor.role || 'Actress'}</div>
-    `;
+    // Aggiungi nome e ruolo
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'name';
+    nameDiv.textContent = actor.name || 'Nome mancante';
 
-    // Aggiungi l'immagine con gestione dell'errore
-    const thumbnailDiv = actorCard.querySelector('.thumbnail');
-    if (hasThumb) {
-      const img = document.createElement('img');
-      img.src = thumbUrl;
-      img.alt = actor.name || 'Actor';
+    const roleDiv = document.createElement('div');
+    roleDiv.className = 'role';
+    roleDiv.textContent = actor.role || 'Actress';
 
-      // Gestisci errore caricamento immagine
-      img.onerror = () => {
-        thumbnailDiv.innerHTML = '👤';
-      };
-
-      thumbnailDiv.appendChild(img);
-    } else {
-      thumbnailDiv.innerHTML = '👤';
-    }
+    actorCard.appendChild(nameDiv);
+    actorCard.appendChild(roleDiv);
 
     // Click per aprire modal di editing
-    actorCard.onclick = () => {
-      editActor(index);
-    };
+    actorCard.onclick = () => editActor(index);
 
     actorsGrid.appendChild(actorCard);
   });
@@ -591,35 +666,27 @@ function openActorModal(index = null) {
   const removeBtn = document.getElementById("actorEditRemove");
   const previewDiv = document.getElementById("actorEditPreview");
 
-  // Se index è null, stiamo aggiungendo un nuovo attore
-  if (index === null) {
-    // Cambia titolo del modal
-    modalTitle.textContent = window.i18n ? window.i18n.t("actorModal.titleAdd") : "Aggiungi Attore";
+  const isNewActor = index === null;
+  const actor = isNewActor ? {} : currentItem.actor[index];
 
-    document.getElementById("actorEditName").value = "";
-    document.getElementById("actorEditAltName").value = "";
-    document.getElementById("actorEditRole").value = "Actress";
-    document.getElementById("actorEditThumb").value = "";
-    removeBtn.style.display = "none";
-    previewDiv.style.display = "none";
+  // Imposta titolo
+  modalTitle.textContent = window.i18n
+    ? window.i18n.t(isNewActor ? "actorModal.titleAdd" : "actorModal.title")
+    : (isNewActor ? "Aggiungi Attore" : "Modifica Attore");
+
+  // Popola campi
+  document.getElementById("actorEditName").value = actor.name || "";
+  document.getElementById("actorEditAltName").value = actor.altName || "";
+  document.getElementById("actorEditRole").value = actor.role || "Actress";
+  document.getElementById("actorEditThumb").value = actor.thumb || "";
+
+  // Gestisci visibilità bottone rimozione e preview
+  removeBtn.style.display = isNewActor ? "none" : "block";
+
+  if (!isNewActor && actor.thumb) {
+    updateActorPreview(actor.thumb);
   } else {
-    // Stiamo editando un attore esistente
-    // Cambia titolo del modal
-    modalTitle.textContent = window.i18n ? window.i18n.t("actorModal.title") : "Modifica Attore";
-
-    const actor = currentItem.actor[index];
-    document.getElementById("actorEditName").value = actor.name || "";
-    document.getElementById("actorEditAltName").value = actor.altName || "";
-    document.getElementById("actorEditRole").value = actor.role || "Actress";
-    document.getElementById("actorEditThumb").value = actor.thumb || "";
-    removeBtn.style.display = "block";
-
-    // Mostra preview se c'è un'immagine
-    if (actor.thumb) {
-      updateActorPreview(actor.thumb);
-    } else {
-      previewDiv.style.display = "none";
-    }
+    previewDiv.style.display = "none";
   }
 
   modal.style.display = "block";
@@ -845,13 +912,52 @@ function setupEventHandlers() {
       await checkScrapeAvailability();
 
       // Carica il prossimo item disponibile
-      const deleteBtn = document.getElementById("deleteItem");
       const loaded = await loadItem("/item/scrape/current");
 
-      // Mostra/nascondi bottone delete in base alla disponibilità
-      if (deleteBtn) {
-        deleteBtn.style.display = loaded ? "block" : "none";
+      // Aggiorna visibilità bottoni delete
+      updateDeleteButtons(loaded);
+
+    } catch (err) {
+      showNotification("Errore durante l'eliminazione", "error");
+    }
+  };
+
+  // Bottone "Delete All Items" - elimina tutti i JSON in scrape mode
+  document.getElementById("deleteAllItems").onclick = async () => {
+    if (currentMode !== "scrape") return;
+
+    const scrapeStatusEl = document.getElementById("scrapeStatus");
+    const statusText = scrapeStatusEl ? scrapeStatusEl.textContent : "";
+    const match = statusText.match(/(\d+)\s+item/);
+    const count = match ? parseInt(match[1]) : 0;
+    if (count === 0) return;
+
+    if (!confirm(`Sei sicuro di voler eliminare TUTTI i ${count} items?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/item/scrape/all", {
+        method: "DELETE"
+      });
+
+      const data = await res.json();
+
+      if (!data.ok) {
+        showNotification("Errore durante l'eliminazione", "error");
+        return;
       }
+
+      showNotification(`Eliminati ${data.deleted} items`, "success");
+
+      // Aggiorna il contatore
+      await checkScrapeAvailability();
+
+      // Pulisci UI
+      clearUI();
+
+      // Aggiorna visibilità bottoni delete (nessun item caricato)
+      updateDeleteButtons(false);
 
     } catch (err) {
       showNotification("Errore durante l'eliminazione", "error");
@@ -1061,22 +1167,40 @@ async function initializeApp() {
       window.applyI18nBindings();
     }
 
-    // Popola campo library path
-    document.getElementById("libraryPath").value = configData.config.libraryPath || "";
-  }
+    // Popola campo library path PRIMA di switchMode
+    const libraryPath = configData.config.libraryPath || "";
+    document.getElementById("libraryPath").value = libraryPath;
 
-  // Verifica disponibilità modalità scrape e libreria
-  checkLibraryCount();
-  checkScrapeAvailability();
+    // Verifica disponibilità modalità scrape e libreria PRIMA di switchMode
+    await checkLibraryCount();
+    await checkScrapeAvailability();
+
+    // Imposta modalità iniziale da config
+    const initialMode = configData.config.mode || "scrape";
+    await switchMode(initialMode);
+
+    // Inizializza visibilità pannello scrape in base al mode
+    const scrapePanel = document.querySelector(".scraper-panel");
+    if (scrapePanel) {
+      if (initialMode === "edit") {
+        scrapePanel.style.opacity = "0.5";
+        scrapePanel.style.pointerEvents = "none";
+      } else {
+        scrapePanel.style.opacity = "1";
+        scrapePanel.style.pointerEvents = "auto";
+      }
+    }
+  } else {
+    // Fallback se config non disponibile
+    await checkLibraryCount();
+    await checkScrapeAvailability();
+  }
 
   // Polling automatico ogni 5 secondi per aggiornare entrambi i contatori
   setInterval(() => {
     checkLibraryCount();
     checkScrapeAvailability();
   }, 5000);
-
-  // Carica primo item
-  loadItem("/item/current");
 }
 
 // ─────────────────────────────
@@ -1084,7 +1208,12 @@ async function initializeApp() {
 // ─────────────────────────────
 
 /**
- * Start scraping process with real-time feedback
+ * WebSocket connection for scraping
+ */
+let scrapingWebSocket = null;
+
+/**
+ * Start scraping process with real-time feedback via WebSocket
  */
 async function startScraping() {
   const modal = document.getElementById('scrapingModal');
@@ -1097,11 +1226,57 @@ async function startScraping() {
   closeBtn.style.display = 'none';
 
   try {
-    // Fetch with streaming
+    // Connect to WebSocket if not already connected
+    if (!scrapingWebSocket || scrapingWebSocket.readyState !== WebSocket.OPEN) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}`;
+      scrapingWebSocket = new WebSocket(wsUrl);
+
+      scrapingWebSocket.onopen = () => {
+        console.log('[WebSocket] Connected');
+      };
+
+      scrapingWebSocket.onerror = (error) => {
+        console.error('[WebSocket] Error:', error);
+        appendProgress(progressDiv, '❌ WebSocket connection error', 'error');
+        closeBtn.style.display = 'block';
+      };
+
+      scrapingWebSocket.onclose = () => {
+        console.log('[WebSocket] Disconnected');
+      };
+
+      // Wait for connection
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('WebSocket connection timeout')), 5000);
+        scrapingWebSocket.onopen = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        scrapingWebSocket.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('WebSocket connection failed'));
+        };
+      });
+    }
+
+    // Set up message handler
+    scrapingWebSocket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        const { event: eventType, data } = message;
+
+        handleScrapingEvent(progressDiv, closeBtn, eventType, data);
+      } catch (error) {
+        console.error('[WebSocket] Error parsing message:', error);
+      }
+    };
+
+    // Start scraping via HTTP POST
     const response = await fetch('/item/scrape/start', {
       method: 'POST',
       headers: {
-        'Accept': 'text/event-stream'
+        'Content-Type': 'application/json'
       }
     });
 
@@ -1109,38 +1284,13 @@ async function startScraping() {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+    const result = await response.json();
 
-    // Read stream
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      // Decode chunk and add to buffer
-      buffer += decoder.decode(value, { stream: true });
-
-      // Process complete events in buffer
-      const lines = buffer.split('\n\n');
-      buffer = lines.pop(); // Keep incomplete event in buffer
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-
-        // Parse SSE event
-        const eventMatch = line.match(/^event: (\w+)\ndata: (.+)$/s);
-        if (eventMatch) {
-          const [, eventType, dataStr] = eventMatch;
-          const data = JSON.parse(dataStr);
-
-          handleScrapingEvent(progressDiv, closeBtn, eventType, data);
-        }
-      }
+    if (!result.ok) {
+      throw new Error(result.error || 'Failed to start scraping');
     }
+
+    appendProgress(progressDiv, `✅ ${result.message}`, 'info');
 
   } catch (error) {
     appendProgress(progressDiv, '❌ Error: ' + error.message, 'error');
@@ -1156,7 +1306,7 @@ async function startScraping() {
 /**
  * Handle scraping event
  */
-function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
+async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
   switch (eventType) {
     case 'start':
       appendProgress(progressDiv, data.message, 'info');
@@ -1168,16 +1318,202 @@ function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       appendProgress(progressDiv, data.message, type);
       break;
 
+    case 'scraperError':
+      // Show scraper error and ask user if they want to continue
+      const errorMsg = `❌ Scraper "${data.scraperName}" failed: ${data.message}`;
+      appendProgress(progressDiv, errorMsg, 'error');
+
+      // Ask user if they want to continue with next scraper
+      const continueNext = await showConfirmDialog(
+        'Scraper Error',
+        `Scraper "${data.scraperName}" failed.\n\nError: ${data.message}\n\nDo you want to continue with the next scraper?`,
+        'Continue',
+        'Stop',
+        true  // destructiveCancel = true per rendere "Stop" rosso
+      );
+
+      // Send response back via WebSocket
+      if (scrapingWebSocket && scrapingWebSocket.readyState === WebSocket.OPEN) {
+        scrapingWebSocket.send(JSON.stringify({
+          type: 'scraperErrorResponse',
+          continue: continueNext
+        }));
+      }
+
+      if (!continueNext) {
+        appendProgress(progressDiv, '⚠️ Scraping stopped by user', 'info');
+        closeBtn.style.display = 'block';
+      }
+      break;
+
     case 'complete':
       appendProgress(progressDiv, '✅ ' + data.message, 'success');
       closeBtn.style.display = 'block';
+
+      // Auto-reload scrape items dopo completamento
+      checkScrapeAvailability().then(async () => {
+        // Se ci sono items, carica il primo
+        const scrapeStatusEl = document.getElementById("scrapeStatus");
+        const statusText = scrapeStatusEl ? scrapeStatusEl.textContent : "";
+        const match = statusText.match(/(\d+)\s+item/);
+        const scrapeCount = match ? parseInt(match[1]) : 0;
+
+        if (scrapeCount > 0) {
+          const loaded = await loadItem("/item/scrape/current");
+          updateDeleteButtons(loaded);
+        }
+      });
       break;
 
     case 'error':
       appendProgress(progressDiv, '❌ ' + data.message, 'error');
       closeBtn.style.display = 'block';
       break;
+
+    case 'prompt':
+      // Interactive prompt from scraper
+      const promptMsg = `⏸️ ${data.scraperName}: ${data.message}`;
+      appendProgress(progressDiv, promptMsg, 'prompt');
+
+      // Show confirm dialog
+      const userResponse = await showConfirmDialog(
+        `${data.scraperName} - User Action Required`,
+        data.message,
+        'Continue',
+        'Cancel'
+      );
+
+      // Send response back via WebSocket
+      if (scrapingWebSocket && scrapingWebSocket.readyState === WebSocket.OPEN) {
+        scrapingWebSocket.send(JSON.stringify({
+          type: 'promptResponse',
+          promptId: data.promptId,
+          response: userResponse
+        }));
+      }
+
+      if (userResponse) {
+        appendProgress(progressDiv, '✅ User confirmed - continuing...', 'success');
+      } else {
+        appendProgress(progressDiv, '⚠️ User canceled', 'info');
+      }
+      break;
   }
+}
+
+/**
+ * Show a confirm dialog (interactive prompt)
+ * @param {string} title - Dialog title
+ * @param {string} message - Dialog message
+ * @param {string} confirmText - Confirm button text (default: 'OK')
+ * @param {string} cancelText - Cancel button text (default: 'Cancel')
+ * @param {boolean} destructiveCancel - If true, makes cancel button red (for destructive actions)
+ * @returns {Promise<boolean>} - True if confirmed, false if canceled
+ */
+function showConfirmDialog(title, message, confirmText = 'OK', cancelText = 'Cancel', destructiveCancel = false) {
+  return new Promise((resolve) => {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 3000;
+    `;
+
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 500px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    `;
+
+    // Title
+    const titleEl = document.createElement('h3');
+    titleEl.textContent = title;
+    titleEl.style.cssText = `
+      margin: 0 0 16px 0;
+      color: #333;
+      font-size: 20px;
+    `;
+
+    // Message
+    const messageEl = document.createElement('p');
+    messageEl.textContent = message;
+    messageEl.style.cssText = `
+      margin: 0 0 24px 0;
+      color: #666;
+      line-height: 1.5;
+      white-space: pre-line;
+    `;
+
+    // Buttons container
+    const buttonsEl = document.createElement('div');
+    buttonsEl.style.cssText = `
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    `;
+
+    // Cancel button
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = cancelText;
+    const cancelBtnBg = destructiveCancel ? '#dc3545' : 'white';
+    const cancelBtnColor = destructiveCancel ? 'white' : '#333';
+    const cancelBtnBorder = destructiveCancel ? 'none' : '1px solid #ddd';
+    cancelBtn.style.cssText = `
+      padding: 10px 20px;
+      border: ${cancelBtnBorder};
+      background: ${cancelBtnBg};
+      color: ${cancelBtnColor};
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    cancelBtn.onclick = () => {
+      document.body.removeChild(overlay);
+      resolve(false);
+    };
+
+    // Confirm button
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = confirmText;
+    confirmBtn.style.cssText = `
+      padding: 10px 20px;
+      border: none;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    `;
+    confirmBtn.onclick = () => {
+      document.body.removeChild(overlay);
+      resolve(true);
+    };
+
+    // Assemble dialog
+    buttonsEl.appendChild(cancelBtn);
+    buttonsEl.appendChild(confirmBtn);
+    dialog.appendChild(titleEl);
+    dialog.appendChild(messageEl);
+    dialog.appendChild(buttonsEl);
+    overlay.appendChild(dialog);
+
+    // Show dialog
+    document.body.appendChild(overlay);
+  });
 }
 
 /**
@@ -1189,13 +1525,14 @@ function appendProgress(div, message, type) {
     progress: '#333',
     executing: '#dc3545',  // Red for "Executing scraper"
     success: '#28a745',
-    error: '#dc3545'
+    error: '#dc3545',
+    prompt: '#ff9800'  // Orange for interactive prompts
   };
 
   const line = document.createElement('div');
   line.style.color = colors[type] || '#333';
   line.style.marginBottom = '4px';
-  line.style.fontWeight = type === 'executing' ? 'bold' : 'normal';
+  line.style.fontWeight = (type === 'executing' || type === 'prompt') ? 'bold' : 'normal';
   line.textContent = message;
 
   div.appendChild(line);

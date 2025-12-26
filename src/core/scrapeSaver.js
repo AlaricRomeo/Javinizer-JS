@@ -97,10 +97,10 @@ class ScrapeSaver {
       const image = sharp(fanartPath);
       const metadata = await image.metadata();
 
-      // Calcola dimensioni per il crop (rapporto 2:3 tipico dei poster)
-      const posterWidth = Math.floor(metadata.height * 2 / 3);
+      // Calcola dimensioni per il crop (rapporto 100:71 = width:height)
+      const posterWidth = Math.floor(metadata.height * 100 / 71);
 
-      // Crop della parte centrale-sinistra
+      // Crop della parte sinistra
       await image
         .extract({
           left: 0,

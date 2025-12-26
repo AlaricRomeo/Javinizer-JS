@@ -128,6 +128,7 @@ body {
   padding: 15px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: opacity 0.3s ease;
 }
 .scraper-panel h3 {
   font-size: 14px;
@@ -135,14 +136,16 @@ body {
   margin-bottom: 10px;
   font-weight: 600;
 }
-.scraper-panel .mode-toggle {
+/* Mode toggle - used in both config-panel and scraper-panel */
+.mode-toggle {
   background: #f0f0f0;
   border-radius: 4px;
   padding: 2px;
   display: inline-flex;
   gap: 0;
+  width: 100%;
 }
-.scraper-panel .mode-btn {
+.mode-btn {
   background: transparent;
   color: #666;
   border: none;
@@ -152,15 +155,16 @@ body {
   cursor: pointer;
   border-radius: 3px;
   transition: all 0.2s;
+  flex: 1;
 }
-.scraper-panel .mode-btn:hover:not(:disabled) {
+.mode-btn:hover:not(:disabled) {
   background: #e0e0e0;
 }
-.scraper-panel .mode-btn.active {
+.mode-btn.active {
   background: #667eea;
   color: white;
 }
-.scraper-panel .mode-btn:disabled {
+.mode-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }

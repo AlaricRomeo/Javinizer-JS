@@ -76,8 +76,39 @@ async function initBrowser(headless = false) {
 }
 
 /**
+ * Wait for interactive user confirmation via WebSocket
+ * Sends a prompt message to stdout and waits for response on stdin
+ */
+async function waitForUserConfirmation(message) {
+  return new Promise((resolve) => {
+    // Send prompt message to stdout (will be intercepted by ScraperManager)
+    const promptData = {
+      type: 'confirm',
+      message: message
+    };
+    console.log(`__PROMPT__:${JSON.stringify(promptData)}`);
+
+    // Set up stdin listener for response
+    const onData = (data) => {
+      try {
+        const response = JSON.parse(data.toString().trim());
+        process.stdin.removeListener('data', onData);
+        process.stdin.pause();
+        resolve(response.response === true);
+      } catch (error) {
+        console.error(`[Browser] Error parsing response: ${error.message}`);
+        resolve(false);
+      }
+    };
+
+    process.stdin.on('data', onData);
+    process.stdin.resume();
+  });
+}
+
+/**
  * Initialize session by solving Cloudflare once
- * Opens browser, lets user solve challenge, then closes and saves cookies
+ * Opens browser, lets user solve challenge via WebUI
  */
 async function initSession() {
   await initBrowser(false); // Non-headless for user interaction
@@ -94,16 +125,17 @@ async function initSession() {
     console.error('[Browser] Please:');
     console.error('[Browser]   1. Solve any Cloudflare challenges');
     console.error('[Browser]   2. Accept the adult agreement');
-    console.error('[Browser]   3. Press ENTER in this terminal when ready');
+    console.error('[Browser]   3. Click "Continue" when ready');
     console.error('[Browser] ========================================');
 
-    // Wait for user to press Enter
-    await new Promise((resolve) => {
-      process.stdin.once('data', () => {
-        process.stdin.pause(); // Release stdin to allow clean exit
-        resolve();
-      });
-    });
+    // Wait for user confirmation via WebSocket
+    const confirmed = await waitForUserConfirmation(
+      'Please solve the Cloudflare challenge and accept the adult agreement in the browser window, then click Continue.'
+    );
+
+    if (!confirmed) {
+      throw new Error('User canceled browser initialization');
+    }
 
     console.error('[Browser] Session initialized, browser will stay open');
     // Keep the page open - we'll reuse it for scraping
@@ -155,13 +187,40 @@ async function fetchPage(url) {
 async function closeBrowser() {
   if (browser) {
     console.error('[Browser] Closing browser...');
-    if (sessionPage) {
-      await sessionPage.close();
+    try {
+      // Close page first
+      if (sessionPage) {
+        await Promise.race([
+          sessionPage.close(),
+          new Promise(resolve => setTimeout(resolve, 2000)) // 2s timeout
+        ]);
+        sessionPage = null;
+      }
+
+      // Close browser with timeout
+      await Promise.race([
+        browser.close(),
+        new Promise(resolve => setTimeout(resolve, 3000)) // 3s timeout
+      ]);
+
+      console.error('[Browser] Browser closed successfully');
+    } catch (error) {
+      console.error(`[Browser] Error closing browser: ${error.message}`);
+      // Force kill browser process if close fails
+      try {
+        const browserProcess = browser.process();
+        if (browserProcess && browserProcess.pid) {
+          process.kill(browserProcess.pid, 'SIGKILL');
+          console.error('[Browser] Browser process killed forcefully');
+        }
+      } catch (killError) {
+        console.error(`[Browser] Could not kill browser process: ${killError.message}`);
+      }
+    } finally {
+      browser = null;
       sessionPage = null;
+      _s = 0; // Reset counter
     }
-    await browser.close();
-    browser = null;
-    _s = 0; // Reset counter
   }
 }
 
