@@ -23,9 +23,9 @@
     <!-- Navigation Panel -->
     <div class="navigation-panel">
       <div class="nav-controls">
-        <button id="prev">←</button>
+        <button id="prev"><img src="images/caret-left-square-fill.svg" alt="Previous"></button>
         <h2 id="current-id">---</h2>
-        <button id="next">→</button>
+        <button id="next"><img src="images/caret-right-square-fill.svg" alt="Next"></button>
       </div>
     </div>
 
@@ -62,8 +62,10 @@
       <p id="scrapeStatus" style="margin-top: 10px; font-size: 12px; color: #666;">No items available</p>
       <button id="scrapeNow" class="scrape-now-btn" style="margin-top: 10px; width: 100%;">🔍 Scrape Now!</button>
       <button id="clearCache" class="clear-cache-btn" style="margin-top: 10px; width: 100%; background: #6c757d;">🗑️ Clear Scrapers Cache</button>
-      <button id="deleteItem" class="delete-item-btn" style="margin-top: 10px; width: 100%;">🗑️ Delete Item</button>
-      <button id="deleteAllItems" class="delete-all-items-btn" style="margin-top: 10px; width: 100%; background: #dc3545;">🗑️ Delete All Items</button>
+      <div class="delete-buttons-row">
+        <button id="deleteItem" class="delete-item-btn">🗑️ Delete Item</button>
+        <button id="deleteAllItems" class="delete-all-items-btn">🗑️ Delete All Items</button>
+      </div>
     </div>
 
   </div>

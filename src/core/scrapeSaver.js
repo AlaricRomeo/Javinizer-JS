@@ -97,11 +97,22 @@ class ScrapeSaver {
       const image = sharp(fanartPath);
       const metadata = await image.metadata();
 
-      // Calcola dimensioni per il crop (rapporto 100:71 = width:height)
-      const posterWidth = Math.floor(metadata.height * 100 / 71);
+      // Calcola dimensioni per il crop (rapporto 71:100 = width:height)
+      const posterWidth = Math.floor(metadata.height * 71 / 100);
+
+      console.log(`[Poster Crop] Fanart: ${metadata.width}x${metadata.height}`);
+      console.log(`[Poster Crop] Poster width calculated: ${posterWidth}`);
+
+      // Se il poster è più largo dell'immagine originale, usa l'immagine intera
+      if (posterWidth >= metadata.width) {
+        console.log(`[Poster Crop] Poster width >= fanart width, copying without crop`);
+        await image.toFile(posterPath);
+        return true;
+      }
 
       // Crop della parte destra
-      const leftOffset = Math.max(0, metadata.width - posterWidth);
+      const leftOffset = metadata.width - posterWidth;
+      console.log(`[Poster Crop] Left offset: ${leftOffset}, cropping from right side`);
 
       await image
         .extract({

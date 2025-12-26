@@ -495,33 +495,46 @@ function clearUI() {
 // Load Item
 // ─────────────────────────────
 async function loadItem(url) {
-  const res = await fetch(url);
-  const data = await res.json();
+  try {
+    const res = await fetch(url);
 
-  if (!data.ok) {
-    alert(data.error);
-    return false;
-  }
-
-  currentItem = data.item;
-
-  if (currentItem === null) {
-    // Svuota l'interfaccia
-    clearUI();
-
-    // In scrape mode non mostriamo alert, solo disabilitiamo il bottone
-    if (currentMode === "scrape") {
+    // Check if response is ok
+    if (!res.ok) {
+      console.error(`HTTP error! status: ${res.status}`);
       return false;
     }
-    // In edit mode mostra anche un messaggio (opzionale, puoi rimuoverlo se preferisci)
+
+    const data = await res.json();
+
+    if (!data.ok) {
+      alert(data.error);
+      return false;
+    }
+
+    currentItem = data.item;
+
+    if (currentItem === null) {
+      // Svuota l'interfaccia
+      clearUI();
+
+      // In scrape mode non mostriamo alert, solo disabilitiamo il bottone
+      if (currentMode === "scrape") {
+        return false;
+      }
+      // In edit mode mostra anche un messaggio (opzionale, puoi rimuoverlo se preferisci)
+      return false;
+    }
+
+    // snapshot originale
+    originalItem = JSON.parse(JSON.stringify(currentItem));
+
+    renderItem(currentItem);
+    return true;
+  } catch (err) {
+    console.error("Error loading item:", err);
+    console.error("URL was:", url);
     return false;
   }
-
-  // snapshot originale
-  originalItem = JSON.parse(JSON.stringify(currentItem));
-
-  renderItem(currentItem);
-  return true;
 }
 
 function getChanges(original, modified) {
