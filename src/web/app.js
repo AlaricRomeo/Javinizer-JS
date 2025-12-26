@@ -442,7 +442,7 @@ async function loadItemForMode(url) {
 function clearUI() {
   // Svuota tutti i campi di testo (TRANNE libraryPath che è gestito separatamente)
   const textFields = [
-    "id", "title", "alternateTitle", "description",
+    "id", "contentId", "title", "alternateTitle", "description",
     "director", "releaseDate", "runtime", "series", "maker", "label",
     "rating", "contentRating",
     "genres", "tags",
@@ -737,6 +737,7 @@ function renderItem(item) {
 
   // Informazioni di base
   bindField("id", "id");
+  bindField("contentId", "contentId");
   bindField("title", "title");
   bindField("alternateTitle", "originalTitle"); // alternateTitle maps to originalTitle
   bindField("description", "plot"); // description maps to plot

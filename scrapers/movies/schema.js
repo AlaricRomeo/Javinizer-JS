@@ -25,6 +25,7 @@ function createEmptyMovie(code) {
     // ─────────────────────────────
     id: code,           // DVD ID (same as code)
     code: code,         // DVD code (e.g., "SDDM-943")
+    contentId: '',      // Content ID (optional, some items use this instead of id)
 
     // ─────────────────────────────
     // Titles

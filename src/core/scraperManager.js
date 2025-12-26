@@ -317,7 +317,7 @@ function mergeResults(code, scraperResults, config) {
   const allFields = new Set();
   scraperResults.forEach(({ data }) => {
     Object.keys(data).forEach(field => {
-      // Skip internal fields and error field
+      // Skip internal fields and error field (but keep contentId)
       if (field !== 'code' && field !== 'dvd_id' && field !== 'id' && field !== 'error') {
         allFields.add(field);
       }

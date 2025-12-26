@@ -90,7 +90,7 @@ class ScrapeSaver {
   }
 
   /**
-   * Crea il poster dalla fanart (crop della parte sinistra)
+   * Crea il poster dalla fanart (crop della parte destra)
    */
   async createPoster(fanartPath, posterPath) {
     try {
@@ -100,10 +100,12 @@ class ScrapeSaver {
       // Calcola dimensioni per il crop (rapporto 100:71 = width:height)
       const posterWidth = Math.floor(metadata.height * 100 / 71);
 
-      // Crop della parte sinistra
+      // Crop della parte destra
+      const leftOffset = Math.max(0, metadata.width - posterWidth);
+
       await image
         .extract({
-          left: 0,
+          left: leftOffset,
           top: 0,
           width: posterWidth,
           height: metadata.height

@@ -18,6 +18,8 @@ function convertToStandardFormat(data, code) {
   if (!data) return movie;
 
   // Basic fields - using r18.dev field names
+  movie.contentId = data.content_id || data.contentId || '';
+
   // Prefer uncensored title if available
   movie.title = data.title_en_uncensored || data.title_en || data.title || '';
   movie.originalTitle = data.title_ja || data.originalTitle || data.japaneseTitle || '';
