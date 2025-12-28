@@ -10,7 +10,7 @@ function markFieldDirty(fieldId, itemKey = null) {
   // Verifica che originalItem esista
   if (!originalItem) return;
 
-  // Se itemKey non è fornito, usa fieldId come fallback (retrocompatibilità)
+  // If itemKey is not provided, use fieldId as fallback (backward compatibility)
   const key = itemKey || fieldId;
 
   const currentValue = currentItem[key];
@@ -63,7 +63,7 @@ function updateSaveButton() {
 
   const count = dirtyFields.size;
 
-  // In scrape mode, il bottone è abilitato se c'è un item caricato (indipendentemente dai dirty fields)
+  // In scrape mode, the button is enabled if there is a loaded item (regardless of dirty fields)
   if (currentMode === "scrape") {
     if (currentItem && currentItem.id) {
       saveBtn.disabled = false;
@@ -81,7 +81,7 @@ function updateSaveButton() {
       badge.style.display = 'none';
     }
   } else {
-    // In edit mode, il bottone è abilitato solo se ci sono dirty fields
+    // In edit mode, the button is enabled only if there are dirty fields
     if (count > 0) {
       saveBtn.classList.add('has-changes');
       badge.textContent = count;
@@ -271,7 +271,7 @@ document.getElementById("dirBrowserSelect").onclick = async () => {
     showNotification("✓ Library path aggiornato e salvato", "success");
 
     // Ricarica il primo item della nuova libreria
-    // (il server si occuperà di ricaricare la libreria automaticamente)
+    // (the server will reload the library automatically)
     setTimeout(() => {
       loadItem("/item/current");
     }, 500);
@@ -374,7 +374,7 @@ async function checkScrapeAvailability() {
 }
 
 async function switchMode(newMode) {
-  // Se il mode è già impostato e uguale, non fare nulla
+  // If the mode is already set and equal, do nothing
   if (currentMode === newMode && currentMode !== null) return;
 
   currentMode = newMode;
@@ -403,7 +403,7 @@ async function switchMode(newMode) {
     }
 
     await loadItem("/item/current");
-    // In edit mode il bottone salva è abilitato solo con dirty fields
+    // In edit mode the save button is enabled only with dirty fields
     updateSaveButton();
   } else {
     // Scrape mode
@@ -418,10 +418,10 @@ async function switchMode(newMode) {
 
     const loaded = await loadItem("/item/scrape/current");
 
-    // Aggiorna visibilità bottoni delete
+    // Update delete buttons visibility
     updateDeleteButtons(loaded);
 
-    // In scrape mode il bottone salva è abilitato solo se c'è un item
+    // In scrape mode the save button is enabled only if there is an item
     if (saveBtn && loaded) {
       saveBtn.disabled = false;
       saveBtn.classList.add("has-changes");
@@ -432,7 +432,7 @@ async function switchMode(newMode) {
   }
 }
 
-// Funzione helper per aggiornare la visibilità dei bottoni delete
+// Helper function to update delete buttons visibility
 function updateDeleteButtons(itemLoaded) {
   const deleteBtn = document.getElementById("deleteItem");
   const deleteAllBtn = document.getElementById("deleteAllItems");
@@ -445,7 +445,7 @@ function updateDeleteButtons(itemLoaded) {
   const match = statusText.match(/(\d+)\s+item/);
   const scrapeCount = match ? parseInt(match[1]) : 0;
 
-  // Mostra deleteItem solo se c'è un item caricato
+  // Show deleteItem only if there is a loaded item
   deleteBtn.style.display = itemLoaded ? "block" : "none";
 
   // Mostra deleteAllItems solo se ci sono items disponibili
@@ -456,7 +456,7 @@ function updateDeleteButtons(itemLoaded) {
 // Clear UI
 // ─────────────────────────────
 function clearUI() {
-  // Svuota tutti i campi di testo (TRANNE libraryPath che è gestito separatamente)
+  // Clear all text fields (EXCEPT libraryPath which is handled separately)
   const textFields = [
     "id", "contentId", "title", "alternateTitle", "description",
     "director", "releaseDate", "runtime", "series", "maker", "label",
@@ -775,7 +775,7 @@ function openActorModal(index = null) {
     if (sourceInfo) sourceInfo.style.display = "none";
   }
 
-  // Gestisci visibilità bottone rimozione
+  // Manage remove button visibility
   if (removeBtn) removeBtn.style.display = isNewActor ? "none" : "block";
 
   // Show modal using CSS class
@@ -926,7 +926,7 @@ function setupEventHandlers() {
   document.getElementById("modeEdit").onclick = () => switchMode("edit");
   document.getElementById("modeScrape").onclick = () => switchMode("scrape");
 
-  // Navigation buttons - usano route diverse in base alla modalità
+  // Navigation buttons - use different routes based on the mode
   document.getElementById("next").onclick = () => {
     const url = currentMode === "edit" ? "/item/next" : "/item/scrape/next";
     loadItem(url);
@@ -1007,7 +1007,7 @@ function setupEventHandlers() {
       // Carica il prossimo item disponibile
       const loaded = await loadItem("/item/scrape/current");
 
-      // Aggiorna visibilità bottoni delete
+      // Update delete buttons visibility
       updateDeleteButtons(loaded);
 
     } catch (err) {
@@ -1049,7 +1049,7 @@ function setupEventHandlers() {
       // Pulisci UI
       clearUI();
 
-      // Aggiorna visibilità bottoni delete (nessun item caricato)
+      // Update delete buttons visibility (no item loaded)
       updateDeleteButtons(false);
 
     } catch (err) {
@@ -1096,7 +1096,7 @@ function setupEventHandlers() {
         let duration = 3000; // default
         if (data.results && data.results.warnings && data.results.warnings.length > 0) {
           message += `\n\nWarnings:\n${data.results.warnings.join("\n")}`;
-          duration = 6000; // Mostra i warning più a lungo
+          duration = 6000; // Show warnings for longer
         }
         showNotification(message, "success", duration);
 
@@ -1410,15 +1410,15 @@ async function initializeApp() {
     const libraryPath = configData.config.libraryPath || "";
     document.getElementById("libraryPath").value = libraryPath;
 
-    // Verifica disponibilità modalità scrape e libreria PRIMA di switchMode
+    // Check scrape mode availability and library BEFORE switchMode
     await checkLibraryCount();
     await checkScrapeAvailability();
 
-    // Imposta modalità iniziale da config
+    // Set initial mode from config
     const initialMode = configData.config.mode || "scrape";
     await switchMode(initialMode);
 
-    // Inizializza visibilità pannello scrape in base al mode
+    // Initialize scrape panel visibility based on mode
     const scrapePanel = document.querySelector(".scraper-panel");
     if (scrapePanel) {
       if (initialMode === "edit") {

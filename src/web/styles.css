@@ -8,7 +8,7 @@ body {
   background-color: #f5f5f5;
   color: #333;
 }
-/* Barra di stato - gli stili sono ora in navbar.html (componente riutilizzabile) */
+/* Status bar - styles are now in navbar.html (reusable component) */
 
 /* Container principale */
 .main-container {
@@ -20,7 +20,7 @@ body {
   margin: 0 auto;
   height: calc(100vh - 48px);
 }
-/* Colonna sinistra */
+/* Left column */
 .left-column {
   display: flex;
   flex-direction: column;
@@ -240,7 +240,7 @@ body {
 .delete-all-items-btn:active {
   transform: scale(0.98);
 }
-/* Colonna destra */
+/* Right column */
 .right-column {
   background: white;
   padding: 20px;
@@ -294,7 +294,7 @@ input:disabled, input:read-only {
   background-color: #f5f5f5;
   color: #999;
 }
-/* Campo modificato (dirty) */
+/* Modified field (dirty) */
 input.dirty, textarea.dirty {
   border-left: 4px solid #ff9800;
   background-color: #fff3e0;

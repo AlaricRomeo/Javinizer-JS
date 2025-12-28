@@ -16,12 +16,12 @@ const config = loadConfig();
 const libraryReader = new LibraryReader(config.libraryPath);
 libraryReader.loadLibrary();
 
-// istanza ScrapeReader
+// ScrapeReader instance
 const scrapeReader = new ScrapeReader();
 scrapeReader.loadScrapeItems();
 
 // ─────────────────────────────
-// helper risposta standard
+// standard response helper
 // ─────────────────────────────
 function ok(item) {
   return { ok: true, item };
@@ -98,7 +98,7 @@ router.get("/prev", async (req, res) => {
 
 // ─────────────────────────────
 // POST /reload
-// Ricarica la libreria
+// Reload the library
 // ─────────────────────────────
 router.post("/reload", (req, res) => {
   try {
@@ -111,7 +111,7 @@ router.post("/reload", (req, res) => {
 
 // ─────────────────────────────
 // GET /count
-// Restituisce il numero di NFO nella libreria
+// Returns the number of NFOs in the library
 // ─────────────────────────────
 router.get("/count", (req, res) => {
   try {
@@ -128,7 +128,7 @@ router.get("/count", (req, res) => {
 router.get("/config", (req, res) => {
   try {
     const config = loadConfig();
-    // Assicurati che mode e scrapers esistano sempre
+    // Ensure mode and scrapers always exist
     if (!config.mode) config.mode = "scrape";
     if (!config.scrapers) config.scrapers = [];
     res.json({ ok: true, config });
@@ -139,7 +139,7 @@ router.get("/config", (req, res) => {
 
 // ─────────────────────────────
 // GET /lang/:code
-// Restituisce il file di traduzione
+// Returns the translation file
 // ─────────────────────────────
 router.get("/lang/:code", (req, res) => {
   try {
@@ -159,26 +159,26 @@ router.get("/lang/:code", (req, res) => {
 
 // ─────────────────────────────
 // GET /browse?path=...
-// Lista directory per il file browser
+// List directory for the file browser
 // ─────────────────────────────
 router.get("/browse", (req, res) => {
   try {
     const dirPath = req.query.path || process.env.HOME || "/";
 
-    // Sicurezza: verifica che la directory esista ed è leggibile
+    // Security: verify that the directory exists and is readable
     if (!fs.existsSync(dirPath)) {
-      return res.json({ ok: false, error: "Directory non trovata" });
+      return res.json({ ok: false, error: "Directory not found" });
     }
 
     const stats = fs.statSync(dirPath);
     if (!stats.isDirectory()) {
-      return res.json({ ok: false, error: "Path non è una directory" });
+      return res.json({ ok: false, error: "Path is not a directory" });
     }
 
-    // Leggi contenuto directory
+    // Read directory content
     const items = fs.readdirSync(dirPath, { withFileTypes: true });
 
-    // Filtra solo le directory, ignora file nascosti
+    // Filter only directories, ignore hidden files
     const directories = items
       .filter(item => item.isDirectory() && !item.name.startsWith("."))
       .map(item => ({
@@ -187,7 +187,7 @@ router.get("/browse", (req, res) => {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    // Aggiungi parent directory se non siamo alla root
+    // Add parent directory if we are not at root
     const parent = dirPath !== "/" ? path.dirname(dirPath) : null;
 
     res.json({
@@ -208,7 +208,7 @@ router.post("/config", (req, res) => {
   try {
     const newConfig = req.body;
 
-    // Mantieni i valori esistenti se non specificati
+    // Keep existing values if not specified
     const currentConfig = loadConfig();
     if (!newConfig.libraryPath && currentConfig.libraryPath) {
       newConfig.libraryPath = currentConfig.libraryPath;
@@ -228,7 +228,7 @@ router.post("/config", (req, res) => {
 
     saveConfig(newConfig);
 
-    // 🔁 ricarica la libreria solo se il path è cambiato
+    // 🔁 reload the library only if the path has changed
     if (newConfig.libraryPath && newConfig.libraryPath !== currentConfig.libraryPath) {
       libraryReader.rootPath = newConfig.libraryPath;
       libraryReader.loadLibrary();
@@ -248,17 +248,17 @@ router.post("/save", async (req, res) => {
     const { itemId, changes } = req.body;
 
     if (!changes || Object.keys(changes).length === 0) {
-      return res.json({ ok: false, error: "Nessuna modifica" });
+      return res.json({ ok: false, error: "No changes" });
     }
 
     if (!itemId) {
-      return res.json({ ok: false, error: "Item ID mancante" });
+      return res.json({ ok: false, error: "Item ID missing" });
     }
 
     // Find the item by ID instead of using getCurrent()
     const item = libraryReader.findById(itemId);
     if (!item) {
-      return res.json({ ok: false, error: `Item non trovato: ${itemId}` });
+      return res.json({ ok: false, error: `Item not found: ${itemId}` });
     }
 
     await saveNfoPatch(item.nfo, changes);
@@ -280,7 +280,7 @@ router.get("/scrape/current", (req, res) => {
     if (!item) {
       return res.json(ok(null));
     }
-    res.json(ok(item.data)); // Restituisce solo i dati, non i metadati scrape
+    res.json(ok(item.data)); // Returns only the data, not the scrape metadata
   } catch (err) {
     res.json(fail(err.message));
   }
@@ -371,27 +371,27 @@ router.post("/scrape/reload", (req, res) => {
 });
 
 // POST /scrape/save
-// Salva l'item corrente in scrape mode (crea cartella, sposta video, genera NFO, scarica immagini)
+// Save the current item in scrape mode (create folder, move video, generate NFO, download images)
 router.post("/scrape/save", async (req, res) => {
   try {
-    // Ottieni l'item corrente con i dati modificati dal client
+    // Get the current item with modified data from the client
     const modifiedData = req.body.item;
 
-    // Ottieni l'item originale dallo scrapeReader
+    // Get the original item from scrapeReader
     const currentScrapeItem = scrapeReader.getCurrent();
 
     if (!currentScrapeItem) {
       return res.json(fail("No scrape item loaded"));
     }
 
-    // Merge dei dati modificati con quelli originali
+    // Merge modified data with original data
     const itemToSave = { ...currentScrapeItem.data, ...modifiedData };
 
-    // Crea istanza ScrapeSaver con config aggiornata
+    // Create ScrapeSaver instance with updated config
     const currentConfig = loadConfig();
     const saver = new ScrapeSaver(currentConfig);
 
-    // Salva l'item
+    // Save the item
     const results = await saver.saveItem(itemToSave, currentScrapeItem);
 
     if (results.success) {
@@ -419,10 +419,10 @@ router.post("/scrape/save", async (req, res) => {
         console.error(`[Routes] Actor scraping completed: ${actorResults.scraped} scraped, ${actorResults.failed} failed`);
       }
 
-      // Rimuovi il file JSON dalla lista (è stato processato)
+      // Remove the JSON file from the list (it has been processed)
       scrapeReader.deleteCurrent();
 
-      // Ricarica la libreria per mostrare il nuovo item
+      // Reload the library to show the new item
       libraryReader.loadLibrary();
 
       res.json({
@@ -449,7 +449,7 @@ router.post("/scrape/save", async (req, res) => {
 
 // ─────────────────────────────
 // POST /item/scrape/start
-// Avvia lo scraping tramite WebSocket per comunicazione bidirezionale
+// Start scraping via WebSocket for bidirectional communication
 // ─────────────────────────────
 router.post("/scrape/start", async (req, res) => {
   const { EventEmitter } = require('events');
@@ -643,7 +643,7 @@ router.post("/actors/search", async (req, res) => {
 
 // ─────────────────────────────
 // POST /item/scrape/clear-cache
-// Pulisce la cache di tutti gli scraper
+// Clear the cache of all scrapers
 // ─────────────────────────────
 router.post("/scrape/clear-cache", async (req, res) => {
   try {

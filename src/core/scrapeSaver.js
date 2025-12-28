@@ -6,12 +6,12 @@ const sharp = require("sharp");
 const { saveNfoFull } = require("./saveNfo");
 
 /**
- * Salva un item scraped creando:
- * 1. Cartella nella libreria
- * 2. Spostamento e rinomina del video
- * 3. Generazione NFO
- * 4. Download fanart
- * 5. Creazione poster dal crop della fanart
+ * Saves a scraped item by creating:
+ * 1. Folder in the library
+ * 2. Moving and renaming the video
+ * 3. Generating NFO
+ * 4. Downloading fanart
+ * 5. Creating poster from fanart crop
  */
 class ScrapeSaver {
   constructor(config) {
@@ -19,15 +19,15 @@ class ScrapeSaver {
   }
 
   /**
-   * Formatta il nome della cartella usando i tag configurati
+   * Formats the folder name using configured tags
    */
   formatFolderName(item) {
     let format = this.config.folderFormat || "<ID>";
 
-    // Estrai anno dalla data di rilascio
+    // Extract year from release date
     const year = item.releaseDate ? item.releaseDate.split("-")[0] : "";
 
-    // Sostituisci i tag
+    // Replace tags
     format = format
       .replace(/<ID>/g, item.id || "")
       .replace(/<TITLE>/g, item.title || "")
@@ -35,14 +35,14 @@ class ScrapeSaver {
       .replace(/<STUDIO>/g, item.studio || "")
       .replace(/<ORIGINALTITLE>/g, item.originalTitle || "");
 
-    // Rimuovi caratteri non validi per i nomi di file
+    // Remove invalid characters for file names
     format = format.replace(/[<>:"/\\|?*]/g, "");
 
     return format.trim();
   }
 
   /**
-   * Trova il file video che inizia con l'ID
+   * Finds the video file that starts with the ID
    */
   findVideoFile(id, videoPath) {
     if (!fs.existsSync(videoPath)) {
@@ -61,7 +61,7 @@ class ScrapeSaver {
   }
 
   /**
-   * Scarica un'immagine da URL
+   * Downloads an image from URL
    */
   downloadImage(url, destPath) {
     return new Promise((resolve, reject) => {
@@ -90,27 +90,27 @@ class ScrapeSaver {
   }
 
   /**
-   * Crea il poster dalla fanart (crop della parte destra)
+   * Creates the poster from fanart (crop of the right side)
    */
   async createPoster(fanartPath, posterPath) {
     try {
       const image = sharp(fanartPath);
       const metadata = await image.metadata();
 
-      // Calcola dimensioni per il crop (rapporto 71:100 = width:height)
+      // Calculate dimensions for crop (ratio 71:100 = width:height)
       const posterWidth = Math.floor(metadata.height * 71 / 100);
 
       console.log(`[Poster Crop] Fanart: ${metadata.width}x${metadata.height}`);
       console.log(`[Poster Crop] Poster width calculated: ${posterWidth}`);
 
-      // Se il poster è più largo dell'immagine originale, usa l'immagine intera
+      // If poster is wider than original image, use the entire image
       if (posterWidth >= metadata.width) {
         console.log(`[Poster Crop] Poster width >= fanart width, copying without crop`);
         await image.toFile(posterPath);
         return true;
       }
 
-      // Crop della parte destra
+      // Crop from the right side
       const leftOffset = metadata.width - posterWidth;
       console.log(`[Poster Crop] Left offset: ${leftOffset}, cropping from right side`);
 
@@ -131,7 +131,7 @@ class ScrapeSaver {
   }
 
   /**
-   * Salva l'item completo
+   * Saves the complete item
    */
   async saveItem(item, scrapeData) {
     const results = {
@@ -145,7 +145,7 @@ class ScrapeSaver {
     };
 
     try {
-      // 1. Crea nome cartella
+      // 1. Create folder name
       const folderName = this.formatFolderName(item);
       const folderPath = path.join(this.config.libraryPath, folderName);
 
@@ -157,7 +157,7 @@ class ScrapeSaver {
       fs.mkdirSync(folderPath, { recursive: true });
       results.folder = folderPath;
 
-      // 2. Sposta e rinomina video (se esiste)
+      // 2. Move and rename video (if exists)
       const videoPath = scrapeData.videoFile || this.config.videoPath;
       const videoFile = this.findVideoFile(item.id, path.dirname(videoPath));
 
@@ -170,20 +170,20 @@ class ScrapeSaver {
         results.errors.push(`Video file not found for ${item.id}`);
       }
 
-      // 3. Genera NFO
+      // 3. Generate NFO
       // Note: Actor data should already be enriched from batch-actors process
       const nfoPath = path.join(folderPath, `${item.id}.nfo`);
       await saveNfoFull(nfoPath, item);
       results.nfo = nfoPath;
 
-      // 4. Scarica fanart
+      // 4. Download fanart
       if (item.coverUrl) {
         const fanartPath = path.join(folderPath, "fanart.jpg");
         try {
           await this.downloadImage(item.coverUrl, fanartPath);
           results.fanart = fanartPath;
 
-          // 5. Crea poster
+          // 5. Create poster
           const posterPath = path.join(folderPath, "poster.jpg");
           const posterCreated = await this.createPoster(fanartPath, posterPath);
           if (posterCreated) {

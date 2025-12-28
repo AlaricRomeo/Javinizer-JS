@@ -2,8 +2,8 @@ const fs = require("fs");
 const xml2js = require("xml2js");
 
 /**
- * Legge e parse un file .nfo (XML)
- * Ritorna un oggetto JS grezzo
+ * Reads and parses a .nfo file (XML)
+ * Returns a raw JS object
  */
 async function readNfo(nfoPath) {
   const xmlContent = fs.readFileSync(nfoPath, "utf-8");

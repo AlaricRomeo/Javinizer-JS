@@ -9,11 +9,11 @@ class LibraryReader {
   }
 
   /**
-   * Scansiona la root e trova solo le cartelle valide
-   * (una cartella è valida se contiene almeno un file .nfo)
+   * Scans the root and finds only valid folders
+   * (a folder is valid if it contains at least one .nfo file)
    */
   loadLibrary() {
-    // Verifica che il path esista
+    // Verify that the path exists
     if (!fs.existsSync(this.rootPath)) {
       this.items = [];
       this.currentIndex = -1;
@@ -44,7 +44,7 @@ class LibraryReader {
   }
 
   /**
-   * Ritorna l'item corrente
+   * Returns the current item
    */
   getCurrent() {
     if (this.currentIndex === -1) return null;
@@ -52,7 +52,7 @@ class LibraryReader {
   }
 
   /**
-   * Ritorna l'item a un indice specifico
+   * Returns the item at a specific index
    */
   getItem(index) {
     if (index < 0 || index >= this.items.length) return null;
@@ -61,7 +61,7 @@ class LibraryReader {
   }
 
   /**
-   * Vai all'item successivo (navigazione circolare)
+   * Go to next item (circular navigation)
    */
   getNext() {
     if (this.items.length === 0) return null;
@@ -71,7 +71,7 @@ class LibraryReader {
   }
 
   /**
-   * Vai all'item precedente (navigazione circolare)
+   * Go to previous item (circular navigation)
    */
   getPrevious() {
     if (this.items.length === 0) return null;
@@ -81,16 +81,16 @@ class LibraryReader {
   }
 
   /**
-   * Trova un item per ID
-   * @param {string} id - ID dell'item da cercare
-   * @returns {object|null} - Item trovato o null
+   * Finds an item by ID
+   * @param {string} id - ID of the item to search for
+   * @returns {object|null} - Found item or null
    */
   findById(id) {
     return this.items.find(item => item.id === id) || null;
   }
 
   /**
-   * Ricarica la cartella corrente (utile se i file sono cambiati)
+   * Reloads the current folder (useful if files have changed)
    */
   reloadCurrent() {
     if (this.currentIndex === -1) return null;
@@ -106,7 +106,7 @@ class LibraryReader {
   }
 
   /**
-   * Numero totale di item validi
+   * Total number of valid items
    */
   count() {
     return this.items.length;

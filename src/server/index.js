@@ -15,7 +15,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // ─────────────────────────────
-// Middleware base
+// Base middleware
 // ─────────────────────────────
 app.use(express.json());
 
@@ -31,15 +31,15 @@ app.use("/", express.static(
 // ─────────────────────────────
 app.use("/media", (req, res) => {
   const fs = require("fs");
-  // Rimuove il prefisso /media/ dall'URL
+  // Remove /media/ prefix from URL
   const requestedPath = decodeURIComponent(req.url.substring(1));
 
-  // Verifica che il file esista
+  // Verify that file exists
   if (!fs.existsSync(requestedPath)) {
     return res.status(404).send("File not found");
   }
 
-  // Invia il file
+  // Send file
   res.sendFile(requestedPath);
 });
 
@@ -162,5 +162,5 @@ wss.on('connection', (ws) => {
 // Start server
 // ─────────────────────────────
 server.listen(PORT, () => {
-  console.log(`WebUI attiva su http://localhost:${PORT}`);
+  console.log(`WebUI active on http://localhost:${PORT}`);
 });

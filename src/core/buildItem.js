@@ -3,21 +3,21 @@ const { mapNfoToModel } = require("./nfoMapper");
 const { enrichModelWithLocalMedia } = require("./localMediaMapper");
 
 /**
- * Costruisce il modello canonico completo
- * a partire da un item del filesystem
+ * Builds the complete canonical model
+ * from a filesystem item
  */
 async function buildItem(item) {
   if (!item || !item.nfo) return null;
 
-  // 1. leggi NFO (XML grezzo)
+  // 1. read NFO (raw XML)
   const parsedXml = await readNfo(item.nfo);
 
-  // 2. mappa nel modello canonico
+  // 2. map to canonical model
   let model = mapNfoToModel(parsedXml);
 
   if (!model) return null;
 
-  // 3. arricchisci con dati locali
+  // 3. enrich with local data
   model = enrichModelWithLocalMedia(model, item);
 
   return model;

@@ -2,8 +2,8 @@ const fs = require("fs");
 const xml2js = require("xml2js");
 
 /**
- * Mappa i nomi dei campi del modello canonico
- * ai nomi dei campi XML NFO (bidirezionale)
+ * Maps canonical model field names
+ * to XML NFO field names (bidirectional)
  */
 const fieldMapping = {
   originalTitle: "originaltitle",
@@ -17,27 +17,27 @@ const fieldMapping = {
 };
 
 /**
- * Converte un campo del modello canonico in formato XML NFO
- * @param {string} key - Nome del campo
- * @param {*} value - Valore del campo
- * @returns {object} - Oggetto con xmlKey e xmlValue
+ * Converts a canonical model field to XML NFO format
+ * @param {string} key - Field name
+ * @param {*} value - Field value
+ * @returns {object} - Object with xmlKey and xmlValue
  */
 function modelFieldToXml(key, value) {
   const xmlKey = fieldMapping[key] || key;
 
-  // Gestione campi vuoti
+  // Handle empty fields
   if (value === null || value === undefined || value === "") {
     return { xmlKey, xmlValue: [""] };
   }
 
-  // Gestione campi semplici (stringhe e numeri)
+  // Handle simple fields (strings and numbers)
   if (typeof value === "string" || typeof value === "number") {
     return { xmlKey, xmlValue: [String(value)] };
   }
 
-  // Gestione array semplici (genres, tags)
+  // Handle simple arrays (genres, tags)
   if (Array.isArray(value)) {
-    // Array di actor (struttura complessa)
+    // Actor array (complex structure)
     if (xmlKey === "actor") {
       return {
         xmlKey,
@@ -49,13 +49,13 @@ function modelFieldToXml(key, value) {
         }))
       };
     }
-    // Array semplici
+    // Simple arrays
     return { xmlKey, xmlValue: value.map(v => String(v)) };
   }
 
-  // Gestione oggetti complessi
+  // Handle complex objects
   if (typeof value === "object") {
-    // Rating (si divide in due campi)
+    // Rating (splits into two fields)
     if (xmlKey === "rating") {
       return {
         xmlKey: "rating",
@@ -69,10 +69,10 @@ function modelFieldToXml(key, value) {
 }
 
 /**
- * Salva le modifiche nell'NFO file preservando tutti i campi esistenti
- * Modalità PATCH: modifica solo i campi specificati
- * @param {string} nfoPath - Path al file .nfo
- * @param {object} changes - Oggetto con le modifiche da applicare
+ * Saves changes to NFO file preserving all existing fields
+ * PATCH mode: modifies only specified fields
+ * @param {string} nfoPath - Path to .nfo file
+ * @param {object} changes - Object with changes to apply
  */
 async function saveNfoPatch(nfoPath, changes) {
   const xml = fs.readFileSync(nfoPath, "utf8");
@@ -95,14 +95,14 @@ async function saveNfoPatch(nfoPath, changes) {
   const parsed = await parser.parseStringPromise(xml);
   const movie = parsed.movie;
 
-  // Applica ogni modifica usando la funzione helper
+  // Apply each change using helper function
   for (const key in changes) {
     const result = modelFieldToXml(key, changes[key]);
 
-    // Applica il valore principale
+    // Apply main value
     movie[result.xmlKey] = result.xmlValue;
 
-    // Applica eventuali campi extra (es. votes per rating)
+    // Apply any extra fields (e.g. votes for rating)
     if (result.extra) {
       Object.assign(movie, result.extra);
     }
@@ -113,13 +113,13 @@ async function saveNfoPatch(nfoPath, changes) {
 }
 
 /**
- * Salva l'intero modello canonico come NFO
- * Modalità FULL: crea un nuovo NFO completo (usato dallo scraper)
- * @param {string} nfoPath - Path al file .nfo
- * @param {object} model - Modello canonico completo
+ * Saves the entire canonical model as NFO
+ * FULL mode: creates a new complete NFO (used by scraper)
+ * @param {string} nfoPath - Path to .nfo file
+ * @param {object} model - Complete canonical model
  */
 async function saveNfoFull(nfoPath, model) {
-  // backup se esiste già
+  // backup if already exists
   if (fs.existsSync(nfoPath)) {
     const xml = fs.readFileSync(nfoPath, "utf8");
     fs.writeFileSync(nfoPath + ".bak", xml, "utf8");
@@ -136,10 +136,10 @@ async function saveNfoFull(nfoPath, model) {
     xmldec: { version: "1.0", encoding: "UTF-8", standalone: false }
   });
 
-  // Costruisci la struttura movie dall'inizio
+  // Build movie structure from scratch
   const movie = {};
 
-  // Campi semplici obbligatori
+  // Required simple fields
   movie.title = [model.title || ""];
   movie.originaltitle = [model.originalTitle || ""];
   movie.id = [model.id || model.code || ""];
@@ -170,7 +170,7 @@ async function saveNfoFull(nfoPath, model) {
     movie.tag = model.tags;
   }
 
-  // Actors (array complesso)
+  // Actors (complex array)
   if (model.actor && model.actor.length > 0) {
     movie.actor = model.actor.map(a => ({
       name: [a.name || ""],

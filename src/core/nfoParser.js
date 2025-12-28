@@ -2,9 +2,9 @@ const fs = require("fs");
 const xml2js = require("xml2js");
 
 /**
- * Legge e parsifica un file .nfo in formato Kodi/NFO
- * @param {string} nfoPath - path completo del file .nfo
- * @returns {Promise<Object>} - oggetto con i campi parsati
+ * Reads and parses a .nfo file in Kodi/NFO format
+ * @param {string} nfoPath - full path to .nfo file
+ * @returns {Promise<Object>} - object with parsed fields
  */
 async function parseNfo(nfoPath) {
   const xml = fs.readFileSync(nfoPath, "utf8");
@@ -13,7 +13,7 @@ async function parseNfo(nfoPath) {
   const result = await parser.parseStringPromise(xml);
   const movie = result.movie || {};
 
-  // Estrai i campi che ci interessano
+  // Extract the fields we need
   return {
     title: getString(movie.title),
     originalTitle: getString(movie.originaltitle),
@@ -28,7 +28,7 @@ async function parseNfo(nfoPath) {
 }
 
 /**
- * Helper per estrarre una stringa da un array XML
+ * Helper to extract a string from an XML array
  */
 function getString(arr) {
   if (!arr || !arr[0]) return "";
@@ -36,7 +36,7 @@ function getString(arr) {
 }
 
 /**
- * Helper per estrarre un array da elementi XML
+ * Helper to extract an array from XML elements
  */
 function getArray(arr) {
   if (!arr) return [];
@@ -44,7 +44,7 @@ function getArray(arr) {
 }
 
 /**
- * Parser per gli attori
+ * Parser for actors
  */
 function parseActors(actorArray) {
   if (!actorArray) return [];
