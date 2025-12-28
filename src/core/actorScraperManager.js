@@ -192,7 +192,7 @@ function saveActorLocal(actor) {
     // Convert to NFO format and save
     const nfoContent = actorToNFO(actor);
     fs.writeFileSync(actorNfoPath, nfoContent, 'utf-8');
-    console.error(`[ActorScraperManager] Saved actor NFO: ${actor.id}.nfo`);
+    console.log(`[ActorScraperManager] Saved actor NFO: ${actor.id}.nfo`);
 
     // Update index
     updateIndex(actor);
@@ -223,7 +223,7 @@ function executeActorScraper(scraperName, actorName) {
       return;
     }
 
-    console.error(`[ActorScraperManager] Executing scraper: ${scraperName} for ${actorName}`);
+    console.log(`[ActorScraperManager] Executing scraper: ${scraperName} for ${actorName}`);
 
     // Spawn scraper process
     const child = spawn('node', [scraperPath, actorName], {
@@ -259,7 +259,7 @@ function executeActorScraper(scraperName, actorName) {
 
     // Capture stderr (progress logs)
     child.stderr.on('data', (data) => {
-      console.error(data.toString());
+      console.log(data.toString());
     });
 
     // Handle process exit
@@ -278,7 +278,7 @@ function executeActorScraper(scraperName, actorName) {
       // Parse JSON output
       try {
         const result = JSON.parse(stdout);
-        console.error(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
+        console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
         resolve(result);
       } catch (error) {
         console.error(`[ActorScraperManager] Failed to parse JSON from ${scraperName}:`, error.message);
@@ -465,8 +465,8 @@ async function scrapeActor(actorName, emitter = null) {
   // Get enabled scrapers (default to ['local', 'javdatabase'])
   const enabledScrapers = config.actorsScrapers || ['local', 'javdatabase'];
 
-  console.error(`[ActorScraperManager] Scraping actor: ${actorName}`);
-  console.error(`[ActorScraperManager] Enabled scrapers: ${enabledScrapers.join(', ')}`);
+  console.log(`[ActorScraperManager] Scraping actor: ${actorName}`);
+  console.log(`[ActorScraperManager] Enabled scrapers: ${enabledScrapers.join(', ')}`);
 
   if (emitter) {
     emitter.emit('progress', {
@@ -480,9 +480,9 @@ async function scrapeActor(actorName, emitter = null) {
   if (!actorId) {
     // Generate new ID from name
     actorId = normalizeActorName(actorName);
-    console.error(`[ActorScraperManager] New actor, generated ID: ${actorId}`);
+    console.log(`[ActorScraperManager] New actor, generated ID: ${actorId}`);
   } else {
-    console.error(`[ActorScraperManager] Found existing actor ID: ${actorId}`);
+    console.log(`[ActorScraperManager] Found existing actor ID: ${actorId}`);
   }
 
   const scraperResults = [];
@@ -503,7 +503,7 @@ async function scrapeActor(actorName, emitter = null) {
         data: result
       });
 
-      console.error(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
+      console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
 
       if (emitter) {
         emitter.emit('progress', {
@@ -514,7 +514,7 @@ async function scrapeActor(actorName, emitter = null) {
       // Check if we have all fields populated
       const tempMerged = mergeActorData(actorName, scraperResults, enabledScrapers);
       if (isActorComplete(tempMerged)) {
-        console.error('[ActorScraperManager] All fields populated, stopping scraping');
+        console.log('[ActorScraperManager] All fields populated, stopping scraping');
 
         if (emitter) {
           emitter.emit('progress', {
@@ -561,13 +561,13 @@ async function getActor(actorName) {
     // Try to load from local storage
     const actor = loadActorLocal(actorId);
     if (actor) {
-      console.error(`[ActorScraperManager] Loaded actor from cache: ${actorId}`);
+      console.log(`[ActorScraperManager] Loaded actor from cache: ${actorId}`);
       return actor;
     }
   }
 
   // Not in cache, scrape it
-  console.error(`[ActorScraperManager] Actor not in cache, scraping: ${actorName}`);
+  console.log(`[ActorScraperManager] Actor not in cache, scraping: ${actorName}`);
   return await scrapeActor(actorName);
 }
 
@@ -628,7 +628,7 @@ function extractActorNamesFromMovies() {
       }
     });
 
-    console.error(`[ActorScraperManager] Found ${actorNames.size} unique actors in ${files.length} movies`);
+    console.log(`[ActorScraperManager] Found ${actorNames.size} unique actors in ${files.length} movies`);
     return Array.from(actorNames);
   } catch (error) {
     console.error('[ActorScraperManager] Failed to extract actor names:', error.message);
@@ -659,7 +659,7 @@ async function batchScrapeActors(emitter = null) {
     };
   }
 
-  console.error('[ActorScraperManager] Starting batch actor scraping...');
+  console.log('[ActorScraperManager] Starting batch actor scraping...');
 
   if (emitter) {
     emitter.emit('progress', {
@@ -682,7 +682,7 @@ async function batchScrapeActors(emitter = null) {
     };
   }
 
-  console.error(`[ActorScraperManager] Found ${actorNames.length} unique actors in movies`);
+  console.log(`[ActorScraperManager] Found ${actorNames.length} unique actors in movies`);
 
   if (emitter) {
     emitter.emit('progress', {
@@ -697,7 +697,7 @@ async function batchScrapeActors(emitter = null) {
   // Process each actor
   for (let i = 0; i < actorNames.length; i++) {
     const actorName = actorNames[i];
-    console.error(`[ActorScraperManager] Processing actor ${i + 1}/${actorNames.length}: ${actorName}`);
+    console.log(`[ActorScraperManager] Processing actor ${i + 1}/${actorNames.length}: ${actorName}`);
 
     if (emitter) {
       emitter.emit('progress', {
@@ -711,7 +711,7 @@ async function batchScrapeActors(emitter = null) {
       if (actorId) {
         const existing = loadActorLocal(actorId);
         if (existing) {
-          console.error(`[ActorScraperManager] Actor already cached: ${actorName}`);
+          console.log(`[ActorScraperManager] Actor already cached: ${actorName}`);
           cached++;
 
           if (emitter) {
@@ -728,7 +728,7 @@ async function batchScrapeActors(emitter = null) {
 
       if (actorData) {
         scraped++;
-        console.error(`[ActorScraperManager] Successfully scraped: ${actorName}`);
+        console.log(`[ActorScraperManager] Successfully scraped: ${actorName}`);
 
         if (emitter) {
           emitter.emit('progress', {
@@ -737,7 +737,7 @@ async function batchScrapeActors(emitter = null) {
         }
       } else {
         failed++;
-        console.error(`[ActorScraperManager] Failed to scrape: ${actorName}`);
+        console.log(`[ActorScraperManager] Failed to scrape: ${actorName}`);
 
         if (emitter) {
           emitter.emit('progress', {
@@ -766,7 +766,7 @@ async function batchScrapeActors(emitter = null) {
     failed: failed
   };
 
-  console.error('[ActorScraperManager] Batch scraping summary:', summary);
+  console.log('[ActorScraperManager] Batch scraping summary:', summary);
   return summary;
 }
 
@@ -789,7 +789,7 @@ async function updateMovieActorData() {
     };
   }
 
-  console.error('[ActorScraperManager] Updating movie files with actor data...');
+  console.log('[ActorScraperManager] Updating movie files with actor data...');
 
   let updated = 0;
   let failed = 0;
@@ -855,7 +855,7 @@ async function updateMovieActorData() {
           const dataToSave = hasWrapper ? fileData : movieData;
           fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2), 'utf-8');
           updated++;
-          console.error(`[ActorScraperManager] Updated movie: ${filename}`);
+          console.log(`[ActorScraperManager] Updated movie: ${filename}`);
         }
       } catch (error) {
         failed++;
@@ -871,7 +871,7 @@ async function updateMovieActorData() {
       failed: failed
     };
 
-    console.error('[ActorScraperManager] Movie update summary:', summary);
+    console.log('[ActorScraperManager] Movie update summary:', summary);
     return summary;
   } catch (error) {
     console.error('[ActorScraperManager] Failed to update movies:', error.message);
@@ -892,7 +892,7 @@ async function updateMovieActorData() {
  * @returns {Promise<object>} - Complete workflow summary
  */
 async function batchProcessActors(emitter = null) {
-  console.error('[ActorScraperManager] Starting complete batch actor processing...');
+  console.log('[ActorScraperManager] Starting complete batch actor processing...');
 
   // Step 1: Scrape all actors
   const scrapeSummary = await batchScrapeActors(emitter);
