@@ -5,17 +5,14 @@ const router = express.Router();
 const fs = require("fs");
 const path = require("path");
 
-// config
-const configPath = path.join(process.cwd(), "config.json");
-const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-
 // Core
 const LibraryReader = require("../core/libraryReader");
 const ScrapeReader = require("../core/scrapeReader");
 const ScrapeSaver = require("../core/scrapeSaver");
 const { saveNfoPatch } = require("../core/saveNfo");
 
-// istanza con PATH REALE
+// Load config and initialize library reader
+const config = loadConfig();
 const libraryReader = new LibraryReader(config.libraryPath);
 libraryReader.loadLibrary();
 

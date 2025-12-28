@@ -13,7 +13,6 @@
 
     // Dispatch event to signal modal is loaded
     window.dispatchEvent(new Event('actorModalLoaded'));
-    console.log('[ActorModal] Modal loaded successfully');
   } catch (error) {
     console.error('Failed to load actor modal:', error);
   }

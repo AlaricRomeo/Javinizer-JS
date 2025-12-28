@@ -402,7 +402,7 @@ async function switchMode(newMode) {
       scrapePanel.style.pointerEvents = "none";
     }
 
-    await loadItemForMode("/item/current");
+    await loadItem("/item/current");
     // In edit mode il bottone salva è abilitato solo con dirty fields
     updateSaveButton();
   } else {
@@ -416,7 +416,7 @@ async function switchMode(newMode) {
       scrapePanel.style.pointerEvents = "auto";
     }
 
-    const loaded = await loadItemForMode("/item/scrape/current");
+    const loaded = await loadItem("/item/scrape/current");
 
     // Aggiorna visibilità bottoni delete
     updateDeleteButtons(loaded);
@@ -450,10 +450,6 @@ function updateDeleteButtons(itemLoaded) {
 
   // Mostra deleteAllItems solo se ci sono items disponibili
   deleteAllBtn.style.display = (scrapeCount > 0) ? "block" : "none";
-}
-
-async function loadItemForMode(url) {
-  return await loadItem(url);
 }
 
 // ─────────────────────────────
@@ -517,7 +513,7 @@ function clearUI() {
 async function loadItem(url, retryCount = 0) {
   try {
     // IMPORTANT: Check for unsaved changes before loading a new item
-    if (Object.keys(dirtyFields).length > 0) {
+    if (dirtyFields.size > 0) {
       const confirm = window.confirm(
         "You have unsaved changes. If you continue, these changes will be lost. Do you want to continue?"
       );
@@ -531,9 +527,7 @@ async function loadItem(url, retryCount = 0) {
     // Check if response is ok
     if (!res.ok) {
       // 404 or other HTTP errors - not a big deal, just no items available
-      if (res.status === 404) {
-        console.log('No item available at:', url);
-      } else {
+      if (res.status !== 404) {
         console.error(`HTTP error! status: ${res.status}`);
       }
       return false;
@@ -575,10 +569,6 @@ async function loadItem(url, retryCount = 0) {
     // Network errors - retry up to 2 times with increasing delays
     if (err.name === 'TypeError' && err.message.includes('fetch') && retryCount < 2) {
       const delay = (retryCount + 1) * 200; // 200ms, 400ms
-      // Only log on first retry to reduce console noise
-      if (retryCount === 0) {
-        console.log(`Retrying request to ${url}...`);
-      }
       await new Promise(resolve => setTimeout(resolve, delay));
       return loadItem(url, retryCount + 1);
     } else if (retryCount >= 2) {
@@ -728,23 +718,16 @@ function renderActors() {
 let editingActorIndex = null;
 
 function openActorModal(index = null) {
-  console.log('[openActorModal] Opening modal for index:', index);
   editingActorIndex = index;
   const modal = document.getElementById("actorEditModal");
 
-  if (!modal) {
-    console.error('[openActorModal] Modal element not found!');
+  if (!modal || !document.getElementById("actorEditModalTitle")) {
     return;
   }
 
   const modalTitle = document.getElementById("actorEditModalTitle");
   const removeBtn = document.getElementById("actorEditRemove");
   const sourceInfo = document.getElementById("actorEditSourceInfo");
-
-  if (!modalTitle) {
-    console.error('[openActorModal] Modal title element not found!');
-    return;
-  }
 
   const isNewActor = index === null;
   const actor = isNewActor ? {} : currentItem.actor[index];

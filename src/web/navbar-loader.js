@@ -21,8 +21,6 @@ async function loadNavbar() {
 
     // Initialize language selector
     initLanguageSelector();
-
-    console.log('Navbar loaded successfully');
   } catch (error) {
     console.error('Failed to load navbar:', error);
   }
@@ -48,9 +46,6 @@ function initLanguageSelector() {
 
     if (window.i18n) {
       await window.i18n.changeLanguage(newLang);
-      console.log('Language changed to:', newLang);
-    } else {
-      console.error('i18n not available');
     }
   });
 }
