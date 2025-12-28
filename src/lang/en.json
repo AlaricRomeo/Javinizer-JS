@@ -4,6 +4,7 @@
   },
   "nav": {
     "home": "Home",
+    "actors": "Actors",
     "config": "Configuration",
     "about": "About"
   },

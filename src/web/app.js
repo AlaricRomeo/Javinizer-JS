@@ -514,7 +514,7 @@ function clearUI() {
 // ─────────────────────────────
 // Load Item
 // ─────────────────────────────
-async function loadItem(url) {
+async function loadItem(url, retryCount = 0) {
   try {
     // IMPORTANT: Check for unsaved changes before loading a new item
     if (Object.keys(dirtyFields).length > 0) {
@@ -530,14 +530,22 @@ async function loadItem(url) {
 
     // Check if response is ok
     if (!res.ok) {
-      console.error(`HTTP error! status: ${res.status}`);
+      // 404 or other HTTP errors - not a big deal, just no items available
+      if (res.status === 404) {
+        console.log('No item available at:', url);
+      } else {
+        console.error(`HTTP error! status: ${res.status}`);
+      }
       return false;
     }
 
     const data = await res.json();
 
     if (!data.ok) {
-      alert(data.error);
+      // Only show alert if there's a specific error message (not just "no items")
+      if (data.error && !data.error.includes('No item') && !data.error.includes('nessun')) {
+        alert(data.error);
+      }
       return false;
     }
 
@@ -564,8 +572,22 @@ async function loadItem(url) {
     renderItem(currentItem);
     return true;
   } catch (err) {
-    console.error("Error loading item:", err);
-    console.error("URL was:", url);
+    // Network errors - retry up to 2 times with increasing delays
+    if (err.name === 'TypeError' && err.message.includes('fetch') && retryCount < 2) {
+      const delay = (retryCount + 1) * 200; // 200ms, 400ms
+      // Only log on first retry to reduce console noise
+      if (retryCount === 0) {
+        console.log(`Retrying request to ${url}...`);
+      }
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return loadItem(url, retryCount + 1);
+    } else if (retryCount >= 2) {
+      // Silent failure after retries - normal if no items exist
+      return false;
+    } else {
+      console.error("Error loading item:", err);
+      console.error("URL was:", url);
+    }
     return false;
   }
 }
@@ -706,12 +728,23 @@ function renderActors() {
 let editingActorIndex = null;
 
 function openActorModal(index = null) {
+  console.log('[openActorModal] Opening modal for index:', index);
   editingActorIndex = index;
   const modal = document.getElementById("actorEditModal");
-  const modalTitle = document.querySelector("#actorEditContent h2");
+
+  if (!modal) {
+    console.error('[openActorModal] Modal element not found!');
+    return;
+  }
+
+  const modalTitle = document.getElementById("actorEditModalTitle");
   const removeBtn = document.getElementById("actorEditRemove");
-  const previewDiv = document.getElementById("actorEditPreview");
   const sourceInfo = document.getElementById("actorEditSourceInfo");
+
+  if (!modalTitle) {
+    console.error('[openActorModal] Modal title element not found!');
+    return;
+  }
 
   const isNewActor = index === null;
   const actor = isNewActor ? {} : currentItem.actor[index];
@@ -721,57 +754,70 @@ function openActorModal(index = null) {
     ? window.i18n.t(isNewActor ? "actorModal.titleAdd" : "actorModal.title")
     : (isNewActor ? "Aggiungi Attore" : "Modifica Attore");
 
+  // Update preview first
+  updateActorPreview(actor.thumb || "");
+
   // Popola campi base
-  document.getElementById("actorEditName").value = actor.name || "";
-  document.getElementById("actorEditAltName").value = actor.altName || "";
-  document.getElementById("actorEditRole").value = actor.role || "Actress";
-  document.getElementById("actorEditThumb").value = actor.thumb || "";
+  const nameEl = document.getElementById("actorEditName");
+  const altNameEl = document.getElementById("actorEditAltName");
+  const roleEl = document.getElementById("actorEditRole");
+  const thumbEl = document.getElementById("actorEditThumb");
+
+  if (nameEl) nameEl.value = actor.name || "";
+  if (altNameEl) altNameEl.value = actor.altName || "";
+  if (roleEl) roleEl.value = actor.role || "Actress";
+  if (thumbEl) thumbEl.value = actor.thumb || "";
 
   // Popola campi estesi
-  document.getElementById("actorEditBirthdate").value = actor.birthdate || "";
-  document.getElementById("actorEditHeight").value = actor.height || "";
-  document.getElementById("actorEditBust").value = actor.bust || "";
-  document.getElementById("actorEditWaist").value = actor.waist || "";
-  document.getElementById("actorEditHips").value = actor.hips || "";
+  const birthdateEl = document.getElementById("actorEditBirthdate");
+  const heightEl = document.getElementById("actorEditHeight");
+  const bustEl = document.getElementById("actorEditBust");
+  const waistEl = document.getElementById("actorEditWaist");
+  const hipsEl = document.getElementById("actorEditHips");
+
+  if (birthdateEl) birthdateEl.value = actor.birthdate || "";
+  if (heightEl) heightEl.value = actor.height || "";
+  if (bustEl) bustEl.value = actor.bust || "";
+  if (waistEl) waistEl.value = actor.waist || "";
+  if (hipsEl) hipsEl.value = actor.hips || "";
 
   // Mostra fonte dati se disponibile
   if (!isNewActor && actor.meta && actor.meta.sources) {
-    document.getElementById("actorEditSource").textContent = actor.meta.sources.join(", ");
-    sourceInfo.style.display = "block";
+    const sourceSpan = document.getElementById("actorEditSource");
+    if (sourceSpan) {
+      sourceSpan.textContent = actor.meta.sources.join(", ");
+      sourceInfo.style.display = "block";
+    }
   } else {
-    sourceInfo.style.display = "none";
+    if (sourceInfo) sourceInfo.style.display = "none";
   }
 
-  // Gestisci visibilità bottone rimozione e preview
-  removeBtn.style.display = isNewActor ? "none" : "block";
+  // Gestisci visibilità bottone rimozione
+  if (removeBtn) removeBtn.style.display = isNewActor ? "none" : "block";
 
-  if (!isNewActor && actor.thumb) {
-    updateActorPreview(actor.thumb);
-  } else {
-    previewDiv.style.display = "none";
-  }
-
-  modal.style.display = "block";
+  // Show modal using CSS class
+  modal.classList.add("active");
 }
 
 function closeActorModal() {
-  document.getElementById("actorEditModal").style.display = "none";
+  const modal = document.getElementById("actorEditModal");
+  if (modal) {
+    modal.classList.remove("active");
+  }
   editingActorIndex = null;
 }
 
 function updateActorPreview(url) {
-  const previewDiv = document.getElementById("actorEditPreview");
   const previewImg = document.getElementById("actorEditPreviewImg");
   const placeholder = document.getElementById("actorEditPreviewPlaceholder");
 
   // Protezione: verifica che gli elementi esistano
-  if (!previewDiv || !previewImg || !placeholder) {
+  if (!previewImg || !placeholder) {
     console.warn("Preview elements not found in DOM");
     return;
   }
 
   if (url && url.trim() !== "") {
-    previewDiv.style.display = "block";
     previewImg.src = url;
     previewImg.style.display = "block";
     placeholder.style.display = "none";
@@ -782,7 +828,8 @@ function updateActorPreview(url) {
       placeholder.style.display = "block";
     };
   } else {
-    previewDiv.style.display = "none";
+    previewImg.style.display = "none";
+    placeholder.style.display = "block";
   }
 }
 
@@ -1151,8 +1198,29 @@ function setupEventHandlers() {
     openActorModal(null);
   };
 
+  // Setup Actor Modal Event Listeners (when modal is loaded)
+  setupActorModalEventListeners();
+}
+
+// Setup event listeners for actor modal
+// Called after modal is loaded (either immediately or after async load)
+function setupActorModalEventListeners() {
+  // Check if modal exists, if not wait for it
+  if (!document.getElementById("actorEditModal")) {
+    window.addEventListener('actorModalLoaded', () => {
+      setupActorModalEventListeners();
+    }, { once: true });
+    return;
+  }
+
   // Event listeners per Actor Edit Modal
   document.getElementById("actorEditCancel").onclick = closeActorModal;
+
+  // Close button
+  const closeBtn = document.getElementById("actorEditModalClose");
+  if (closeBtn) {
+    closeBtn.onclick = closeActorModal;
+  }
 
   document.getElementById("actorEditSave").onclick = () => {
     const name = document.getElementById("actorEditName").value;
@@ -1217,11 +1285,14 @@ function setupEventHandlers() {
   };
 
   // Chiudi modal cliccando sullo sfondo
-  document.getElementById("actorEditOverlay").onclick = (e) => {
-    if (e.target.id === "actorEditOverlay") {
-      closeActorModal();
-    }
-  };
+  const modal = document.getElementById("actorEditModal");
+  if (modal) {
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        closeActorModal();
+      }
+    };
+  }
 
   // Update preview quando cambia thumb URL
   document.getElementById("actorEditThumb").oninput = (e) => {

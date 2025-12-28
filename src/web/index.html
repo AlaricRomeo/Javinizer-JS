@@ -5,9 +5,11 @@
   <title>Javinizer-js</title>
   <link rel="stylesheet" href="navbar.css">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="modal.css">
   <script src="i18n.js"></script>
   <script src="navbar-loader.js"></script>
   <script src="i18n-bindings.js"></script>
+  <script src="actor-modal-loader.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -53,6 +55,13 @@
       <div class="mode-toggle">
         <button id="modeEdit" class="mode-btn">EDIT</button>
         <button id="modeScrape" class="mode-btn active">SCRAPE</button>
+      </div>
+
+      <!-- Actors Link -->
+      <div style="margin-top: 20px;">
+        <button onclick="window.location.href='actors.html'" style="width: 100%; padding: 12px; background-color: #667eea; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+          👥 Manage Actors
+        </button>
       </div>
     </div>
 
@@ -227,89 +236,7 @@
 
 </div>
 
-<!-- Actor Edit Modal -->
-<div id="actorEditModal" style="display: none;">
-  <div id="actorEditOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;">
-    <div id="actorEditContent" style="background: white; padding: 25px; border-radius: 8px; max-width: 500px; width: 90%; display: flex; flex-direction: column;">
-      <h2 style="margin-top: 0; margin-bottom: 20px; color: #667eea; font-size: 20px;">Edit Actor</h2>
-
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Nome</label>
-        <input id="actorEditName" type="text" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="Nome dell'attore">
-      </div>
-
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Nome Alternativo (giapponese, ecc.)</label>
-        <input id="actorEditAltName" type="text" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="Nome alternativo">
-      </div>
-
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Ruolo</label>
-        <input id="actorEditRole" type="text" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="Actress" value="Actress">
-      </div>
-
-      <div style="margin-bottom: 20px;">
-        <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Thumb URL</label>
-        <input id="actorEditThumb" type="url" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="https://...">
-      </div>
-
-      <!-- Preview thumbnail -->
-      <div id="actorEditPreview" style="margin-bottom: 20px; text-align: center; display: none;">
-        <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 10px;">Preview</label>
-        <div style="width: 100px; height: 100px; border-radius: 50%; overflow: hidden; margin: 0 auto; background: #e0e0e0; display: flex; align-items: center; justify-content: center;">
-          <img id="actorEditPreviewImg" src="" alt="Preview" style="width: 100%; height: 100%; object-fit: cover; display: none;">
-          <span id="actorEditPreviewPlaceholder" style="font-size: 40px;">👤</span>
-        </div>
-      </div>
-
-      <!-- Additional Actor Info -->
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Data di Nascita</label>
-        <input id="actorEditBirthdate" type="date" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
-      </div>
-
-      <div style="margin-bottom: 15px;">
-        <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Altezza (cm)</label>
-        <input id="actorEditHeight" type="number" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="">
-      </div>
-
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-        <div>
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Seno (cm)</label>
-          <input id="actorEditBust" type="number" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="">
-        </div>
-        <div>
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Vita (cm)</label>
-          <input id="actorEditWaist" type="number" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="">
-        </div>
-        <div>
-          <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Fianchi (cm)</label>
-          <input id="actorEditHips" type="number" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="">
-        </div>
-      </div>
-
-      <!-- Data source info (read-only) -->
-      <div id="actorEditSourceInfo" style="margin-bottom: 15px; padding: 10px; background: #f0f7ff; border-left: 3px solid #667eea; border-radius: 4px; font-size: 12px; display: none;">
-        <strong>Fonte dati:</strong> <span id="actorEditSource"></span>
-      </div>
-
-      <!-- Search Actor Button -->
-      <div style="margin-bottom: 20px;">
-        <button id="actorEditSearch" type="button" style="width: 100%; background-color: #28a745; color: white; padding: 12px 20px; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
-          <span>🔍</span>
-          <span id="actorEditSearchText">Cerca Attore</span>
-        </button>
-        <div id="actorEditSearchStatus" style="margin-top: 8px; font-size: 12px; color: #666; display: none; text-align: center;"></div>
-      </div>
-
-      <div style="display: flex; gap: 10px; justify-content: flex-end;">
-        <button id="actorEditCancel" type="button" style="background-color: #6c757d; padding: 10px 20px;">Annulla</button>
-        <button id="actorEditRemove" type="button" style="background-color: #dc3545; padding: 10px 20px; display: none;">Rimuovi</button>
-        <button id="actorEditSave" type="button" style="background-color: #667eea; padding: 10px 20px;">Salva</button>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- Actor Edit Modal loaded by actor-modal-loader.js -->
 
 <!-- Directory Browser Modal -->
 <div id="dirBrowserModal" style="display: none;">

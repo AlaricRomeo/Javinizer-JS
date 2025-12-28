@@ -104,6 +104,12 @@ app.use("/item", (req, res, next) => {
   next();
 }, itemRoutes);
 
+// Mount API routes (also need WebSocket for actor scraping)
+app.use("/api", (req, res, next) => {
+  req.wss = wss;
+  next();
+}, itemRoutes);
+
 // ─────────────────────────────
 // WebSocket connection handling
 // ─────────────────────────────

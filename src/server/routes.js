@@ -39,7 +39,19 @@ function fail(error) {
 // ─────────────────────────────
 router.get("/current", async (req, res) => {
   try {
-    const item = libraryReader.getCurrent();
+    // Ensure library is loaded
+    if (libraryReader.items.length === 0) {
+      libraryReader.loadLibrary();
+    }
+
+    let item = libraryReader.getCurrent();
+
+    // If no current item but items exist, get the first one
+    if (!item && libraryReader.items.length > 0) {
+      libraryReader.currentIndex = 0;
+      item = libraryReader.getCurrent();
+    }
+
     if (!item) {
       return res.json(ok(null));
     }
@@ -47,6 +59,7 @@ router.get("/current", async (req, res) => {
     const model = await buildItem(item);
     res.json(ok(model));
   } catch (err) {
+    console.error('[/item/current] Error:', err);
     res.json(fail(err.message));
   }
 });
@@ -683,6 +696,155 @@ router.post("/scrape/clear-cache", async (req, res) => {
       message: `Cleared ${clearedCount} cache director${clearedCount === 1 ? 'y' : 'ies'}`
     });
 
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// Actor Management Routes
+// ─────────────────────────────
+
+const {
+  loadActorLocal,
+  saveActorLocal,
+  resolveActorId,
+  scrapeActor
+} = require('../core/actorScraperManager');
+
+// GET /actors - List all actors
+router.get("/actors", async (req, res) => {
+  try {
+    const config = loadConfig();
+    const actorsPath = config.actorsPath || path.join(process.cwd(), 'data/actors');
+
+    if (!fs.existsSync(actorsPath)) {
+      return res.json({ ok: true, actors: [] });
+    }
+
+    const files = fs.readdirSync(actorsPath);
+    const actors = [];
+
+    for (const file of files) {
+      // Skip non-NFO files
+      if (!file.endsWith('.nfo')) continue;
+      if (file === '.index.json') continue;
+
+      const actorId = file.replace('.nfo', '');
+      const actor = loadActorLocal(actorId);
+
+      if (actor) {
+        actors.push(actor);
+      }
+    }
+
+    // Sort by name
+    actors.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    res.json({ ok: true, actors });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// POST /actors/save - Save actor
+router.post("/actors/save", async (req, res) => {
+  try {
+    const { normalizeActorName } = require('../../scrapers/actors/schema');
+    const actorData = req.body;
+
+    // Generate ID from name if not provided
+    if (!actorData.id) {
+      actorData.id = normalizeActorName(actorData.name);
+    }
+
+    // Ensure meta object exists
+    actorData.meta = actorData.meta || {};
+    actorData.meta.lastUpdate = new Date().toISOString();
+
+    // Save actor
+    saveActorLocal(actorData);
+
+    res.json({ ok: true, id: actorData.id });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// POST /actors/delete - Delete actor
+router.post("/actors/delete", async (req, res) => {
+  try {
+    const { id } = req.body;
+
+    if (!id) {
+      return res.json({ ok: false, error: 'Actor ID required' });
+    }
+
+    const config = loadConfig();
+    const actorsPath = config.actorsPath || path.join(process.cwd(), 'data/actors');
+    const actorNfoPath = path.join(actorsPath, `${id}.nfo`);
+
+    // Delete NFO file
+    if (fs.existsSync(actorNfoPath)) {
+      fs.unlinkSync(actorNfoPath);
+    }
+
+    // Delete image files (try all extensions)
+    const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
+    for (const ext of extensions) {
+      const imagePath = path.join(actorsPath, `${id}.${ext}`);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+
+    // Remove from index
+    const indexPath = path.join(actorsPath, '.index.json');
+    if (fs.existsSync(indexPath)) {
+      const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+
+      // Remove all entries pointing to this actor ID
+      Object.keys(index).forEach(key => {
+        if (index[key] === id) {
+          delete index[key];
+        }
+      });
+
+      fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// POST /actors/search - Search for actor data
+router.post("/actors/search", async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.json({ ok: false, error: 'Actor name required' });
+    }
+
+    // Check if already in cache
+    const actorId = resolveActorId(name);
+    if (actorId) {
+      const actor = loadActorLocal(actorId);
+      if (actor) {
+        return res.json({ ok: true, actor });
+      }
+    }
+
+    // Scrape actor
+    const actor = await scrapeActor(name);
+
+    if (!actor) {
+      return res.json({ ok: false, error: 'Actor not found' });
+    }
+
+    res.json({ ok: true, actor });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
