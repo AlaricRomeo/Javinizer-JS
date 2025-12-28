@@ -25,7 +25,7 @@
                 <!-- General Settings -->
                 <div class="section">
                     <div class="section-title" data-i18n="config.generalSettings">General Settings</div>
-                    <div class="info-text" style="margin-bottom: 20px;">
+                    <div class="info-text" style="margin-bottom: 20px;" data-i18n="config.libraryPathInfo">
                         Library path is now configured from the main interface and saved automatically.
                     </div>
                 </div>
@@ -47,44 +47,40 @@
 
                 <!-- Actor Scrapers -->
                 <div class="section">
-                    <div class="section-title">👤 Actor Scrapers</div>
+                    <div class="section-title" data-i18n="config.actorScrapers">👤 Actor Scrapers</div>
 
                     <div class="form-group">
                         <label>
                             <input type="checkbox" id="actorsEnabled" name="actorsEnabled">
-                            Enable Actor Scraping
+                            <span data-i18n="config.enableActorScraping">Enable Actor Scraping</span>
                         </label>
-                        <div class="info-text">
+                        <div class="info-text" data-i18n="config.actorScrapingHelp">
                             When enabled, actor data will be scraped and cached during movie save.
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="actorsPath">External Actors Path (optional)</label>
-                        <input type="text" id="actorsPath" name="actorsPath" placeholder="/mnt/storage/actors">
-                        <div class="info-text">
-                            Leave empty to use <strong>./data/actors</strong> (default).<br>
-                            If configured, actors will be saved to this external location and thumbnails will be local relative paths.<br>
-                            If empty, thumbnails will use URLs from scrapers.
+                        <label for="actorsPath" data-i18n="config.externalActorsPath">External Actors Path (optional)</label>
+                        <input type="text" id="actorsPath" name="actorsPath" data-i18n="[placeholder]config.externalActorsPathPlaceholder">
+                        <div class="info-text" data-i18n="config.externalActorsPathHelp">
+                            Leave empty to use **./data/actors** (default). When set, actor thumbnails will be downloaded to this path and referenced by absolute path. Useful for sharing actor data across multiple Javinizer instances or with other media servers (e.g., Jellyfin, Plex).
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="actorsScrapers">Actor Scraper Names (comma-separated)</label>
-                        <input type="text" id="actorsScrapers" name="actorsScrapers" placeholder="local, javdatabase">
-                        <div class="info-text">
-                            List of enabled actor scrapers in priority order.<br>
-                            Available scrapers: <strong>local</strong> (cache), <strong>javdatabase</strong><br>
-                            <em>Note: 'local' should always be first for cache lookup.</em>
+                        <label for="actorsScrapers" data-i18n="config.actorScraperNames">Actor Scraper Names (comma-separated)</label>
+                        <input type="text" id="actorsScrapers" name="actorsScrapers" data-i18n="[placeholder]config.actorScraperPlaceholder">
+                        <div class="info-text" data-i18n="config.actorScraperHelp">
+                            List of enabled actor scrapers in priority order (first = highest priority). Available scrapers: **local** (cached data), **javdatabase** (online lookup).
                         </div>
                     </div>
                 </div>
 
                 <!-- Metadata Priorities -->
                 <div class="section">
-                    <div class="section-title">🎯 Metadata Field Priorities</div>
-                    <div class="info-text" style="margin-bottom: 20px;">
-                        Configure scraper priority for specific fields (comma-separated, first = highest priority). Leave empty to use default scraper order.
+                    <div class="section-title" data-i18n="config.metadataFieldPriorities">🎯 Metadata Field Priorities</div>
+                    <div class="info-text" style="margin-bottom: 20px;" data-i18n="config.metadataFieldHelp">
+                        Configure scraper priority for specific fields. Leave blank to use default order. This allows fine-tuning which scrapers are preferred for individual metadata fields.
                     </div>
 
                     <div class="priority-fields" id="fieldPrioritiesContainer"></div>

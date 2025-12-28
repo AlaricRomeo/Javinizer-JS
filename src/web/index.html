@@ -33,33 +33,33 @@
 
     <!-- Fanart Container -->
     <div class="fanart-container">
-      <h3>Fanart</h3>
+      <h3 data-i18n="sections.fanart">Fanart</h3>
       <div class="fanart-image">
         <img id="fanartImage" src="" alt="Fanart" style="display: none;">
-        <span id="fanartPlaceholder">Nessuna immagine</span>
+        <span id="fanartPlaceholder" data-i18n="placeholders.noImage">No image</span>
       </div>
     </div>
 
     <!-- Config Panel -->
     <div class="config-panel">
-      <h3>Library Path</h3>
+      <h3 data-i18n="sections.libraryPath">Library Path</h3>
       <div class="path-selector">
         <input id="libraryPath" type="text" readonly>
-        <button id="browseLibrary" type="button">📁</button>
+        <button id="browseLibrary" type="button" data-i18n="buttons.browse">📁</button>
       </div>
-      <small>Clicca sul pulsante per selezionare la cartella della libreria</small>
-      <p id="libraryStatus" style="margin-top: 10px; font-size: 12px; color: #666;">Caricamento...</p>
+      <small data-i18n="messages.libraryPathHelp">Click the button to select the library folder</small>
+      <p id="libraryStatus" style="margin-top: 10px; font-size: 12px; color: #666;">Loading...</p>
 
       <!-- Mode Toggle -->
-      <h3 style="margin-top: 20px;">Mode</h3>
+      <h3 style="margin-top: 20px;" data-i18n="sections.mode">Mode</h3>
       <div class="mode-toggle">
-        <button id="modeEdit" class="mode-btn">EDIT</button>
-        <button id="modeScrape" class="mode-btn active">SCRAPE</button>
+        <button id="modeEdit" class="mode-btn" data-i18n="buttons.edit">EDIT</button>
+        <button id="modeScrape" class="mode-btn active" data-i18n="buttons.scrape">SCRAPE</button>
       </div>
 
       <!-- Actors Link -->
       <div style="margin-top: 20px;">
-        <button onclick="window.location.href='actors.html'" style="width: 100%; padding: 12px; background-color: #667eea; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;">
+        <button onclick="window.location.href='actors.html'" style="width: 100%; padding: 12px; background-color: #667eea; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s;" data-i18n="buttons.manageActors">
           👥 Manage Actors
         </button>
       </div>
@@ -67,13 +67,13 @@
 
     <!-- Scraper Panel -->
     <div class="scraper-panel">
-      <h3>Scrape Panel</h3>
+      <h3 data-i18n="sections.scraperPanel">Scraper Panel</h3>
       <p id="scrapeStatus" style="margin-top: 10px; font-size: 12px; color: #666;">No items available</p>
-      <button id="scrapeNow" class="scrape-now-btn" style="margin-top: 10px; width: 100%;">🔍 Scrape Now!</button>
-      <button id="clearCache" class="clear-cache-btn" style="margin-top: 10px; width: 100%; background: #6c757d;">🗑️ Clear Scrapers Cache</button>
+      <button id="scrapeNow" class="scrape-now-btn" style="margin-top: 10px; width: 100%;" data-i18n="buttons.scrapeNow">🔍 Scrape Now!</button>
+      <button id="clearCache" class="clear-cache-btn" style="margin-top: 10px; width: 100%; background: #6c757d;" data-i18n="buttons.clearCache">🗑️ Clear Scrapers Cache</button>
       <div class="delete-buttons-row">
-        <button id="deleteItem" class="delete-item-btn">🗑️ Delete Item</button>
-        <button id="deleteAllItems" class="delete-all-items-btn">🗑️ Delete All Items</button>
+        <button id="deleteItem" class="delete-item-btn" data-i18n="buttons.deleteItem">🗑️ Delete Item</button>
+        <button id="deleteAllItems" class="delete-all-items-btn" data-i18n="buttons.deleteAllItems">🗑️ Delete All Items</button>
       </div>
     </div>
 
@@ -84,36 +84,36 @@
 
     <!-- Basic Info Section -->
     <div class="form-section">
-      <h3>Informazioni di Base</h3>
+      <h3 data-i18n="sections.basicInfo">Basic Information</h3>
 
       <div class="form-row">
         <div class="form-group">
-          <label>ID</label>
+          <label data-i18n="fields.id">ID</label>
           <input id="id">
         </div>
         <div class="form-group">
-          <label>Content ID</label>
+          <label data-i18n="fields.contentId">Content ID</label>
           <input id="contentId">
         </div>
       </div>
 
       <div class="form-row single">
         <div class="form-group">
-          <label>Title</label>
+          <label data-i18n="fields.title">Title</label>
           <input id="title">
         </div>
       </div>
 
       <div class="form-row single">
         <div class="form-group">
-          <label>Alternate Title</label>
+          <label data-i18n="fields.alternateTitle">Alternate Title</label>
           <input id="alternateTitle">
         </div>
       </div>
 
       <div class="form-row single">
         <div class="form-group">
-          <label>Description</label>
+          <label data-i18n="fields.description">Description</label>
           <input id="description">
         </div>
       </div>
@@ -121,37 +121,37 @@
 
     <!-- Production Section -->
     <div class="form-section">
-      <h3>Produzione</h3>
+      <h3 data-i18n="sections.production">Production</h3>
 
       <div class="form-row">
         <div class="form-group">
-          <label>Director</label>
+          <label data-i18n="fields.director">Director</label>
           <input id="director">
         </div>
         <div class="form-group">
-          <label>Release Date</label>
+          <label data-i18n="fields.releaseDate">Release Date</label>
           <input id="releaseDate" type="date">
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label>Runtime (minuti)</label>
+          <label data-i18n="fields.runtime">Runtime (minutes)</label>
           <input id="runtime" type="number">
         </div>
         <div class="form-group">
-          <label>Series</label>
+          <label data-i18n="fields.series">Series</label>
           <input id="series">
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label>Maker</label>
+          <label data-i18n="fields.maker">Maker</label>
           <input id="maker">
         </div>
         <div class="form-group">
-          <label>Label</label>
+          <label data-i18n="fields.label">Label</label>
           <input id="label">
         </div>
       </div>
@@ -159,15 +159,15 @@
 
     <!-- Rating Section -->
     <div class="form-section">
-      <h3>Rating e Classificazione</h3>
+      <h3 data-i18n="sections.rating">Rating & Classification</h3>
 
       <div class="form-row">
         <div class="form-group">
-          <label>Rating</label>
+          <label data-i18n="fields.rating">Rating</label>
           <input id="rating" type="number" step="0.1" min="0" max="10">
         </div>
         <div class="form-group">
-          <label>Content Rating</label>
+          <label data-i18n="fields.contentRating">Content Rating</label>
           <input id="contentRating">
         </div>
       </div>
@@ -175,15 +175,15 @@
 
     <!-- Categories Section -->
     <div class="form-section">
-      <h3>Categorie</h3>
+      <h3 data-i18n="sections.categories">Categories</h3>
 
       <div class="form-row">
         <div class="form-group">
-          <label>Genres (separati da virgola)</label>
+          <label data-i18n="fields.genres">Genres (comma separated)</label>
           <input id="genres">
         </div>
         <div class="form-group">
-          <label>Tags (separati da virgola)</label>
+          <label data-i18n="fields.tags">Tags (comma separated)</label>
           <input id="tags">
         </div>
       </div>
@@ -191,25 +191,25 @@
 
     <!-- Media URLs Section -->
     <div class="form-section">
-      <h3>Media URLs</h3>
+      <h3 data-i18n="sections.mediaUrls">Media URLs</h3>
 
       <div class="form-row single">
         <div class="form-group">
-          <label>Cover URL</label>
+          <label data-i18n="fields.coverUrl">Cover URL</label>
           <input id="coverUrl" type="url">
         </div>
       </div>
 
       <div class="form-row single">
         <div class="form-group">
-          <label>Screenshot URL</label>
+          <label data-i18n="fields.screenshotUrl">Screenshot URL</label>
           <input id="screenshotUrl" type="url">
         </div>
       </div>
 
       <div class="form-row single">
         <div class="form-group">
-          <label>Trailer URL</label>
+          <label data-i18n="fields.trailerUrl">Trailer URL</label>
           <input id="trailerUrl" type="url">
         </div>
       </div>
@@ -217,17 +217,17 @@
 
     <!-- Actors Section -->
     <div class="actors-section">
-      <h3>Attori</h3>
+      <h3 data-i18n="sections.actors">Actors</h3>
       <div class="actors-grid" id="actors-grid">
         <!-- Actor cards will be inserted here by JS -->
       </div>
-      <button class="add-actor-btn" id="addActor" type="button">+ Aggiungi Attore</button>
+      <button class="add-actor-btn" id="addActor" type="button" data-i18n="buttons.addActor">+ Add Actor</button>
     </div>
 
     <!-- Save Panel -->
     <div class="save-panel">
       <button id="saveItem">
-        <span id="saveItemText">💾 Salva Modifiche</span>
+        <span id="saveItemText" data-i18n="buttons.save">💾 Save Changes</span>
         <span id="changesBadge" class="changes-badge" style="display: none;">0</span>
       </button>
     </div>
@@ -242,17 +242,17 @@
 <div id="dirBrowserModal" style="display: none;">
   <div id="dirBrowserOverlay" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;">
     <div id="dirBrowserContent" style="background: white; padding: 20px; border-radius: 8px; max-width: 600px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;">
-      <h3 style="margin-top: 0;">Seleziona Directory</h3>
+      <h3 style="margin-top: 0;" data-i18n="messages.selectDirectory">Select Directory</h3>
       <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
-        <button id="dirBrowserUp" type="button">⬆ Su</button>
+        <button id="dirBrowserUp" type="button" data-i18n="messages.upDirectory">⬆ Up</button>
         <input id="dirBrowserPath" type="text" readonly style="flex: 1; background: #f0f0f0;">
       </div>
       <div id="dirBrowserList" style="flex: 1; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
-        <!-- Lista directory -->
+        <!-- Directory list -->
       </div>
       <div style="display: flex; gap: 10px; justify-content: flex-end;">
-        <button id="dirBrowserCancel" type="button" style="background-color: #6c757d;">Annulla</button>
-        <button id="dirBrowserSelect" type="button" style="background-color: #28a745;">Seleziona questa cartella</button>
+        <button id="dirBrowserCancel" type="button" style="background-color: #6c757d;" data-i18n="buttons.cancel">Cancel</button>
+        <button id="dirBrowserSelect" type="button" style="background-color: #28a745;" data-i18n="messages.selectThisFolder">Select this folder</button>
       </div>
     </div>
   </div>
@@ -262,16 +262,16 @@
 <div id="scrapingModal" style="display: none;">
   <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 2000; display: flex; align-items: center; justify-content: center;">
     <div style="background: white; padding: 30px; border-radius: 12px; max-width: 600px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;">
-      <h2 style="margin-top: 0; margin-bottom: 20px; color: #667eea; font-size: 24px;">
+      <h2 style="margin-top: 0; margin-bottom: 20px; color: #667eea; font-size: 24px;" data-i18n="messages.scrapingProgress">
         🔍 Scraping in Progress
       </h2>
 
       <div id="scrapingProgress" style="flex: 1; overflow-y: auto; background: #f5f5f5; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 12px; line-height: 1.6; margin-bottom: 20px; max-height: 400px;">
-        <div style="color: #666;">Initializing...</div>
+        <div style="color: #666;" data-i18n="messages.initializing">Initializing...</div>
       </div>
 
       <div style="display: flex; gap: 10px; justify-content: flex-end;">
-        <button id="scrapingClose" type="button" style="background-color: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; display: none;">
+        <button id="scrapingClose" type="button" style="background-color: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; display: none;" data-i18n="buttons.close">
           Close
         </button>
       </div>
