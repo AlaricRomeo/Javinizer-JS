@@ -146,7 +146,8 @@
     "language": "Lingua",
     "selectLanguage": "Seleziona lingua",
     "english": "English",
-    "italian": "Italiano"
+    "italian": "Italiano",
+    "japanese": "日本語"
   },
   "config": {
     "pageTitle": "Configurazione",
