@@ -1,0 +1,174 @@
+# Actor Scraper System
+
+Sistema di scraping attori separato dai film, con cache locale e scraping intelligente da fonti esterne.
+
+## Struttura
+
+```
+scrapers/actors/
+├── schema.js              # Schema standard attore + funzioni di normalizzazione
+├── local/                 # Scraper locale (cache filesystem)
+│   └── run.js
+├── javdatabase/          # Scraper esterno (javdatabase.com)
+│   └── run.js
+└── README.md
+
+data/actors/
+├── .index.json           # Mapping name variants → slug ID
+└── {actor-slug}/
+    ├── actor.json        # Dati attore
+    └── photo.jpg         # Foto attore
+```
+
+## Schema Attore
+
+Ogni attore ha i seguenti campi:
+
+```javascript
+{
+  "id": "hayami-remu",              // Slug normalizzato
+  "name": "Hayami Remu",            // Nome principale
+  "altName": "早美れむ",             // Nome giapponese
+  "otherNames": ["Remu Hayami"],    // Varianti
+  "birthdate": "1997-12-25",
+  "height": 158,
+  "bust": 85,
+  "waist": 58,
+  "hips": 84,
+  "bloodType": "A",
+  "photoAbsolute": "/actors/hayami-remu/photo.jpg",  // Path assoluto
+  "photoRelative": "../actors/hayami-remu/photo.jpg", // Path relativo a library
+  "meta": {
+    "sources": ["javdatabase", "local"],
+    "lastUpdate": "2025-12-26"
+  }
+}
+```
+
+## Configurazione (config.json)
+
+```json
+{
+  "actorsEnabled": true,
+  "actorsPath": null,  // null = usa ./data/actors, altrimenti path assoluto
+  "actorsScrapers": ["local", "javdatabase"]
+}
+```
+
+## Logica Path
+
+- Se `actorsPath` è configurato → usa `photoAbsolute` (path assoluto per container)
+- Se `actorsPath` è `null` → usa `photoRelative` (relativo a library)
+- Il sistema salva SEMPRE entrambi i path nel `actor.json`
+
+## Scrapers
+
+### Local Scraper
+
+Legge dati da `data/actors/{id}/actor.json`
+- Cache layer per lookup veloci
+- Usa `.index.json` per risolvere varianti del nome
+
+### JAVDatabase Scraper
+
+Scarica dati da `https://www.javdatabase.com/idols/{slug}/`
+- Estrae: name, birthdate, height, bust, waist, hips, blood type, photo
+- Usa Puppeteer per lo scraping (stessa dipendenza di javlibrary)
+- Scarica foto in `actorsPath/{slug}/photo.jpg`
+
+## Merge Intelligente
+
+Il sistema usa la priorità definita in `actorsScrapers` per ogni campo:
+1. Per ogni campo, usa il primo valore non-vuoto dalla lista di scrapers
+2. Quando tutti i campi sono pieni → stop scraping
+3. I nomi alternativi (`otherNames`) vengono merged da tutti gli scrapers
+
+**Esempio:**
+- `local` ha `name` + `photo`
+- `javdatabase` aggiunge `birthdate` + `measurements`
+- Risultato finale ha tutti i campi popolati
+
+## Normalizzazione Nomi
+
+La funzione `normalizeActorName(name)` converte:
+- `"Hayami Remu"` → `"hayami-remu"`
+- `"早美れむ"` → `"hayami-remu"` (rimuove caratteri giapponesi)
+- `"Remu Hayami"` → `"hayami-remu"`
+
+Regole:
+- Lowercase
+- Rimuovi caratteri speciali e giapponesi
+- Converti spazi in trattini
+- Rimuovi trattini multipli/consecutivi
+
+## Index Mapping
+
+Il file `.index.json` mappa tutte le varianti del nome all'ID normalizzato:
+
+```json
+{
+  "hayami remu": "hayami-remu",
+  "早美れむ": "hayami-remu",
+  "remu hayami": "hayami-remu"
+}
+```
+
+Questo permette di trovare l'attore usando qualsiasi variante del nome.
+
+## Integrazione in scrapeSaver.js
+
+Quando salvi un film con `actorsEnabled: true`:
+
+```javascript
+if (config.actorsEnabled && item.actor) {
+  for (const actor of item.actor) {
+    const actorData = await getActor(actor.name);
+
+    // Usa path corretto per NFO
+    const photoPath = config.actorsPath
+      ? actorData.photoAbsolute
+      : actorData.photoRelative;
+
+    actor.thumb = photoPath;
+  }
+}
+```
+
+## WebUI - Modal Attore
+
+Il modal è stato aggiornato con i seguenti campi:
+- **Base:** Nome, Nome Alternativo, Ruolo, Thumb URL
+- **Estesi:** Data di Nascita, Altezza, Gruppo Sanguigno
+- **Misure:** Seno, Vita, Fianchi
+- **Info:** Fonte dati (read-only, mostra da dove provengono i dati)
+
+## API ActorScraperManager
+
+```javascript
+const { getActor, scrapeActor } = require('./src/core/actorScraperManager');
+
+// Ottieni attore (da cache o scrape)
+const actor = await getActor('Hayami Remu');
+
+// Force scrape (anche se in cache)
+const actor = await scrapeActor('Hayami Remu');
+```
+
+## Note Importanti
+
+- **NO update automatico:** gli attori non cambiano frequentemente
+- **NO batch update:** solo on-demand per attore
+- **Priorità:** `local` sempre primo (cache), poi scrapers esterni
+- **Auto-save:** se scraper esterno trova attore → salva in local per cache
+
+## Testing
+
+Per testare il sistema:
+
+```bash
+# Test local scraper
+node scrapers/actors/local/run.js "Test Actor"
+
+# Test javdatabase scraper (richiede Puppeteer, già installato)
+node scrapers/actors/javdatabase/run.js "Hayami Remu"
+```

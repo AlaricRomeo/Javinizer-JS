@@ -7,8 +7,11 @@ yarn-error.log
 config.json
 *.bak
 
-# Data directory (file JSON generati dagli scraper)
-data/scrape/*.json
+# Data directory (runtime data, not version controlled)
+data/scrape/
+data/actors/
+!data/scrape/.gitkeep
+!data/actors/.gitkeep
 
 # Logs
 logs/

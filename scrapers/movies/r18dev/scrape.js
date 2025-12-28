@@ -87,11 +87,15 @@ function convertToStandardFormat(data, code) {
           thumb: ''
         });
       } else {
+        // Get thumb URL, but ignore if it's just a filename (not a valid URL)
+        const thumbValue = actor.image_url || actor.thumb || actor.image || '';
+        const isValidUrl = thumbValue.startsWith('http://') || thumbValue.startsWith('https://');
+
         allActors.push({
           name: actor.name_romaji || actor.name_en || actor.name || '',
           altName: actor.name_kanji || actor.name_ja || actor.altName || actor.japaneseName || '',
           role: 'Actress',
-          thumb: actor.image_url || actor.thumb || actor.image || ''
+          thumb: isValidUrl ? thumbValue : ''  // Only use if it's a valid URL
         });
       }
     });
@@ -108,11 +112,15 @@ function convertToStandardFormat(data, code) {
           thumb: ''
         });
       } else {
+        // Get thumb URL, but ignore if it's just a filename (not a valid URL)
+        const thumbValue = actor.image_url || actor.thumb || actor.image || '';
+        const isValidUrl = thumbValue.startsWith('http://') || thumbValue.startsWith('https://');
+
         allActors.push({
           name: actor.name_romaji || actor.name_en || actor.name || '',
           altName: actor.name_kanji || actor.name_ja || actor.altName || actor.japaneseName || '',
           role: 'Actor',
-          thumb: actor.image_url || actor.thumb || actor.image || ''
+          thumb: isValidUrl ? thumbValue : ''  // Only use if it's a valid URL
         });
       }
     });
@@ -129,11 +137,15 @@ function convertToStandardFormat(data, code) {
           thumb: ''
         });
       } else {
+        // Get thumb URL, but ignore if it's just a filename (not a valid URL)
+        const thumbValue = actor.image_url || actor.thumb || actor.image || '';
+        const isValidUrl = thumbValue.startsWith('http://') || thumbValue.startsWith('https://');
+
         allActors.push({
           name: actor.name_romaji || actor.name_en || actor.name || '',
           altName: actor.name_kanji || actor.name_ja || actor.altName || actor.japaneseName || '',
           role: actor.role || 'Actor',
-          thumb: actor.image_url || actor.thumb || actor.image || ''
+          thumb: isValidUrl ? thumbValue : ''  // Only use if it's a valid URL
         });
       }
     });

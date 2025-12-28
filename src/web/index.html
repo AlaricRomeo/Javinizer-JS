@@ -262,8 +262,44 @@
         </div>
       </div>
 
-      <div style="margin-top: 10px; font-size: 11px; color: #999; padding: 10px; background: #f9f9f9; border-radius: 4px; margin-bottom: 20px;">
-        <strong>Nota:</strong> "Select Existing" sarà implementato in futuro per selezionare attori già presenti nel database.
+      <!-- Additional Actor Info -->
+      <div style="margin-bottom: 15px;">
+        <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Data di Nascita</label>
+        <input id="actorEditBirthdate" type="date" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+      </div>
+
+      <div style="margin-bottom: 15px;">
+        <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Altezza (cm)</label>
+        <input id="actorEditHeight" type="number" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="">
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Seno (cm)</label>
+          <input id="actorEditBust" type="number" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="">
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Vita (cm)</label>
+          <input id="actorEditWaist" type="number" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="">
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px;">Fianchi (cm)</label>
+          <input id="actorEditHips" type="number" min="0" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;" placeholder="">
+        </div>
+      </div>
+
+      <!-- Data source info (read-only) -->
+      <div id="actorEditSourceInfo" style="margin-bottom: 15px; padding: 10px; background: #f0f7ff; border-left: 3px solid #667eea; border-radius: 4px; font-size: 12px; display: none;">
+        <strong>Fonte dati:</strong> <span id="actorEditSource"></span>
+      </div>
+
+      <!-- Search Actor Button -->
+      <div style="margin-bottom: 20px;">
+        <button id="actorEditSearch" type="button" style="width: 100%; background-color: #28a745; color: white; padding: 12px 20px; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <span>🔍</span>
+          <span id="actorEditSearchText">Cerca Attore</span>
+        </button>
+        <div id="actorEditSearchStatus" style="margin-top: 8px; font-size: 12px; color: #666; display: none; text-align: center;"></div>
       </div>
 
       <div style="display: flex; gap: 10px; justify-content: flex-end;">

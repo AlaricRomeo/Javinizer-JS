@@ -44,6 +44,58 @@ app.use("/media", (req, res) => {
 });
 
 // ─────────────────────────────
+// Serve actor thumbnails
+// ─────────────────────────────
+app.use("/actors", (req, res) => {
+  const fs = require("fs");
+
+  // Load config to get actorsPath
+  const configPath = path.join(__dirname, "../../config.json");
+  let actorsPath;
+
+  try {
+    const configData = fs.readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(configData);
+    actorsPath = config.actorsPath || path.join(__dirname, "../../data/actors");
+  } catch (error) {
+    actorsPath = path.join(__dirname, "../../data/actors");
+  }
+
+  // Get filename from URL (e.g., /actors/mao-hamasaki.webp → mao-hamasaki.webp)
+  // req.url starts with "/" (e.g., "/mao-hamasaki.webp")
+  const filename = decodeURIComponent(req.url.substring(1));
+  const filePath = path.resolve(path.join(actorsPath, filename));
+
+  // Verify file exists
+  if (!fs.existsSync(filePath)) {
+    console.error(`[Server] File not found: ${filePath}`);
+    return res.status(404).send("Actor thumbnail not found");
+  }
+
+  // Determine content type from extension
+  const ext = path.extname(filename).toLowerCase();
+  const contentTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif'
+  };
+  const contentType = contentTypes[ext] || 'application/octet-stream';
+
+  // Set headers and stream file
+  res.setHeader('Content-Type', contentType);
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(res);
+  fileStream.on('error', (err) => {
+    console.error(`[Server] Error streaming file:`, err.message);
+    if (!res.headersSent) {
+      res.status(500).send("Error streaming file");
+    }
+  });
+});
+
+// ─────────────────────────────
 // API routes
 // ─────────────────────────────
 // Pass WebSocket server to routes for scraping

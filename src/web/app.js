@@ -63,15 +63,35 @@ function updateSaveButton() {
 
   const count = dirtyFields.size;
 
-  if (count > 0) {
-    saveBtn.classList.add('has-changes');
-    badge.textContent = count;
-    badge.style.display = 'flex';
-    saveBtn.disabled = false;
+  // In scrape mode, il bottone è abilitato se c'è un item caricato (indipendentemente dai dirty fields)
+  if (currentMode === "scrape") {
+    if (currentItem && currentItem.id) {
+      saveBtn.disabled = false;
+      saveBtn.classList.add('has-changes');
+      // Mostra badge solo se ci sono modifiche
+      if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'flex';
+      } else {
+        badge.style.display = 'none';
+      }
+    } else {
+      saveBtn.disabled = true;
+      saveBtn.classList.remove('has-changes');
+      badge.style.display = 'none';
+    }
   } else {
-    saveBtn.classList.remove('has-changes');
-    badge.style.display = 'none';
-    saveBtn.disabled = true;
+    // In edit mode, il bottone è abilitato solo se ci sono dirty fields
+    if (count > 0) {
+      saveBtn.classList.add('has-changes');
+      badge.textContent = count;
+      badge.style.display = 'flex';
+      saveBtn.disabled = false;
+    } else {
+      saveBtn.classList.remove('has-changes');
+      badge.style.display = 'none';
+      saveBtn.disabled = true;
+    }
   }
 }
 
@@ -496,6 +516,16 @@ function clearUI() {
 // ─────────────────────────────
 async function loadItem(url) {
   try {
+    // IMPORTANT: Check for unsaved changes before loading a new item
+    if (Object.keys(dirtyFields).length > 0) {
+      const confirm = window.confirm(
+        "You have unsaved changes. If you continue, these changes will be lost. Do you want to continue?"
+      );
+      if (!confirm) {
+        return false;
+      }
+    }
+
     const res = await fetch(url);
 
     // Check if response is ok
@@ -510,6 +540,9 @@ async function loadItem(url) {
       alert(data.error);
       return false;
     }
+
+    // Clear dirty fields BEFORE loading new item
+    clearDirtyFields();
 
     currentItem = data.item;
 
@@ -678,6 +711,7 @@ function openActorModal(index = null) {
   const modalTitle = document.querySelector("#actorEditContent h2");
   const removeBtn = document.getElementById("actorEditRemove");
   const previewDiv = document.getElementById("actorEditPreview");
+  const sourceInfo = document.getElementById("actorEditSourceInfo");
 
   const isNewActor = index === null;
   const actor = isNewActor ? {} : currentItem.actor[index];
@@ -687,11 +721,26 @@ function openActorModal(index = null) {
     ? window.i18n.t(isNewActor ? "actorModal.titleAdd" : "actorModal.title")
     : (isNewActor ? "Aggiungi Attore" : "Modifica Attore");
 
-  // Popola campi
+  // Popola campi base
   document.getElementById("actorEditName").value = actor.name || "";
   document.getElementById("actorEditAltName").value = actor.altName || "";
   document.getElementById("actorEditRole").value = actor.role || "Actress";
   document.getElementById("actorEditThumb").value = actor.thumb || "";
+
+  // Popola campi estesi
+  document.getElementById("actorEditBirthdate").value = actor.birthdate || "";
+  document.getElementById("actorEditHeight").value = actor.height || "";
+  document.getElementById("actorEditBust").value = actor.bust || "";
+  document.getElementById("actorEditWaist").value = actor.waist || "";
+  document.getElementById("actorEditHips").value = actor.hips || "";
+
+  // Mostra fonte dati se disponibile
+  if (!isNewActor && actor.meta && actor.meta.sources) {
+    document.getElementById("actorEditSource").textContent = actor.meta.sources.join(", ");
+    sourceInfo.style.display = "block";
+  } else {
+    sourceInfo.style.display = "none";
+  }
 
   // Gestisci visibilità bottone rimozione e preview
   removeBtn.style.display = isNewActor ? "none" : "block";
@@ -1054,7 +1103,10 @@ function setupEventHandlers() {
         const res = await fetch("/item/save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ changes })
+          body: JSON.stringify({
+            itemId: currentItem.id,
+            changes
+          })
         });
 
         const data = await res.json();
@@ -1072,11 +1124,12 @@ function setupEventHandlers() {
         // Clear dirty fields
         clearDirtyFields();
 
-        // Ricarica item aggiornato per sincronizzare con server
-        setTimeout(() => {
-          loadItem("/item/current");
-          saveText.textContent = originalText;
-        }, 500);
+        // Update originalItem to reflect saved state (no need to reload)
+        originalItem = JSON.parse(JSON.stringify(currentItem));
+
+        // Re-enable save button
+        saveBtn.disabled = false;
+        saveText.textContent = originalText;
       }
 
     } catch (err) {
@@ -1107,7 +1160,29 @@ function setupEventHandlers() {
     const role = document.getElementById("actorEditRole").value || "Actress";
     const thumb = document.getElementById("actorEditThumb").value;
 
-    const actorData = { name, altName, role, thumb };
+    // Raccogli campi estesi
+    const birthdate = document.getElementById("actorEditBirthdate").value;
+    const height = parseInt(document.getElementById("actorEditHeight").value) || 0;
+    const bust = parseInt(document.getElementById("actorEditBust").value) || 0;
+    const waist = parseInt(document.getElementById("actorEditWaist").value) || 0;
+    const hips = parseInt(document.getElementById("actorEditHips").value) || 0;
+
+    const actorData = {
+      name,
+      altName,
+      role,
+      thumb,
+      birthdate,
+      height,
+      bust,
+      waist,
+      hips
+    };
+
+    // Preserva meta se esiste (per editing)
+    if (editingActorIndex !== null && currentItem.actor[editingActorIndex].meta) {
+      actorData.meta = currentItem.actor[editingActorIndex].meta;
+    }
 
     if (editingActorIndex === null) {
       // Aggiungi nuovo attore
@@ -1151,6 +1226,102 @@ function setupEventHandlers() {
   // Update preview quando cambia thumb URL
   document.getElementById("actorEditThumb").oninput = (e) => {
     updateActorPreview(e.target.value);
+  };
+
+  // Search Actor button
+  document.getElementById("actorEditSearch").onclick = async () => {
+    const actorName = document.getElementById("actorEditName").value.trim();
+
+    if (!actorName) {
+      alert("Inserisci il nome dell'attore prima di cercare");
+      return;
+    }
+
+    const searchBtn = document.getElementById("actorEditSearch");
+    const searchText = document.getElementById("actorEditSearchText");
+    const searchStatus = document.getElementById("actorEditSearchStatus");
+
+    // Disable button and show loading
+    searchBtn.disabled = true;
+    searchText.textContent = "Ricerca in corso...";
+    searchStatus.style.display = "block";
+    searchStatus.style.color = "#666";
+    searchStatus.textContent = "Cercando dati dell'attore...";
+
+    try {
+      const response = await fetch("/item/actors/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: actorName })
+      });
+
+      const result = await response.json();
+
+      if (result.ok && result.actor) {
+        // Fill form with actor data
+        if (result.actor.name) {
+          document.getElementById("actorEditName").value = result.actor.name;
+        }
+        if (result.actor.altName) {
+          document.getElementById("actorEditAltName").value = result.actor.altName;
+        }
+        if (result.actor.birthdate) {
+          document.getElementById("actorEditBirthdate").value = result.actor.birthdate;
+        }
+        if (result.actor.height && result.actor.height > 0) {
+          document.getElementById("actorEditHeight").value = result.actor.height;
+        }
+        if (result.actor.bust && result.actor.bust > 0) {
+          document.getElementById("actorEditBust").value = result.actor.bust;
+        }
+        if (result.actor.waist && result.actor.waist > 0) {
+          document.getElementById("actorEditWaist").value = result.actor.waist;
+        }
+        if (result.actor.hips && result.actor.hips > 0) {
+          document.getElementById("actorEditHips").value = result.actor.hips;
+        }
+        if (result.actor.thumb) {
+          document.getElementById("actorEditThumb").value = result.actor.thumb;
+          updateActorPreview(result.actor.thumb);
+        }
+
+        // Show source info
+        const sourceInfo = document.getElementById("actorEditSourceInfo");
+        const sourceSpan = document.getElementById("actorEditSource");
+        if (result.actor.meta && result.actor.meta.sources && result.actor.meta.sources.length > 0) {
+          sourceSpan.textContent = result.actor.meta.sources.join(", ");
+          sourceInfo.style.display = "block";
+        }
+
+        // Success message
+        searchStatus.style.color = "#28a745";
+        searchStatus.textContent = "✓ Dati trovati e caricati!";
+
+        setTimeout(() => {
+          searchStatus.style.display = "none";
+        }, 3000);
+      } else {
+        // Not found
+        searchStatus.style.color = "#dc3545";
+        searchStatus.textContent = result.error || "Attore non trovato";
+
+        setTimeout(() => {
+          searchStatus.style.display = "none";
+        }, 5000);
+      }
+    } catch (error) {
+      console.error("Error searching actor:", error);
+      searchStatus.style.color = "#dc3545";
+      searchStatus.textContent = "Errore durante la ricerca";
+
+      setTimeout(() => {
+        searchStatus.style.display = "none";
+      }, 5000);
+    } finally {
+      // Re-enable button
+      searchBtn.disabled = false;
+      searchText.textContent = "Cerca Attore";
+    }
   };
 }
 

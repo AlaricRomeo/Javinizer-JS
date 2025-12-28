@@ -81,6 +81,15 @@ class LibraryReader {
   }
 
   /**
+   * Trova un item per ID
+   * @param {string} id - ID dell'item da cercare
+   * @returns {object|null} - Item trovato o null
+   */
+  findById(id) {
+    return this.items.find(item => item.id === id) || null;
+  }
+
+  /**
    * Ricarica la cartella corrente (utile se i file sono cambiati)
    */
   reloadCurrent() {

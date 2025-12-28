@@ -171,6 +171,7 @@ class ScrapeSaver {
       }
 
       // 3. Genera NFO
+      // Note: Actor data should already be enriched from batch-actors process
       const nfoPath = path.join(folderPath, `${item.id}.nfo`);
       await saveNfoFull(nfoPath, item);
       results.nfo = nfoPath;

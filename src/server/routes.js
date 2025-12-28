@@ -235,14 +235,20 @@ router.post("/config", (req, res) => {
 // ─────────────────────────────
 router.post("/save", async (req, res) => {
   try {
-    const changes = req.body.changes;
+    const { itemId, changes } = req.body;
+
     if (!changes || Object.keys(changes).length === 0) {
       return res.json({ ok: false, error: "Nessuna modifica" });
     }
 
-    const item = libraryReader.getCurrent();
+    if (!itemId) {
+      return res.json({ ok: false, error: "Item ID mancante" });
+    }
+
+    // Find the item by ID instead of using getCurrent()
+    const item = libraryReader.findById(itemId);
     if (!item) {
-      return res.json({ ok: false, error: "Nessun item corrente" });
+      return res.json({ ok: false, error: `Item non trovato: ${itemId}` });
     }
 
     await saveNfoPatch(item.nfo, changes);
@@ -379,6 +385,30 @@ router.post("/scrape/save", async (req, res) => {
     const results = await saver.saveItem(itemToSave, currentScrapeItem);
 
     if (results.success) {
+      // Scrape actors AFTER saving the movie
+      const actorResults = { scraped: 0, failed: 0 };
+
+      if (currentConfig.actorsEnabled && itemToSave.actor && Array.isArray(itemToSave.actor)) {
+        const { getActor } = require('../core/actorScraperManager');
+
+        console.error(`[Routes] Scraping ${itemToSave.actor.length} actors from saved movie`);
+
+        for (const actor of itemToSave.actor) {
+          if (actor.name) {
+            try {
+              console.error(`[Routes] Scraping actor: ${actor.name}`);
+              await getActor(actor.name);
+              actorResults.scraped++;
+            } catch (error) {
+              console.error(`[Routes] Failed to scrape actor ${actor.name}:`, error.message);
+              actorResults.failed++;
+            }
+          }
+        }
+
+        console.error(`[Routes] Actor scraping completed: ${actorResults.scraped} scraped, ${actorResults.failed} failed`);
+      }
+
       // Rimuovi il file JSON dalla lista (è stato processato)
       scrapeReader.deleteCurrent();
 
@@ -395,7 +425,8 @@ router.post("/scrape/save", async (req, res) => {
           fanart: results.fanart ? path.basename(results.fanart) : null,
           poster: results.poster ? path.basename(results.poster) : null,
           warnings: results.errors
-        }
+        },
+        actors: actorResults
       });
     } else {
       res.json(fail(`Save failed: ${results.errors.join(", ")}`));
@@ -534,6 +565,68 @@ router.post("/scrape/start", async (req, res) => {
 
   } catch (error) {
     console.error('[Routes] Error starting scrape:', error);
+    res.json({ ok: false, error: error.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /actors/batch-process
+// Batch scrape actors from all movie JSONs and update them
+// ─────────────────────────────
+router.post("/actors/batch-process", async (req, res) => {
+  const { batchProcessActors } = require('../core/actorScraperManager');
+
+  try {
+    console.error('[Routes] Starting batch actor processing...');
+
+    // Run batch processing
+    const summary = await batchProcessActors();
+
+    res.json({
+      ok: true,
+      message: 'Batch actor processing completed',
+      summary: summary
+    });
+
+  } catch (error) {
+    console.error('[Routes] Error in batch actor processing:', error);
+    res.json({ ok: false, error: error.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /actors/search
+// Search for a single actor by name
+// ─────────────────────────────
+router.post("/actors/search", async (req, res) => {
+  const { getActor } = require('../core/actorScraperManager');
+
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.json({ ok: false, error: 'Actor name is required' });
+    }
+
+    console.error(`[Routes] Searching for actor: ${name}`);
+
+    // Search/scrape actor
+    const actorData = await getActor(name);
+
+    if (actorData) {
+      res.json({
+        ok: true,
+        actor: actorData
+      });
+    } else {
+      res.json({
+        ok: false,
+        error: 'Actor not found'
+      });
+    }
+
+  } catch (error) {
+    console.error('[Routes] Error searching actor:', error);
     res.json({ ok: false, error: error.message });
   }
 });

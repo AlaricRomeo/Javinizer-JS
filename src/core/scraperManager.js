@@ -498,10 +498,49 @@ async function scrapeAll(codes, emitter = null) {
     finalResults.push(merged);
   }
 
-  // Emit completion event
+  // AFTER all movies are scraped, start actor scraping if enabled
+  if (config.actorsEnabled) {
+    console.error('[ScraperManager] Starting batch actor processing...');
+
+    if (emitter) {
+      emitter.emit('progress', {
+        message: 'Starting actor scraping...'
+      });
+    }
+
+    try {
+      const { batchProcessActors } = require('./actorScraperManager');
+      const actorSummary = await batchProcessActors(emitter);
+
+      const actorsScraped = actorSummary.scraping?.scraped || 0;
+      const moviesUpdated = actorSummary.updating?.updated || 0;
+
+      console.error(`[ScraperManager] Actor processing completed: ${actorsScraped} actors scraped, ${moviesUpdated} movies updated`);
+
+      if (emitter) {
+        emitter.emit('progress', {
+          message: `✅ Actor scraping completed: ${actorsScraped} actors, ${moviesUpdated} movies updated`
+        });
+      }
+    } catch (error) {
+      console.error('[ScraperManager] Actor processing failed:', error.message);
+
+      if (emitter) {
+        emitter.emit('progress', {
+          message: `⚠️ Actor scraping failed: ${error.message}`
+        });
+      }
+    }
+  }
+
+  // Emit completion event AFTER all processing (movies + actors)
   if (emitter) {
+    const totalMessage = config.actorsEnabled
+      ? `Scraping completed. Saved ${finalResults.length} movie(s) with actor data`
+      : `Scraping completed. Saved ${finalResults.length} movie(s)`;
+
     emitter.emit('complete', {
-      message: `Scraping completed. Saved ${finalResults.length} JSON file(s)`,
+      message: totalMessage,
       count: finalResults.length
     });
   }

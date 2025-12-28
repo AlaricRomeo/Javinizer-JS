@@ -45,6 +45,41 @@
                     </div>
                 </div>
 
+                <!-- Actor Scrapers -->
+                <div class="section">
+                    <div class="section-title">👤 Actor Scrapers</div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="actorsEnabled" name="actorsEnabled">
+                            Enable Actor Scraping
+                        </label>
+                        <div class="info-text">
+                            When enabled, actor data will be scraped and cached during movie save.
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="actorsPath">External Actors Path (optional)</label>
+                        <input type="text" id="actorsPath" name="actorsPath" placeholder="/mnt/storage/actors">
+                        <div class="info-text">
+                            Leave empty to use <strong>./data/actors</strong> (default).<br>
+                            If configured, actors will be saved to this external location and thumbnails will be local relative paths.<br>
+                            If empty, thumbnails will use URLs from scrapers.
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="actorsScrapers">Actor Scraper Names (comma-separated)</label>
+                        <input type="text" id="actorsScrapers" name="actorsScrapers" placeholder="local, javdatabase">
+                        <div class="info-text">
+                            List of enabled actor scrapers in priority order.<br>
+                            Available scrapers: <strong>local</strong> (cache), <strong>javdatabase</strong><br>
+                            <em>Note: 'local' should always be first for cache lookup.</em>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Metadata Priorities -->
                 <div class="section">
                     <div class="section-title">🎯 Metadata Field Priorities</div>
@@ -158,12 +193,21 @@
             const currentConfigData = await currentConfigResponse.json();
             const currentConfig = currentConfigData.config || currentConfigData;
 
+            // Collect actors configuration
+            const actorsEnabled = document.getElementById('actorsEnabled').checked;
+            const actorsPath = document.getElementById('actorsPath').value.trim();
+            const actorsScrapersInput = document.getElementById('actorsScrapers').value.trim();
+            const actorsScrapers = actorsScrapersInput ? actorsScrapersInput.split(',').map(s => s.trim()).filter(Boolean) : ['local', 'javdatabase'];
+
             const newConfig = {
                 libraryPath: currentConfig.libraryPath || '',  // Preserve existing libraryPath
                 mode: currentConfig.mode || 'scrape',  // Preserve current mode
                 language: currentConfig.language || 'en',  // Preserve language
                 scrapers: scrapers,
-                fieldPriorities: fieldPriorities
+                fieldPriorities: fieldPriorities,
+                actorsEnabled: actorsEnabled,
+                actorsPath: actorsPath || null,
+                actorsScrapers: actorsScrapers
             };
 
             try {
@@ -220,6 +264,12 @@
                 // Set scrapers
                 const scrapersArray = config.scrapers || [];
                 document.getElementById('scrapers').value = scrapersArray.join(', ');
+
+                // Load actors configuration
+                document.getElementById('actorsEnabled').checked = config.actorsEnabled || false;
+                document.getElementById('actorsPath').value = config.actorsPath || '';
+                const actorsScrapersArray = config.actorsScrapers || ['local', 'javdatabase'];
+                document.getElementById('actorsScrapers').value = actorsScrapersArray.join(', ');
 
                 // Render field priorities
                 renderFieldPriorities();
