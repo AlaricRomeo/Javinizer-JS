@@ -370,15 +370,24 @@ docker-compose down
 # Build image
 docker build -t javinizer-js .
 
+# Create volumes for persistent data
+docker volume create javinizer-config
+docker volume create javinizer-data
+
 # Run container
 docker run -d \
   --name javinizer-js \
   -p 4004:4004 \
+  -v javinizer-config:/config \
+  -v javinizer-data:/app/data \
   -v /path/to/library:/library:ro \
-  -v ./config.json:/config/config.json \
+  -e CONFIG_PATH=/config/config.json \
+  -e LIBRARY_PATH=/library \
   --shm-size=2gb \
   javinizer-js
 ```
+
+**Note:** Configuration is stored in the `javinizer-config` volume and persists across container restarts. The first time you run the container, it will create a default `config.json` which you can modify via the web UI.
 
 ### Resource Requirements
 

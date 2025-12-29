@@ -40,8 +40,8 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 # Copy application files
 COPY . .
 
-# Create config directory
-RUN mkdir -p /config
+# Create directories for persistent data
+RUN mkdir -p /config /app/data/scrape /app/data/actors
 
 # Expose port
 EXPOSE 4004
@@ -49,6 +49,7 @@ EXPOSE 4004
 # Environment variables
 ENV NODE_ENV=production
 ENV CONFIG_PATH=/config/config.json
+ENV LIBRARY_PATH=/library
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
