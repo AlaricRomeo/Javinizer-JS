@@ -49,17 +49,9 @@ app.use("/media", (req, res) => {
 app.use("/actors", (req, res) => {
   const fs = require("fs");
 
-  // Load config to get actorsPath
-  const configPath = path.join(__dirname, "../../config.json");
-  let actorsPath;
-
-  try {
-    const configData = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(configData);
-    actorsPath = config.actorsPath || path.join(__dirname, "../../data/actors");
-  } catch (error) {
-    actorsPath = path.join(__dirname, "../../data/actors");
-  }
+  // Use centralized cache helper to get actors path
+  const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+  const actorsPath = getActorsCachePath();
 
   // Get filename from URL (e.g., /actors/mao-hamasaki.webp → mao-hamasaki.webp)
   // req.url starts with "/" (e.g., "/mao-hamasaki.webp")

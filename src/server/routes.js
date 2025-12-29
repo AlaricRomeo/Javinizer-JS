@@ -567,11 +567,78 @@ router.post("/scrape/start", async (req, res) => {
       });
     });
 
-    // Execute scraping
-    scrapeAll(codesToScrape, emitter).catch(error => {
-      console.error('[Routes] Scraping error:', error);
-      emitter.emit('error', { message: error.message });
-    });
+    // Execute scraping (don't await, let it run in background)
+    scrapeAll(codesToScrape, emitter)
+      .then(() => {
+        console.error('[Routes] Video scraping completed successfully');
+
+        // Auto-start actor scraping if enabled in config
+        const config = loadConfig();
+        console.error('[Routes] Config loaded:', JSON.stringify(config.scrapers, null, 2));
+        console.error('[Routes] Actors enabled:', config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled);
+
+        if (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled) {
+          console.error('[Routes] Auto-starting actor scraping after video scraping completed');
+
+          // Wait 2 seconds to ensure all JSON files are written to disk
+          setTimeout(() => {
+            // Send notification to client that actor scraping is starting
+            req.wss.clients.forEach(client => {
+              if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                  event: 'progress',
+                  data: { message: '🎭 Starting automatic actor scraping...' },
+                  scrapeId
+                }));
+              }
+            });
+
+            // Start batch actor processing
+            const { batchProcessActors } = require('../core/actorScraperManager');
+
+            batchProcessActors()
+            .then((summary) => {
+              // Send completion message
+              req.wss.clients.forEach(client => {
+                if (client.readyState === 1) {
+                  client.send(JSON.stringify({
+                    event: 'progress',
+                    data: {
+                      message: `✅ Actor scraping completed: ${summary.scraping.total} actors processed (${summary.scraping.scraped} new, ${summary.scraping.cached} cached, ${summary.scraping.failed} failed). ${summary.updating.updated} movie files updated.`
+                    },
+                    scrapeId
+                  }));
+
+                  // Send actorsUpdated event to trigger client reload
+                  client.send(JSON.stringify({
+                    event: 'actorsUpdated',
+                    data: {
+                      updated: summary.updating.updated
+                    },
+                    scrapeId
+                  }));
+                }
+              });
+            })
+            .catch((error) => {
+              console.error('[Routes] Error in auto actor scraping:', error);
+              req.wss.clients.forEach(client => {
+                if (client.readyState === 1) {
+                  client.send(JSON.stringify({
+                    event: 'progress',
+                    data: { message: `❌ Actor scraping failed: ${error.message}` },
+                    scrapeId
+                  }));
+                }
+              });
+            });
+          }, 2000); // Wait 2 seconds before starting actor scraping
+        }
+      })
+      .catch(error => {
+        console.error('[Routes] Scraping error:', error);
+        emitter.emit('error', { message: error.message });
+      });
 
   } catch (error) {
     console.error('[Routes] Error starting scrape:', error);
@@ -712,8 +779,9 @@ const {
 // GET /actors - List all actors
 router.get("/actors", async (req, res) => {
   try {
-    const config = loadConfig();
-    const actorsPath = config.actorsPath || path.join(process.cwd(), 'data/actors');
+    // Use centralized cache helper
+    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+    const actorsPath = getActorsCachePath();
 
     if (!fs.existsSync(actorsPath)) {
       return res.json({ ok: true, actors: [] });
@@ -777,8 +845,9 @@ router.post("/actors/delete", async (req, res) => {
       return res.json({ ok: false, error: 'Actor ID required' });
     }
 
-    const config = loadConfig();
-    const actorsPath = config.actorsPath || path.join(process.cwd(), 'data/actors');
+    // Use centralized cache helper
+    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+    const actorsPath = getActorsCachePath();
     const actorNfoPath = path.join(actorsPath, `${id}.nfo`);
 
     // Delete NFO file

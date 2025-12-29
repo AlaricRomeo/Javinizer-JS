@@ -1609,6 +1609,16 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       closeBtn.style.display = 'block';
       break;
 
+    case 'actorsUpdated':
+      // Actors have been updated, reload current item to show new actor data
+      console.log('[WebSocket] Actors updated, reloading current item...');
+      const currentUrl = window.location.hash || '/item/scrape/current';
+      const itemUrl = currentUrl.startsWith('#') ? currentUrl.substring(1) : currentUrl;
+      loadItem(itemUrl).then(() => {
+        console.log('[WebSocket] Item reloaded with updated actor data');
+      });
+      break;
+
     case 'prompt':
       // Interactive prompt from scraper
       const promptMsg = `⏸️ ${data.scraperName}: ${data.message}`;

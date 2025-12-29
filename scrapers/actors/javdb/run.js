@@ -3,8 +3,14 @@
 /**
  * JAVDB Actor Scraper (renamed from javdatabase)
  *
- * Scrapes actor data from javdatabase.com
+ * Scrapes actor data from javdatabase.com with intelligent caching.
  * URL pattern: https://www.javdatabase.com/idols/{slug}/
+ *
+ * Cache Strategy:
+ * 1. Check cache first (external path or internal)
+ * 2. If data is complete, return it
+ * 3. If data is incomplete or missing, scrape online
+ * 4. Save to cache (external path if set, otherwise internal)
  *
  * Extracts:
  * - Name (from h1.idol-name, removes " - JAV Profile" suffix)
@@ -16,8 +22,6 @@
  * Fallback Strategy:
  * - If actor not found with original name, tries inverting name parts
  *   Example: "Mao Hamasaki" → "Hamasaki Mao"
- *
- * Note: Returns JSON data. ActorScraperManager converts to .nfo format on save.
  */
 
 const puppeteer = require('puppeteer');
@@ -25,6 +29,13 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { createEmptyActor, removeEmptyFields, normalizeActorName } = require('../schema');
+const {
+  loadFromCache,
+  saveToCache,
+  isActorComplete,
+  mergeActorData,
+  getActorsCachePath
+} = require('../cache-helper');
 
 /**
  * Load config.json
@@ -40,19 +51,7 @@ function loadConfig() {
   return JSON.parse(configData);
 }
 
-/**
- * Get actors directory path
- */
-function getActorsPath() {
-  const config = loadConfig();
-
-  // If actorsPath is null or not set, use default ./data/actors
-  if (!config.actorsPath) {
-    return path.join(__dirname, '../../../data/actors');
-  }
-
-  return config.actorsPath;
-}
+// Removed getActorsPath - now using cache-helper's getActorsCachePath()
 
 /**
  * Download image from URL
@@ -205,7 +204,7 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
     if (photoUrl) {
       console.error(`[JAVDB] Downloading photo: ${photoUrl}`);
 
-      const actorsPath = getActorsPath();
+      const actorsPath = getActorsCachePath();
 
       // Extract file extension from URL (support webp, jpg, png, etc.)
       const urlExtension = photoUrl.match(/\.(webp|jpg|jpeg|png|gif)(\?|$)/i);
@@ -254,7 +253,7 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
 }
 
 /**
- * Main entry point
+ * Main entry point with caching
  */
 async function main() {
   const args = process.argv.slice(2);
@@ -267,17 +266,49 @@ async function main() {
   const actorName = args[0];
 
   try {
-    const result = await scrapeJavDB(actorName);
+    // Step 1: Check cache first
+    console.error(`[JAVDB] Checking cache for: ${actorName}`);
+    const cachedActor = loadFromCache(actorName);
 
-    if (result) {
-      // Output JSON to stdout
-      console.log(JSON.stringify(result, null, 2));
-    } else {
-      // Return null (not found)
-      console.log(JSON.stringify(null));
+    if (cachedActor && isActorComplete(cachedActor)) {
+      console.error('[JAVDB] Found complete data in cache');
+      console.log(JSON.stringify(cachedActor, null, 2));
+      process.exit(0);
+      return;
     }
 
+    if (cachedActor) {
+      console.error('[JAVDB] Found partial data in cache, will merge with scraped data');
+    } else {
+      console.error('[JAVDB] No data in cache, will scrape online');
+    }
+
+    // Step 2: Scrape online
+    const scrapedActor = await scrapeJavDB(actorName);
+
+    if (!scrapedActor) {
+      console.error('[JAVDB] Scraping failed, no data found');
+      // If we have partial cached data, return it
+      if (cachedActor) {
+        console.log(JSON.stringify(cachedActor, null, 2));
+      } else {
+        console.log(JSON.stringify(null));
+      }
+      process.exit(0);
+      return;
+    }
+
+    // Step 3: Merge cached and scraped data
+    const finalActor = cachedActor ? mergeActorData(cachedActor, scrapedActor) : scrapedActor;
+
+    // Step 4: Save to cache
+    console.error('[JAVDB] Saving to cache');
+    saveToCache(finalActor);
+
+    // Step 5: Return result
+    console.log(JSON.stringify(finalActor, null, 2));
     process.exit(0);
+
   } catch (error) {
     console.error('[JAVDB] Error:', error.message);
     console.log(JSON.stringify(null));

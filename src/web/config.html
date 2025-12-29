@@ -37,7 +37,7 @@
 
                     <div class="form-group">
                         <label for="scrapers" data-i18n="config.scraperNames">Scraper Names (comma-separated)</label>
-                        <input type="text" id="scrapers" name="scrapers" placeholder="javlibrary, r18dev">
+                        <input type="text" id="scrapers" name="scrapers" placeholder="e.g. javlibrary, r18dev">
                         <div class="info-text">
                             <span data-i18n="config.scraperHelp">List of enabled scrapers in priority order (first = highest priority).</span><br>
                             <span data-i18n="config.availableScrapers">Available scrapers:</span> <strong>javlibrary</strong>, <strong>r18dev</strong>
@@ -61,7 +61,7 @@
 
                     <div class="form-group">
                         <label for="actorsPath" data-i18n="config.externalActorsPath">External Actors Path (optional)</label>
-                        <input type="text" id="actorsPath" name="actorsPath" data-i18n="[placeholder]config.externalActorsPathPlaceholder">
+                        <input type="text" id="actorsPath" name="actorsPath" placeholder="Leave empty for default ./data/actors">
                         <div class="info-text" data-i18n="config.externalActorsPathHelp">
                             Leave empty to use **./data/actors** (default). When set, actor thumbnails will be downloaded to this path and referenced by absolute path. Useful for sharing actor data across multiple Javinizer instances or with other media servers (e.g., Jellyfin, Plex).
                         </div>
@@ -69,9 +69,9 @@
 
                     <div class="form-group">
                         <label for="actorsScrapers" data-i18n="config.actorScraperNames">Actor Scraper Names (comma-separated)</label>
-                        <input type="text" id="actorsScrapers" name="actorsScrapers" data-i18n="[placeholder]config.actorScraperPlaceholder">
+                        <input type="text" id="actorsScrapers" name="actorsScrapers" placeholder="e.g. javdb">
                         <div class="info-text" data-i18n="config.actorScraperHelp">
-                            List of enabled actor scrapers in priority order (first = highest priority). Available scrapers: **local** (cached data), **javdatabase** (online lookup).
+                            List of enabled actor scrapers in priority order (first = highest priority). Each scraper has built-in caching. Available scrapers: **javdb** (javdatabase.com with intelligent caching).
                         </div>
                     </div>
                 </div>
@@ -133,7 +133,7 @@
                 input.type = 'text';
                 input.className = 'priority-field-input';
                 input.dataset.field = field.key;
-                input.placeholder = 'Default order';
+                input.placeholder = 'e.g. javlibrary, r18dev (leave empty for default)';
 
                 // Load existing priority
                 const fieldPriorities = config.fieldPriorities || {};
@@ -193,17 +193,21 @@
             const actorsEnabled = document.getElementById('actorsEnabled').checked;
             const actorsPath = document.getElementById('actorsPath').value.trim();
             const actorsScrapersInput = document.getElementById('actorsScrapers').value.trim();
-            const actorsScrapers = actorsScrapersInput ? actorsScrapersInput.split(',').map(s => s.trim()).filter(Boolean) : ['local', 'javdatabase'];
+            const actorsScrapers = actorsScrapersInput ? actorsScrapersInput.split(',').map(s => s.trim()).filter(Boolean) : ['javdb'];
 
             const newConfig = {
                 libraryPath: currentConfig.libraryPath || '',  // Preserve existing libraryPath
                 mode: currentConfig.mode || 'scrape',  // Preserve current mode
                 language: currentConfig.language || 'en',  // Preserve language
-                scrapers: scrapers,
-                fieldPriorities: fieldPriorities,
-                actorsEnabled: actorsEnabled,
-                actorsPath: actorsPath || null,
-                actorsScrapers: actorsScrapers
+                scrapers: {
+                    video: scrapers,
+                    actors: {
+                        enabled: actorsEnabled,
+                        scrapers: actorsScrapers,
+                        externalPath: actorsPath || ''
+                    }
+                },
+                fieldPriorities: fieldPriorities
             };
 
             try {
@@ -257,14 +261,17 @@
                 // Now populate the form with config data
                 config = cfg;
 
-                // Set scrapers
-                const scrapersArray = config.scrapers || [];
+                // Set scrapers (new structure only)
+                const scrapersArray = (config.scrapers && config.scrapers.video) ? config.scrapers.video : [];
                 document.getElementById('scrapers').value = scrapersArray.join(', ');
 
-                // Load actors configuration
-                document.getElementById('actorsEnabled').checked = config.actorsEnabled || false;
-                document.getElementById('actorsPath').value = config.actorsPath || '';
-                const actorsScrapersArray = config.actorsScrapers || ['local', 'javdatabase'];
+                // Load actors configuration (new structure only)
+                const actorsEnabled = (config.scrapers && config.scrapers.actors) ? config.scrapers.actors.enabled : false;
+                const actorsPath = (config.scrapers && config.scrapers.actors) ? config.scrapers.actors.externalPath || '' : '';
+                const actorsScrapersArray = (config.scrapers && config.scrapers.actors) ? config.scrapers.actors.scrapers : ['javdb'];
+
+                document.getElementById('actorsEnabled').checked = actorsEnabled;
+                document.getElementById('actorsPath').value = actorsPath;
                 document.getElementById('actorsScrapers').value = actorsScrapersArray.join(', ');
 
                 // Render field priorities

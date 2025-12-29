@@ -290,8 +290,8 @@ function getFieldPriority(fieldName, config) {
     return config.fieldPriorities[fieldName];
   }
 
-  // Use global scraper order as fallback
-  return config.scrapers || [];
+  // Use global scraper order as fallback (new structure: config.scrapers.video)
+  return (config.scrapers && config.scrapers.video) ? config.scrapers.video : [];
 }
 
 /**
@@ -422,8 +422,8 @@ function saveToFile(code, data, sources, libraryPath) {
 async function scrapeAll(codes, emitter = null) {
   const config = loadConfig();
 
-  // Get list of enabled scrapers
-  const enabledScrapers = config.scrapers || [];
+  // Get list of enabled scrapers (new structure: config.scrapers.video)
+  const enabledScrapers = (config.scrapers && config.scrapers.video) ? config.scrapers.video : [];
 
   if (enabledScrapers.length === 0) {
     const message = 'No scrapers enabled in config.json';

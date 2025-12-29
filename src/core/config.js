@@ -15,7 +15,7 @@ function loadConfig() {
         video: ["javlibrary", "r18dev"],
         actors: {
           enabled: true,
-          scrapers: ["local", "javdatabase"],
+          scrapers: ["javdb"],
           externalPath: ""
         }
       },

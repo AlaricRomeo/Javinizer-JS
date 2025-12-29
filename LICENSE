@@ -1,0 +1,40 @@
+MIT License
+
+Copyright (c) 2024 Javinizer-js Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+ADDITIONAL TERMS - FAIR USE AND INTENDED PURPOSE
+
+This software is intended exclusively for personal, non-commercial use to manage
+metadata for legally-owned personal media libraries.
+
+By using this software, you acknowledge and agree that:
+
+1. This software is designed for HOME USE ONLY
+2. Scraping is rate-limited to a maximum of 80 items per session
+3. Commercial use, bulk scraping, or redistribution of scraped data is prohibited
+4. You will respect the terms of service of all third-party websites
+5. The authors do not endorse or encourage violation of copyright laws or
+   terms of service of third-party websites
+
+Use of this software for purposes other than personal home media library
+management is a violation of these terms and is not permitted.

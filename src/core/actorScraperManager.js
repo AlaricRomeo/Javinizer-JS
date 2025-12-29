@@ -14,6 +14,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { normalizeActorName, actorToNFO, nfoToActor } = require('../../scrapers/actors/schema');
+const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
 
 // ─────────────────────────────
 // Configuration Loading
@@ -33,19 +34,7 @@ function loadConfig() {
   return JSON.parse(configData);
 }
 
-/**
- * Get actors directory path from config
- */
-function getActorsPath() {
-  const config = loadConfig();
-
-  // If actorsPath is null or not set, use default ./data/actors
-  if (!config.actorsPath) {
-    return path.join(__dirname, '../../data/actors');
-  }
-
-  return config.actorsPath;
-}
+// Removed getActorsPath() - now using cache-helper's getActorsCachePath()
 
 // ─────────────────────────────
 // Index Management
@@ -58,7 +47,7 @@ function getActorsPath() {
  * @returns {object} - Index mapping
  */
 function loadIndex() {
-  const actorsPath = getActorsPath();
+  const actorsPath = getActorsCachePath();
   const indexPath = path.join(actorsPath, '.index.json');
 
   if (!fs.existsSync(indexPath)) {
@@ -80,7 +69,7 @@ function loadIndex() {
  * @param {object} index - Index mapping
  */
 function saveIndex(index) {
-  const actorsPath = getActorsPath();
+  const actorsPath = getActorsCachePath();
   const indexPath = path.join(actorsPath, '.index.json');
 
   // Ensure actors directory exists
@@ -148,7 +137,7 @@ function resolveActorId(name) {
  * @returns {object|null} - Actor data or null if not found
  */
 function loadActorLocal(id) {
-  const actorsPath = getActorsPath();
+  const actorsPath = getActorsCachePath();
   const actorPath = path.join(actorsPath, `${id}.nfo`);
 
   if (!fs.existsSync(actorPath)) {
@@ -172,7 +161,7 @@ function loadActorLocal(id) {
  * @param {object} actor - Actor data
  */
 function saveActorLocal(actor) {
-  const actorsPath = getActorsPath();
+  const actorsPath = getActorsCachePath();
 
   // Ensure actors directory exists
   if (!fs.existsSync(actorsPath)) {
@@ -457,13 +446,17 @@ async function scrapeActor(actorName, emitter = null) {
   const config = loadConfig();
 
   // Check if actors feature is enabled
-  if (!config.actorsEnabled) {
+  const actorsEnabled = (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false);
+
+  if (!actorsEnabled) {
     console.error('[ActorScraperManager] Actor scraping is disabled in config');
     return null;
   }
 
-  // Get enabled scrapers (default to ['local', 'javdatabase'])
-  const enabledScrapers = config.actorsScrapers || ['local', 'javdatabase'];
+  // Get enabled scrapers from config.scrapers.actors.scrapers (default to ['javdb'])
+  const enabledScrapers = (config.scrapers && config.scrapers.actors && config.scrapers.actors.scrapers)
+    ? config.scrapers.actors.scrapers
+    : ['javdb'];
 
   console.log(`[ActorScraperManager] Scraping actor: ${actorName}`);
   console.log(`[ActorScraperManager] Enabled scrapers: ${enabledScrapers.join(', ')}`);
@@ -647,7 +640,9 @@ async function batchScrapeActors(emitter = null) {
   const config = loadConfig();
 
   // Check if actors feature is enabled
-  if (!config.actorsEnabled) {
+  const actorsEnabled = (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false);
+
+  if (!actorsEnabled) {
     console.error('[ActorScraperManager] Actor scraping is disabled in config');
     return {
       success: false,

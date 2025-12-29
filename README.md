@@ -11,7 +11,7 @@ A cross-platform, containerized web application for managing JAV (Japanese Adult
 - 📝 **Manual Editing** - Full-featured web UI for editing NFO files
 - 👥 **Actor Management** - Dedicated actors page with search, thumbnails, and data caching
 - 🌐 **Web Interface** - Modern, responsive UI with real-time updates via WebSocket
-- 💾 **NFO Preservation** - PATCH mode preserves custom NFO fields during edits
+- 💾 **NFO Preservation** - Manual edits preserve custom NFO fields not managed by scrapers
 - 📁 **Library Browser** - Built-in file system browser for library management
 
 ### Multi-language Support
@@ -32,6 +32,27 @@ A cross-platform, containerized web application for managing JAV (Japanese Adult
 - 🖥️ **Cross-Platform** - Works on Linux, macOS, Windows (via Docker or native Node.js)
 - 📊 **Health Checks** - Built-in health monitoring for containers
 - 🔧 **Easy Configuration** - Simple JSON configuration file
+
+## ⚖️ Intended Use & Fair Use Policy
+
+**Javinizer-js is designed exclusively for personal, home use.**
+
+This software is intended to help individuals manage metadata for their legally-owned media libraries. To ensure responsible use and comply with fair use principles:
+
+- ✅ **Personal home media library management only**
+- ✅ **Rate-limited scraping** - Maximum 80 items per session to respect source websites
+- ✅ **Caching system** - Minimizes redundant requests to external sources
+- ❌ **NOT for commercial use**
+- ❌ **NOT for bulk/automated scraping operations**
+- ❌ **NOT for redistribution of scraped data**
+
+By using this software, you agree to:
+1. Use it only for organizing your personal media collection
+2. Respect the rate limits and caching mechanisms
+3. Comply with the terms of service of scraped websites
+4. Not use it for any commercial purposes
+
+**This is a personal hobby project.** The author does not endorse or encourage any violation of copyright laws or terms of service of third-party websites.
 
 ## Requirements
 
@@ -94,7 +115,7 @@ Edit `config.json`:
     "video": ["javlibrary", "r18dev"],
     "actors": {
       "enabled": true,
-      "scrapers": ["local", "javdatabase"],
+      "scrapers": ["javdb"],
       "externalPath": ""
     }
   },
@@ -112,9 +133,19 @@ Edit `config.json`:
 - **language**: UI language - `en`, `it`, or `ja`
 - **scrapers.video**: List of enabled video scrapers in priority order
 - **scrapers.actors.enabled**: Enable/disable actor scraping
-- **scrapers.actors.scrapers**: List of actor scrapers in priority order
-- **scrapers.actors.externalPath**: Optional external path for actor thumbnails (for sharing across instances)
+- **scrapers.actors.scrapers**: List of actor scrapers in priority order (each scraper has built-in caching)
+- **scrapers.actors.externalPath**: Optional external path for actor cache (for sharing across instances or with media servers). If not set, uses internal cache at `data/actors/`
 - **fieldPriorities**: Override scraper priority for specific metadata fields
+
+### Actor Scraper Caching
+
+Each actor scraper automatically manages its cache:
+1. **Checks cache first** (external path if configured, otherwise internal)
+2. **Returns cached data** if complete
+3. **Scrapes online** if data is missing or incomplete
+4. **Saves to cache** (external path if configured, otherwise internal)
+
+This means you don't need a separate "local" scraper - caching is built into every scraper!
 
 ### Supported Languages
 
@@ -185,7 +216,7 @@ node src/core/scraperManager.js SDDM-943 JUR-618
 The ScraperManager will:
 1. Read all files from your `libraryPath` (or process specified codes)
 2. Extract DVD codes from filenames
-3. Execute enabled scrapers in parallel
+3. Execute enabled scrapers sequentially in priority order
 4. Merge results based on priority rules
 5. Save merged JSON files to `data/scrape/{code}.json`
 
@@ -194,11 +225,9 @@ The ScraperManager will:
 **Video Scrapers:**
 - **javlibrary** - Scrapes javlibrary.com (interactive, Cloudflare protected)
 - **r18dev** - Scrapes r18.dev (automatic)
-- **javdb** - Scrapes javdb.com (automatic)
 
 **Actor Scrapers:**
-- **local** - Uses cached actor data from previous scrapes
-- **javdatabase** - Scrapes JavDatabase for actor information
+- **javdb** - Scrapes javdatabase.com (automatic, with built-in caching)
 
 ### Web UI Integration
 
@@ -336,15 +365,13 @@ All UI elements use `data-i18n` attributes for automatic translation.
 - [x] Actor scraping and caching
 - [x] Real-time scraping progress via WebSocket
 
-### Planned 📋
-- [ ] Fanart display support
-- [ ] Batch operations (multi-select, bulk edit)
-- [ ] Image management (cover, screenshots)
-- [ ] Advanced search and filtering
-- [ ] Custom field mapping
-- [ ] Export/Import functionality
-- [ ] API authentication
-- [ ] Plugin marketplace
+### Future Considerations 💭
+- **Manual Scrape Mode** - Choose specific scraper and search key manually
+- **Poster Grid View** - Visual library browser with poster thumbnails
+- **Plugin Marketplace** - Community-driven scraper repository
+- Additional scrapers (community contributions welcome)
+- Additional actor data sources
+- Performance optimizations for large libraries
 
 ## Docker Deployment
 
@@ -416,7 +443,11 @@ Please:
 
 ## License
 
-[License to be determined]
+MIT License with Additional Fair Use Terms
+
+See [LICENSE](LICENSE) file for details.
+
+**TL;DR**: Free for personal use. Not for commercial use or bulk scraping.
 
 ## Credits
 
