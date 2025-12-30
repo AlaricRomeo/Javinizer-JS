@@ -60,6 +60,7 @@
     "edit": "EDIT",
     "scrape": "SCRAPE",
     "close": "Close",
+    "interrupt": "Interrupt",
     "continue": "Continue",
     "stop": "Stop",
     "search": "🔍 Search Actor"

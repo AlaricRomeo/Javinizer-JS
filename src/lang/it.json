@@ -55,11 +55,12 @@
     "scrapeNow": "🔍 Scrape Now!",
     "clearCache": "🗑️ Pulisci Cache Scraper",
     "deleteItem": "🗑️ Elimina Item",
-    "deleteAllItems": "🗑️ Elimina Tutti gli Item",
+    "deleteAllItems": "🗑️ Elimina Tutti gli Items",
     "manageActors": "👥 Gestisci Attori",
     "edit": "EDIT",
     "scrape": "SCRAPE",
     "close": "Chiudi",
+    "interrupt": "Interrompi",
     "continue": "Continua",
     "stop": "Ferma",
     "search": "🔍 Cerca Attore"

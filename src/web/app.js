@@ -315,19 +315,28 @@ async function updateStatusDisplay(elementId, count, emptyMessage, filledMessage
 
 async function checkLibraryCount() {
   try {
-    // Prima ricarica la libreria
+    // Prima ricarica la libreria (batch iniziale)
     await fetch("/item/reload", { method: "POST" });
 
     // Poi conta
     const res = await fetch("/item/count");
     const data = await res.json();
     const count = data.ok ? data.count : 0;
+    const status = data.status || {};
+
+    // Mostra informazioni di progresso se la libreria non è completamente caricata
+    let statusText;
+    if (status.fullyLoaded) {
+      statusText = `${count} NFO file${count !== 1 ? 's' : ''} nella libreria`;
+    } else {
+      statusText = `${count} NFO caricati (${status.progress || 0}% scansionato, ${status.totalFolders || 0} cartelle)`;
+    }
 
     updateStatusDisplay(
       "libraryStatus",
       count,
       "Nessun NFO nella libreria",
-      (c) => `${c} NFO file${c > 1 ? 's' : ''} nella libreria`,
+      (c) => statusText,
       "#667eea"
     );
 
@@ -885,16 +894,16 @@ function renderItem(item) {
       fanartPlaceholder.style.display = "block";
     }
   } else {
-    // In edit mode usa fanart.jpg dalla stessa cartella del .nfo
-    if (item.local && item.local.path) {
-      // Cerca fanart.jpg nella stessa cartella del .nfo
-      const fanartPath = `${item.local.path}/fanart.jpg`;
+    // In edit mode usa il fanart rilevato dal backend
+    if (item.images && item.images.fanart && item.images.fanart.length > 0) {
+      // Usa il primo fanart trovato dal backend (con pattern matching)
+      const fanartPath = item.images.fanart[0];
 
       fanartImg.src = `/media/${encodeURIComponent(fanartPath)}`;
 
       // Gestisci errore caricamento immagine
       fanartImg.onerror = () => {
-        // Se fanart.jpg non esiste, mostra placeholder
+        // Se il file non esiste, mostra placeholder
         fanartImg.style.display = "none";
         fanartPlaceholder.style.display = "block";
       };
@@ -1135,6 +1144,7 @@ function setupEventHandlers() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             itemId: currentItem.id,
+            folderId: currentItem.folderId, // Folder name for finding the item
             changes
           })
         });
@@ -1552,9 +1562,26 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       break;
 
     case 'progress':
-      // Highlight "Executing scraper" in red
-      const type = data.message.includes('Executing scraper') ? 'executing' : 'progress';
-      appendProgress(progressDiv, data.message, type);
+      // Identify scraper type and apply appropriate color
+      let type = 'progress';
+      let message = data.message;
+
+      if (message.includes('Executing scraper')) {
+        type = 'executing';
+      } else if (message.includes('[r18dev]')) {
+        type = 'r18dev';
+        // Replace [r18dev] with colored version
+        message = message.replace('[r18dev]', '[R18.dev]');
+      } else if (message.includes('[browser]')) {
+        type = 'javlibrary';
+        // Replace [browser] with [JavLibrary]
+        message = message.replace('[browser]', '[JavLibrary]');
+      } else if (message.includes('[actor-scraper]') || message.includes('actor')) {
+        type = 'actor';
+        message = message.replace('[actor-scraper]', '[Actor Scraper]');
+      }
+
+      appendProgress(progressDiv, message, type);
       break;
 
     case 'scraperError':
@@ -1772,16 +1799,23 @@ function appendProgress(div, message, type) {
   const colors = {
     info: '#667eea',
     progress: '#333',
-    executing: '#dc3545',  // Red for "Executing scraper"
+    executing: '#dc3545',     // Red for "Executing scraper"
+    r18dev: '#9333ea',        // Purple for R18.dev
+    javlibrary: '#0ea5e9',    // Sky blue for JavLibrary
+    actor: '#f59e0b',         // Amber for Actor scraper
     success: '#28a745',
     error: '#dc3545',
-    prompt: '#ff9800'  // Orange for interactive prompts
+    prompt: '#ff9800'         // Orange for interactive prompts
   };
 
   const line = document.createElement('div');
   line.style.color = colors[type] || '#333';
   line.style.marginBottom = '4px';
-  line.style.fontWeight = (type === 'executing' || type === 'prompt') ? 'bold' : 'normal';
+
+  // Bold for executing, prompt, and scraper-specific messages
+  const isBold = ['executing', 'prompt', 'r18dev', 'javlibrary', 'actor'].includes(type);
+  line.style.fontWeight = isBold ? 'bold' : 'normal';
+
   line.textContent = message;
 
   div.appendChild(line);
