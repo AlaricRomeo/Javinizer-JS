@@ -20,6 +20,9 @@ async function buildItem(item) {
   // 3. enrich with local data
   model = enrichModelWithLocalMedia(model, item);
 
+  // 4. add folder ID for save operations (folder name, not video code)
+  model.folderId = item.id;
+
   return model;
 }
 

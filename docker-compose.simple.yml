@@ -12,10 +12,10 @@ services:
       - javinizer-config:/config
       - javinizer-data:/app/data
       # IMPORTANT: Replace this path with your JAV library location
-      # Windows example: - D:\Jav\Library:/library:ro
-      # Linux example:   - /mnt/Jav/Main:/library:ro
-      # macOS example:  - /Volumes/Media/Jav:/library:ro
-      - ${JAV_LIBRARY_PATH:-./sample-library}:/library:ro
+      # Windows example: - D:\Jav\Library:/library
+      # Linux example:   - /mnt/Jav/Main:/library
+      # macOS example:  - /Volumes/Media/Jav:/library
+      - ${JAV_LIBRARY_PATH:-./sample-library}:/library
     environment:
       - NODE_ENV=production
       - CONFIG_PATH=/config/config.json

@@ -11,14 +11,29 @@ const ScrapeReader = require("../core/scrapeReader");
 const ScrapeSaver = require("../core/scrapeSaver");
 const { saveNfoPatch } = require("../core/saveNfo");
 
+/**
+ * Get scrape path based on library path
+ * Items are stored in {libraryPath}/.javinizer/scrape/
+ */
+function getScrapePath() {
+  const config = loadConfig();
+  const libraryPath = config.libraryPath;
+
+  if (!libraryPath) {
+    return path.join(__dirname, '../../data/scrape'); // Fallback
+  }
+
+  return path.join(libraryPath, '.javinizer', 'scrape');
+}
+
 // Load config and initialize library reader
 const config = loadConfig();
-const libraryReader = new LibraryReader(config.libraryPath);
-libraryReader.loadLibrary();
+const libraryReader = new LibraryReader(config.libraryPath, config.actorsPath);
 
 // ScrapeReader instance
 const scrapeReader = new ScrapeReader();
-scrapeReader.loadScrapeItems();
+
+// Initial load happens lazily on first request (non-blocking startup)
 
 // ─────────────────────────────
 // standard response helper
@@ -98,12 +113,13 @@ router.get("/prev", async (req, res) => {
 
 // ─────────────────────────────
 // POST /reload
-// Reload the library
+// Reload the library (initial batch load)
 // ─────────────────────────────
 router.post("/reload", (req, res) => {
   try {
-    libraryReader.loadLibrary();
-    res.json({ ok: true, count: libraryReader.count() });
+    const result = libraryReader.loadLibrary();
+    const status = libraryReader.getStatus();
+    res.json({ ok: true, count: libraryReader.count(), status });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
@@ -116,7 +132,23 @@ router.post("/reload", (req, res) => {
 router.get("/count", (req, res) => {
   try {
     const count = libraryReader.count();
-    res.json({ ok: true, count });
+    const status = libraryReader.getStatus();
+    res.json({ ok: true, count, status });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /load-more
+// Load more items from library (for lazy loading)
+// ─────────────────────────────
+router.post("/load-more", (req, res) => {
+  try {
+    const { batchSize } = req.body;
+    const result = libraryReader.loadLibrary(batchSize || 100);
+    const status = libraryReader.getStatus();
+    res.json({ ok: true, count: libraryReader.count(), status });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
@@ -228,10 +260,14 @@ router.post("/config", (req, res) => {
 
     saveConfig(newConfig);
 
-    // 🔁 reload the library only if the path has changed
-    if (newConfig.libraryPath && newConfig.libraryPath !== currentConfig.libraryPath) {
-      libraryReader.rootPath = newConfig.libraryPath;
+    // 🔁 Reset library cache if libraryPath or actorsPath changed
+    const libraryPathChanged = newConfig.libraryPath && newConfig.libraryPath !== currentConfig.libraryPath;
+    const actorsPathChanged = newConfig.actorsPath !== currentConfig.actorsPath;
+
+    if (libraryPathChanged || actorsPathChanged) {
+      libraryReader.updatePaths(newConfig.libraryPath, newConfig.actorsPath);
       libraryReader.loadLibrary();
+      console.log('[Config] Library cache reset due to path change');
     }
 
     res.json({ ok: true });
@@ -245,20 +281,23 @@ router.post("/config", (req, res) => {
 // ─────────────────────────────
 router.post("/save", async (req, res) => {
   try {
-    const { itemId, changes } = req.body;
+    const { itemId, folderId, changes } = req.body;
 
     if (!changes || Object.keys(changes).length === 0) {
       return res.json({ ok: false, error: "No changes" });
     }
 
-    if (!itemId) {
+    // Priority: use folderId (folder name) if provided, fallback to itemId for backwards compatibility
+    const searchId = folderId || itemId;
+
+    if (!searchId) {
       return res.json({ ok: false, error: "Item ID missing" });
     }
 
-    // Find the item by ID instead of using getCurrent()
-    const item = libraryReader.findById(itemId);
+    // Find the item by folder ID (folder name like "010214-514")
+    const item = libraryReader.findById(searchId);
     if (!item) {
-      return res.json({ ok: false, error: `Item not found: ${itemId}` });
+      return res.json({ ok: false, error: `Item not found: ${searchId}` });
     }
 
     await saveNfoPatch(item.nfo, changes);
@@ -325,7 +364,7 @@ router.delete("/scrape/current", (req, res) => {
 // DELETE /scrape/all
 router.delete("/scrape/all", (req, res) => {
   try {
-    const outputDir = path.join(__dirname, '../../data/scrape');
+    const outputDir = getScrapePath();
 
     if (!fs.existsSync(outputDir)) {
       return res.json({ ok: true, deleted: 0 });
@@ -477,7 +516,7 @@ router.post("/scrape/start", async (req, res) => {
     console.error(`[Routes] Found ${codes.length} file(s) to scrape`);
 
     // Filter out already scraped codes
-    const outputDir = path.join(__dirname, '../../data/scrape');
+    const outputDir = getScrapePath();
     const codesToScrape = codes.filter(code => {
       const jsonPath = path.join(outputDir, `${code}.json`);
       return !fs.existsSync(jsonPath);

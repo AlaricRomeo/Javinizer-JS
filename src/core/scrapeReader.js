@@ -1,5 +1,21 @@
 const fs = require("fs");
 const path = require("path");
+const { loadConfig } = require('./config');
+
+/**
+ * Get scrape path based on library path
+ * Items are stored in {libraryPath}/.javinizer/scrape/
+ */
+function getScrapePath() {
+  const config = loadConfig();
+  const libraryPath = config.libraryPath;
+
+  if (!libraryPath) {
+    return path.join(__dirname, "../../data/scrape"); // Fallback
+  }
+
+  return path.join(libraryPath, '.javinizer', 'scrape');
+}
 
 /**
  * ScrapeReader - Navigation through JSON files in the scrape folder
@@ -7,10 +23,17 @@ const path = require("path");
  */
 class ScrapeReader {
   constructor() {
-    // Use relative path to project instead of home directory
-    this.scrapePath = path.join(__dirname, "../../data/scrape");
+    // Use library-specific path
+    this.updateScrapePath();
     this.items = [];
     this.currentIndex = -1;
+  }
+
+  /**
+   * Update scrape path based on current library path
+   */
+  updateScrapePath() {
+    this.scrapePath = getScrapePath();
 
     // Create folder if it doesn't exist
     if (!fs.existsSync(this.scrapePath)) {
@@ -22,6 +45,9 @@ class ScrapeReader {
    * Loads all JSON files from the scrape folder
    */
   loadScrapeItems() {
+    // Update path in case library changed
+    this.updateScrapePath();
+
     this.items = [];
     this.currentIndex = -1;
 

@@ -15,23 +15,26 @@ const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
+const { loadConfig } = require('./config');
 
 // ─────────────────────────────
 // Configuration Loading
 // ─────────────────────────────
+// Using centralized config from config.js
 
 /**
- * Load config.json from disk
+ * Get scrape path based on library path
+ * Items are stored in {libraryPath}/.javinizer/scrape/
  */
-function loadConfig() {
-  const configPath = path.join(__dirname, '../../config.json');
+function getScrapePath() {
+  const config = loadConfig();
+  const libraryPath = config.libraryPath;
 
-  if (!fs.existsSync(configPath)) {
-    throw new Error('config.json not found');
+  if (!libraryPath) {
+    throw new Error('libraryPath not configured');
   }
 
-  const configData = fs.readFileSync(configPath, 'utf-8');
-  return JSON.parse(configData);
+  return path.join(libraryPath, '.javinizer', 'scrape');
 }
 
 // ─────────────────────────────
@@ -373,7 +376,7 @@ function mergeResults(code, scraperResults, config) {
  * @param {string} libraryPath - Path to library directory
  */
 function saveToFile(code, data, sources, libraryPath) {
-  const outputDir = path.join(__dirname, '../../data/scrape');
+  const outputDir = getScrapePath();
 
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
@@ -575,7 +578,7 @@ async function main() {
     console.error(`[ScraperManager] Found ${codes.length} file(s) to scrape`);
 
     // Filter out already scraped codes
-    const outputDir = path.join(__dirname, '../../data/scrape');
+    const outputDir = getScrapePath();
     const codesToScrape = codes.filter(code => {
       const jsonPath = path.join(outputDir, `${code}.json`);
       const exists = fs.existsSync(jsonPath);

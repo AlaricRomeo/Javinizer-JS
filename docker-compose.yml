@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   javinizer-js:
@@ -12,8 +11,8 @@ services:
       - javinizer-config:/config
       # Data directory (writable) - stores scraped data and actor cache
       - javinizer-data:/app/data
-      # Mount your JAV library (read-only)
-      - /path/to/your/jav/library:/library:ro
+      # Mount your JAV library (READ/WRITE - needed to save NFO, fanart, poster)
+      - /path/to/your/jav/library:/library
     environment:
       - NODE_ENV=production
       - CONFIG_PATH=/config/config.json

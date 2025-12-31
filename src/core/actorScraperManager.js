@@ -15,25 +15,12 @@ const fs = require('fs');
 const path = require('path');
 const { normalizeActorName, actorToNFO, nfoToActor } = require('../../scrapers/actors/schema');
 const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+const { loadConfig } = require('./config');
 
 // ─────────────────────────────
 // Configuration Loading
 // ─────────────────────────────
-
-/**
- * Load config.json from disk
- */
-function loadConfig() {
-  const configPath = path.join(__dirname, '../../config.json');
-
-  if (!fs.existsSync(configPath)) {
-    throw new Error('config.json not found');
-  }
-
-  const configData = fs.readFileSync(configPath, 'utf-8');
-  return JSON.parse(configData);
-}
-
+// Using centralized config from config.js
 // Removed getActorsPath() - now using cache-helper's getActorsCachePath()
 
 // ─────────────────────────────
@@ -569,10 +556,18 @@ async function getActor(actorName) {
 // ─────────────────────────────
 
 /**
- * Get scrape data directory path
+ * Get scrape path based on library path
+ * Items are stored in {libraryPath}/.javinizer/scrape/
  */
 function getScrapePath() {
-  return path.join(__dirname, '../../data/scrape');
+  const config = loadConfig();
+  const libraryPath = config.libraryPath;
+
+  if (!libraryPath) {
+    return path.join(__dirname, '../../data/scrape'); // Fallback
+  }
+
+  return path.join(libraryPath, '.javinizer', 'scrape');
 }
 
 /**
