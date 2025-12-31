@@ -1,12 +1,28 @@
 # Minimal Dockerfile - only essential dependencies
 FROM node:20-slim
 
-# Install ONLY essential Chromium dependencies for headless mode
+# Install Chromium with all dependencies needed for GUI mode + Xvfb
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
     libnss3 \
-    libxss1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    xdg-utils \
+    xvfb \
+    xauth \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -41,4 +57,5 @@ ENV NODE_ENV=production \
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4004/item/config', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-CMD ["node", "src/server/index.js"]
+# Start with Xvfb (virtual display) to allow non-headless browser for Cloudflare
+CMD xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node src/server/index.js

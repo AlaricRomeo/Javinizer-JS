@@ -2,7 +2,7 @@
 # Use official Node.js image with Debian (better compatibility than Alpine)
 FROM node:20-slim
 
-# Install Chromium dependencies
+# Install Chromium with all dependencies needed for GUI mode + Xvfb
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -22,6 +22,8 @@ RUN apt-get update && apt-get install -y \
     libxkbcommon0 \
     libxrandr2 \
     xdg-utils \
+    xvfb \
+    xauth \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -55,5 +57,5 @@ ENV LIBRARY_PATH=/library
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4004/item/config', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start application
-CMD ["node", "src/server/index.js"]
+# Start with Xvfb (virtual display) to allow non-headless browser for Cloudflare
+CMD xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node src/server/index.js
