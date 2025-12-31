@@ -1,7 +1,7 @@
 # Minimal Dockerfile - only essential dependencies
 FROM node:20-slim
 
-# Install Chromium with all dependencies needed for GUI mode + Xvfb + VNC
+# Install Chromium with all dependencies needed for headless mode + Xvfb
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
@@ -22,8 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 \
     xdg-utils \
     xvfb \
-    xauth \
-    x11vnc \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -53,7 +51,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 # Create directories
 RUN mkdir -p /config /app/data/scrape /app/data/actors
 
-EXPOSE 4004 5900
+EXPOSE 4004
 
 ENV NODE_ENV=production \
     CONFIG_PATH=/config/config.json \

@@ -2,7 +2,7 @@
 # Use official Node.js image with Debian (better compatibility than Alpine)
 FROM node:20-slim
 
-# Install Chromium with all dependencies needed for GUI mode + Xvfb + VNC
+# Install Chromium with all dependencies needed for headless mode + Xvfb
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -23,8 +23,6 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     xdg-utils \
     xvfb \
-    xauth \
-    x11vnc \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -50,7 +48,7 @@ RUN chmod +x docker-entrypoint.sh
 RUN mkdir -p /config /app/data/scrape /app/data/actors
 
 # Expose port
-EXPOSE 4004 5900
+EXPOSE 4004
 
 # Environment variables
 ENV NODE_ENV=production
