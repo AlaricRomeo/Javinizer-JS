@@ -1,7 +1,7 @@
 # Minimal Dockerfile - only essential dependencies
 FROM node:20-slim
 
-# Install Chromium with all dependencies needed for headless mode + Xvfb
+# Install Chromium with minimal dependencies for headless mode + Xvfb
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
@@ -12,15 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libdbus-1-3 \
     libdrm2 \
     libgbm1 \
-    libgtk-3-0 \
     libnspr4 \
     libnss3 \
     libxcomposite1 \
     libxdamage1 \
     libxfixes3 \
-    libxkbcommon0 \
     libxrandr2 \
-    xdg-utils \
     xvfb \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
