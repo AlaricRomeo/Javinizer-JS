@@ -1,5 +1,5 @@
 # Minimal Dockerfile - only essential dependencies
-FROM node:18-slim
+FROM node:20-slim
 
 # Install ONLY essential Chromium dependencies for headless mode
 RUN apt-get update && apt-get install -y --no-install-recommends \
