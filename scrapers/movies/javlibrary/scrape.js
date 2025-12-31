@@ -99,7 +99,9 @@ async function scrape(codes) {
           }
           break;
         }
-        throw error;
+        // Don't throw - add error result and continue
+        console.error(`[Scrape] Failed: ${error.message}`);
+        results.push({ code, error: error.message });
       }
 
       // Small delay between requests to be respectful

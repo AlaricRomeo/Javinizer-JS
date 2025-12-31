@@ -19,8 +19,15 @@ async function main() {
     process.exit(1);
   }
 
+  let hasError = false;
+
   try {
     const results = await scrape(codes);
+
+    // Check if any results have errors
+    if (Array.isArray(results)) {
+      hasError = results.some(r => r.error || (!r.title && !r.id));
+    }
 
     // Output ONLY valid JSON to stdout
     if (Array.isArray(results)) {
@@ -33,7 +40,7 @@ async function main() {
     // This handles cases where browser cleanup hangs
     setTimeout(() => {
       console.error('[Run] Force exit: Process cleanup took too long');
-      process.exit(0);
+      process.exit(hasError ? 1 : 0);
     }, 5000);
 
   } catch (error) {

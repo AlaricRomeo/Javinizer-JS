@@ -492,11 +492,21 @@ async function scrapeAll(codes, emitter = null) {
     const scraperResults = resultsByCode[code] || [];
     const merged = mergeResults(code, scraperResults, config);
 
-    // Collect which scrapers provided data for this code
-    const usedScrapers = scraperResults.map(r => r.scraperName);
+    // Only save if we have valid data (not just code/id fields)
+    // Check for meaningful data beyond just id/code
+    const hasValidData = merged.title || merged.studio || merged.releaseDate ||
+                         (merged.actor && merged.actor.length > 0) ||
+                         (merged.genres && merged.genres.length > 0);
 
-    // Save to file with wrapper structure
-    saveToFile(code, merged, usedScrapers, config.libraryPath);
+    if (hasValidData) {
+      // Collect which scrapers provided data for this code
+      const usedScrapers = scraperResults.map(r => r.scraperName);
+
+      // Save to file with wrapper structure
+      saveToFile(code, merged, usedScrapers, config.libraryPath);
+    } else {
+      console.error(`[ScraperManager] Skipping save for ${code}: no valid data`);
+    }
 
     finalResults.push(merged);
   }
@@ -538,13 +548,32 @@ async function scrapeAll(codes, emitter = null) {
 
   // Emit completion event AFTER all processing (movies + actors)
   if (emitter) {
-    const totalMessage = config.actorsEnabled
-      ? `Scraping completed. Saved ${finalResults.length} movie(s) with actor data`
-      : `Scraping completed. Saved ${finalResults.length} movie(s)`;
+    // Count successful vs failed results
+    // Check for meaningful data beyond just id/code
+    const successCount = finalResults.filter(r =>
+      r.title || r.studio || r.releaseDate ||
+      (r.actor && r.actor.length > 0) ||
+      (r.genres && r.genres.length > 0)
+    ).length;
+    const failedCount = finalResults.length - successCount;
+
+    let totalMessage;
+    if (failedCount === 0) {
+      totalMessage = config.actorsEnabled
+        ? `✅ Scraping completed. Saved ${successCount} movie(s) with actor data`
+        : `✅ Scraping completed. Saved ${successCount} movie(s)`;
+    } else if (successCount === 0) {
+      totalMessage = `❌ Scraping failed. All ${failedCount} movie(s) failed`;
+    } else {
+      totalMessage = config.actorsEnabled
+        ? `⚠️ Scraping completed with errors. Saved ${successCount} movie(s), ${failedCount} failed`
+        : `⚠️ Scraping completed with errors. Saved ${successCount} movie(s), ${failedCount} failed`;
+    }
 
     emitter.emit('complete', {
       message: totalMessage,
-      count: finalResults.length
+      count: successCount,
+      failed: failedCount
     });
   }
 
