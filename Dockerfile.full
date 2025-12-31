@@ -2,7 +2,7 @@
 # Use official Node.js image with Debian (better compatibility than Alpine)
 FROM node:20-slim
 
-# Install Chromium with all dependencies needed for GUI mode + Xvfb
+# Install Chromium with all dependencies needed for GUI mode + Xvfb + VNC
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     xvfb \
     xauth \
+    x11vnc \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -42,11 +43,14 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 # Copy application files
 COPY . .
 
+# Make entrypoint executable
+RUN chmod +x docker-entrypoint.sh
+
 # Create directories for persistent data
 RUN mkdir -p /config /app/data/scrape /app/data/actors
 
 # Expose port
-EXPOSE 4004
+EXPOSE 4004 5900
 
 # Environment variables
 ENV NODE_ENV=production
@@ -57,5 +61,5 @@ ENV LIBRARY_PATH=/library
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4004/item/config', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start with Xvfb (virtual display) to allow non-headless browser for Cloudflare
-CMD xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node src/server/index.js
+# Start server with smart display detection
+CMD ["./docker-entrypoint.sh"]

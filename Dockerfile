@@ -1,7 +1,7 @@
 # Minimal Dockerfile - only essential dependencies
 FROM node:20-slim
 
-# Install Chromium with all dependencies needed for GUI mode + Xvfb
+# Install Chromium with all dependencies needed for GUI mode + Xvfb + VNC
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils \
     xvfb \
     xauth \
+    x11vnc \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -40,6 +41,10 @@ RUN npm ci --production --quiet \
 COPY src ./src
 COPY data ./data
 COPY scrapers ./scrapers
+COPY docker-entrypoint.sh ./
+
+# Make entrypoint executable
+RUN chmod +x docker-entrypoint.sh
 
 # Tell Puppeteer to use system Chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
@@ -48,7 +53,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 # Create directories
 RUN mkdir -p /config /app/data/scrape /app/data/actors
 
-EXPOSE 4004
+EXPOSE 4004 5900
 
 ENV NODE_ENV=production \
     CONFIG_PATH=/config/config.json \
@@ -57,5 +62,5 @@ ENV NODE_ENV=production \
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:4004/item/config', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start with Xvfb (virtual display) to allow non-headless browser for Cloudflare
-CMD xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node src/server/index.js
+# Start server with smart display detection
+CMD ["./docker-entrypoint.sh"]
