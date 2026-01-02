@@ -39,8 +39,15 @@ app.use("/media", (req, res) => {
     return res.status(404).send("File not found");
   }
 
-  // Send file
-  res.sendFile(requestedPath);
+  // Send file with no-cache headers to prevent file locking on Windows
+  const options = {
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  };
+  res.sendFile(requestedPath, options);
 });
 
 // ─────────────────────────────
@@ -77,9 +84,13 @@ app.use("/actors", (req, res) => {
 
   // Use sendFile instead of createReadStream for better Windows compatibility
   // This ensures file descriptors are properly closed
+  // Add no-cache headers to prevent file locking on Windows
   const options = {
     headers: {
-      'Content-Type': contentType
+      'Content-Type': contentType,
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
     }
   };
 

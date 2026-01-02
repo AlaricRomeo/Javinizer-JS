@@ -390,13 +390,26 @@ function saveToFile(code, data, sources, libraryPath) {
     const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts'];
 
     function findVideoRecursive(dirPath) {
-      const items = fs.readdirSync(dirPath);
+      let items;
+      try {
+        items = fs.readdirSync(dirPath);
+      } catch (error) {
+        console.error(`[ScraperManager] Cannot read directory ${dirPath}: ${error.message}`);
+        return null;
+      }
 
       for (const item of items) {
         if (item.startsWith('.')) continue;
 
         const itemPath = path.join(dirPath, item);
-        const stats = fs.statSync(itemPath);
+        let stats;
+
+        try {
+          stats = fs.statSync(itemPath);
+        } catch (error) {
+          // Skip files we can't access (Windows permissions/locks)
+          continue;
+        }
 
         if (stats.isDirectory()) {
           const found = findVideoRecursive(itemPath);
@@ -427,9 +440,15 @@ function saveToFile(code, data, sources, libraryPath) {
   };
 
   const outputPath = path.join(outputDir, `${code}.json`);
-  fs.writeFileSync(outputPath, JSON.stringify(wrappedData, null, 2), 'utf-8');
 
-  console.error(`[ScraperManager] Saved: ${outputPath}`);
+  try {
+    fs.writeFileSync(outputPath, JSON.stringify(wrappedData, null, 2), 'utf-8');
+    console.error(`[ScraperManager] Saved: ${outputPath}`);
+  } catch (error) {
+    console.error(`[ScraperManager] ERROR saving ${code}.json: ${error.message}`);
+    console.error(`[ScraperManager] Error details:`, error);
+    throw error; // Re-throw to make the error visible
+  }
 }
 
 // ─────────────────────────────

@@ -202,34 +202,35 @@ async function closeBrowser() {
   if (browser) {
     console.error('[Browser] Closing browser...');
     try {
-      // Close page first
+      // Force kill the browser process immediately for faster shutdown
+      const browserProcess = browser.process();
+      if (browserProcess && browserProcess.pid) {
+        try {
+          // On Windows use SIGTERM, on Unix use SIGKILL
+          const signal = process.platform === 'win32' ? 'SIGTERM' : 'SIGKILL';
+          process.kill(browserProcess.pid, signal);
+          console.error('[Browser] Browser process killed');
+        } catch (killError) {
+          console.error(`[Browser] Could not kill browser process: ${killError.message}`);
+        }
+      }
+
+      // Clean up references
       if (sessionPage) {
-        await Promise.race([
-          sessionPage.close(),
-          new Promise(resolve => setTimeout(resolve, 2000)) // 2s timeout
-        ]);
+        try {
+          await sessionPage.close().catch(() => {});
+        } catch (e) {}
         sessionPage = null;
       }
 
-      // Close browser with timeout
-      await Promise.race([
-        browser.close(),
-        new Promise(resolve => setTimeout(resolve, 3000)) // 3s timeout
-      ]);
+      // Try to close browser gracefully (but don't wait too long)
+      try {
+        await browser.close().catch(() => {});
+      } catch (e) {}
 
       console.error('[Browser] Browser closed successfully');
     } catch (error) {
       console.error(`[Browser] Error closing browser: ${error.message}`);
-      // Force kill browser process if close fails
-      try {
-        const browserProcess = browser.process();
-        if (browserProcess && browserProcess.pid) {
-          process.kill(browserProcess.pid, 'SIGKILL');
-          console.error('[Browser] Browser process killed forcefully');
-        }
-      } catch (killError) {
-        console.error(`[Browser] Could not kill browser process: ${killError.message}`);
-      }
     } finally {
       browser = null;
       sessionPage = null;
