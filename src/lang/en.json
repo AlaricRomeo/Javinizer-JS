@@ -122,7 +122,8 @@
     "userConfirmed": "✅ User confirmed - continuing...",
     "userCanceled": "⚠️ User canceled",
     "scraperFailed": "❌ Scraper \"{name}\" failed: {message}",
-    "actionRequired": "{name} - User Action Required"
+    "actionRequired": "User Action Required",
+    "javlibraryCloudflare": "1. Open the browser window that appeared (check taskbar if minimized)\n2. Solve the Cloudflare challenge and accept the adult agreement\n3. Minimize the window (DO NOT close it)\n4. Click Continue below"
   },
   "actorModal": {
     "title": "Edit Actor",

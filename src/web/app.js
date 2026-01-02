@@ -104,13 +104,13 @@ function showNotification(message, type = "info", duration = 5000) {
   notification.textContent = message;
   notification.style.cssText = `
     position: fixed;
-    top: 80px;
+    top: 100px;
     right: 20px;
     padding: 15px 20px;
     border-radius: 4px;
     color: white;
     font-weight: bold;
-    z-index: 2000;
+    z-index: 9999;
     animation: slideIn 0.3s ease-out;
     box-shadow: 0 4px 6px rgba(0,0,0,0.2);
     white-space: pre-line;
@@ -430,6 +430,9 @@ async function switchMode(newMode) {
       scrapePanel.style.opacity = "0.5";
       scrapePanel.style.pointerEvents = "none";
     }
+
+    // Force refresh library count before loading item
+    await checkLibraryCount();
 
     await loadItem("/item/current");
     // In edit mode the save button is enabled only with dirty fields
@@ -1712,15 +1715,27 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
 
     case 'prompt':
       // Interactive prompt from scraper
-      const promptMsg = `⏸️ ${data.scraperName}: ${data.message}`;
+      // Check if message is an i18n key or plain text
+      const translatedMessage = window.i18n && window.i18n.t(`messages.${data.message}`) !== `messages.${data.message}`
+        ? window.i18n.t(`messages.${data.message}`)
+        : data.message;
+
+      const promptMsg = `⏸️ ${data.scraperName}: ${translatedMessage}`;
       appendProgress(progressDiv, promptMsg, 'prompt');
+
+      // Translate dialog title and buttons if available
+      const dialogTitle = window.i18n
+        ? window.i18n.t('messages.actionRequired')
+        : 'User Action Required';
+      const continueBtn = window.i18n ? window.i18n.t('buttons.continue') : 'Continue';
+      const cancelBtn = window.i18n ? window.i18n.t('buttons.cancel') : 'Cancel';
 
       // Show confirm dialog
       const userResponse = await showConfirmDialog(
-        `${data.scraperName} - User Action Required`,
-        data.message,
-        'Continue',
-        'Cancel'
+        dialogTitle,
+        translatedMessage,
+        continueBtn,
+        cancelBtn
       );
 
       // Send response back via WebSocket

@@ -122,7 +122,8 @@
     "userConfirmed": "✅ 確認されました - 続行中...",
     "userCanceled": "⚠️ ユーザーによってキャンセルされました",
     "scraperFailed": "❌ スクレイパー「{name}」が失敗しました: {message}",
-    "actionRequired": "{name} - ユーザーアクションが必要"
+    "actionRequired": "ユーザーアクションが必要",
+    "javlibraryCloudflare": "1. 表示されたブラウザウィンドウを開いてください（最小化されている場合はタスクバーを確認）\n2. Cloudflareチャレンジを解決し、成人向け規約に同意してください\n3. ウィンドウを最小化してください（閉じないでください）\n4. 下の「続行」をクリックしてください"
   },
   "actorModal": {
     "title": "女優を編集",

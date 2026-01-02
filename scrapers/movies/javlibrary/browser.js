@@ -120,6 +120,19 @@ async function initSession() {
     console.error('[Browser] Opening browser to initialize session...');
     await sessionPage.goto('https://www.javlibrary.com/en/', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
+    // Minimize the browser window (works on Linux, Windows behavior varies)
+    try {
+      const session = await sessionPage.target().createCDPSession();
+      const { windowId } = await session.send('Browser.getWindowForTarget');
+      await session.send('Browser.setWindowBounds', {
+        windowId,
+        bounds: { windowState: 'minimized' }
+      });
+      console.error('[Browser] Browser window minimized');
+    } catch (minimizeError) {
+      console.error('[Browser] Could not minimize window (not critical):', minimizeError.message);
+    }
+
     console.error('[Browser] ========================================');
     console.error('[Browser] Browser window is now open.');
     console.error('[Browser] Please:');
@@ -129,8 +142,9 @@ async function initSession() {
     console.error('[Browser] ========================================');
 
     // Wait for user confirmation via WebSocket
+    // The message key will be translated by the frontend i18n system
     const confirmed = await waitForUserConfirmation(
-      'Please solve the Cloudflare challenge and accept the adult agreement in the browser window, then click Continue.'
+      'javlibraryCloudflare'
     );
 
     if (!confirmed) {

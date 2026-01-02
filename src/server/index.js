@@ -75,14 +75,20 @@ app.use("/actors", (req, res) => {
   };
   const contentType = contentTypes[ext] || 'application/octet-stream';
 
-  // Set headers and stream file
-  res.setHeader('Content-Type', contentType);
-  const fileStream = fs.createReadStream(filePath);
-  fileStream.pipe(res);
-  fileStream.on('error', (err) => {
-    console.error(`[Server] Error streaming file:`, err.message);
-    if (!res.headersSent) {
-      res.status(500).send("Error streaming file");
+  // Use sendFile instead of createReadStream for better Windows compatibility
+  // This ensures file descriptors are properly closed
+  const options = {
+    headers: {
+      'Content-Type': contentType
+    }
+  };
+
+  res.sendFile(filePath, options, (err) => {
+    if (err) {
+      console.error(`[Server] Error sending file:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).send("Error sending file");
+      }
     }
   });
 });

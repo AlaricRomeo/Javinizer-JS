@@ -181,14 +181,14 @@ body {
 
 .status-message {
     position: fixed;
-    top: 20px;
+    top: 100px;
     right: 20px;
     padding: 15px 20px;
     border-radius: 4px;
     font-size: 14px;
     font-weight: bold;
     color: white;
-    z-index: 2000;
+    z-index: 9999;
     box-shadow: 0 4px 6px rgba(0,0,0,0.2);
     display: none;
     animation: slideIn 0.3s ease-out;

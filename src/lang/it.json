@@ -122,7 +122,8 @@
     "userConfirmed": "✅ Confermato - continuo...",
     "userCanceled": "⚠️ Annullato dall'utente",
     "scraperFailed": "❌ Scraper \"{name}\" fallito: {message}",
-    "actionRequired": "{name} - Azione Richiesta"
+    "actionRequired": "Azione Richiesta",
+    "javlibraryCloudflare": "1. Apri la finestra del browser che è apparsa (controlla la barra delle applicazioni se minimizzata)\n2. Supera la verifica di Cloudflare e accetta l'accordo per adulti\n3. Minimizza la finestra (NON chiuderla)\n4. Clicca Continua qui sotto"
   },
   "actorModal": {
     "title": "Modifica Attore",
