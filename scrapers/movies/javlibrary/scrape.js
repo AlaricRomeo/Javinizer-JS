@@ -4,6 +4,8 @@
 
 const { initSession, fetchPage, closeBrowser } = require('./browser');
 const { parseHTML } = require('./parse');
+const os = require('os');
+const path = require('path');
 
 let sessionInitialized = false;
 
@@ -37,8 +39,9 @@ async function scrapeSingle(code) {
 
     // Debug: save HTML for inspection
     const fs = require('fs');
-    fs.writeFileSync('/tmp/javlib_debug.html', html);
-    console.error('[Scrape] HTML saved to /tmp/javlib_debug.html for debugging');
+    const debugPath = path.join(os.tmpdir(), 'javlib_debug.html');
+    fs.writeFileSync(debugPath, html);
+    console.error(`[Scrape] HTML saved to ${debugPath} for debugging`);
 
     console.error('[Scrape] Parsing HTML...');
     const result = parseHTML(html, code);

@@ -38,10 +38,11 @@ async function main() {
 
     // Set a timeout to force exit if process doesn't exit normally
     // This handles cases where browser cleanup hangs
+    // Increased to 10s to allow browser cleanup (especially on Windows)
     setTimeout(() => {
       console.error('[Run] Force exit: Process cleanup took too long');
       process.exit(hasError ? 1 : 0);
-    }, 5000);
+    }, 10000);
 
   } catch (error) {
     console.error(`[Error] ${error.message}`);
@@ -51,7 +52,7 @@ async function main() {
     // Force exit after error
     setTimeout(() => {
       process.exit(1);
-    }, 5000);
+    }, 10000);
   }
 }
 
