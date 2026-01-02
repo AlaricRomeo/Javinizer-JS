@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { normalizeActorName, actorToNFO, nfoToActor } = require('../../scrapers/actors/schema');
 const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
-const { loadConfig } = require('./config');
+const { loadConfig, getScrapePath } = require('./config');
 
 // ─────────────────────────────
 // Configuration Loading
@@ -555,20 +555,7 @@ async function getActor(actorName) {
 // Batch Processing
 // ─────────────────────────────
 
-/**
- * Get scrape path based on library path
- * Items are stored in {libraryPath}/.javinizer/scrape/
- */
-function getScrapePath() {
-  const config = loadConfig();
-  const libraryPath = config.libraryPath;
-
-  if (!libraryPath) {
-    return path.join(__dirname, '../../data/scrape'); // Fallback
-  }
-
-  return path.join(libraryPath, '.javinizer', 'scrape');
-}
+// getScrapePath() is now imported from config.js and always returns data/scrape
 
 /**
  * Extract all unique actor names from scraped movie JSON files

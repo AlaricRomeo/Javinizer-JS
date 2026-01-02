@@ -1,4 +1,4 @@
-const { loadConfig, saveConfig } = require("../core/config");
+const { loadConfig, saveConfig, getScrapePath } = require("../core/config");
 const { buildItem } = require("../core/buildItem");
 const express = require("express");
 const router = express.Router();
@@ -11,20 +11,7 @@ const ScrapeReader = require("../core/scrapeReader");
 const ScrapeSaver = require("../core/scrapeSaver");
 const { saveNfoPatch } = require("../core/saveNfo");
 
-/**
- * Get scrape path based on library path
- * Items are stored in {libraryPath}/.javinizer/scrape/
- */
-function getScrapePath() {
-  const config = loadConfig();
-  const libraryPath = config.libraryPath;
-
-  if (!libraryPath) {
-    return path.join(__dirname, '../../data/scrape'); // Fallback
-  }
-
-  return path.join(libraryPath, '.javinizer', 'scrape');
-}
+// getScrapePath() is now imported from config.js and always returns data/scrape
 
 // Load config and initialize library reader
 const config = loadConfig();
@@ -268,6 +255,13 @@ router.post("/config", (req, res) => {
       libraryReader.updatePaths(newConfig.libraryPath, newConfig.actorsPath);
       libraryReader.loadLibrary();
       console.log('[Config] Library cache reset due to path change');
+
+      // Reload scrape items list (always shows all JSONs from data/scrape)
+      // Note: JSONs are centralized, so changing library path doesn't delete them
+      if (libraryPathChanged) {
+        scrapeReader.loadScrapeItems();
+        console.log('[Config] Scrape items list reloaded');
+      }
     }
 
     res.json({ ok: true });
@@ -495,7 +489,7 @@ router.post("/scrape/start", async (req, res) => {
   const { scrapeAll, extractCodesFromLibrary } = require('../core/scraperManager');
 
   try {
-    // Get config
+    // Get config - always reload fresh config to ensure we use the current library path
     const config = loadConfig();
 
     // Extract codes from library path
@@ -505,7 +499,7 @@ router.post("/scrape/start", async (req, res) => {
       return res.json({ ok: false, error: 'libraryPath not specified in config.json' });
     }
 
-    console.error(`[Routes] Reading library: ${libraryPath}`);
+    console.error(`[Routes] Scraping starting with library path: ${libraryPath}`);
 
     const codes = extractCodesFromLibrary(libraryPath);
 
@@ -517,6 +511,8 @@ router.post("/scrape/start", async (req, res) => {
 
     // Filter out already scraped codes
     const outputDir = getScrapePath();
+    console.error(`[Routes] Scrape output directory: ${outputDir}`);
+
     const codesToScrape = codes.filter(code => {
       const jsonPath = path.join(outputDir, `${code}.json`);
       return !fs.existsSync(jsonPath);
@@ -531,6 +527,34 @@ router.post("/scrape/start", async (req, res) => {
     // Return immediate response with WebSocket ID
     const scrapeId = Date.now().toString();
     res.json({ ok: true, scrapeId, message: 'Scraping started. Connect to WebSocket for progress.' });
+
+    // Count total scrapers (video + actors if enabled)
+    // config is already loaded above at line 493
+    let totalScrapers = 1; // Always have video scraping
+    if (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled) {
+      totalScrapers++; // Add actor scraping
+    }
+    let completedScrapers = 0;
+    console.error(`[Routes] Total scrapers to run: ${totalScrapers}`);
+
+    // Helper function to check if all scraping is complete
+    const checkAllScrapingComplete = () => {
+      completedScrapers++;
+      console.error(`[Routes] Scraper completed: ${completedScrapers}/${totalScrapers}`);
+
+      if (completedScrapers >= totalScrapers) {
+        console.error('[Routes] All scraping completed, sending complete event');
+        req.wss.clients.forEach(client => {
+          if (client.readyState === 1) {
+            client.send(JSON.stringify({
+              event: 'complete',
+              data: { message: 'All scraping completed' },
+              scrapeId
+            }));
+          }
+        });
+      }
+    };
 
     // Start scraping in background with WebSocket communication
     const emitter = new EventEmitter();
@@ -566,13 +590,7 @@ router.post("/scrape/start", async (req, res) => {
       });
     });
 
-    emitter.on('complete', (data) => {
-      req.wss.clients.forEach(client => {
-        if (client.readyState === 1) {
-          client.send(JSON.stringify({ event: 'complete', data, scrapeId }));
-        }
-      });
-    });
+    // Note: Video scraping completion is handled in .then() below
 
     emitter.on('error', (data) => {
       req.wss.clients.forEach(client => {
@@ -611,17 +629,16 @@ router.post("/scrape/start", async (req, res) => {
       .then(() => {
         console.error('[Routes] Video scraping completed successfully');
 
-        // Auto-start actor scraping if enabled in config
-        const config = loadConfig();
-        console.error('[Routes] Config loaded:', JSON.stringify(config.scrapers, null, 2));
-        console.error('[Routes] Actors enabled:', config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled);
+        // Video scraping done - increment counter
+        checkAllScrapingComplete();
 
+        // Auto-start actor scraping if enabled
         if (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled) {
           console.error('[Routes] Auto-starting actor scraping after video scraping completed');
 
-          // Wait 2 seconds to ensure all JSON files are written to disk
+          // Wait 1 second before starting actor scraping
           setTimeout(() => {
-            // Send notification to client that actor scraping is starting
+            // Send notification to client
             req.wss.clients.forEach(client => {
               if (client.readyState === 1) {
                 client.send(JSON.stringify({
@@ -637,6 +654,8 @@ router.post("/scrape/start", async (req, res) => {
 
             batchProcessActors()
             .then((summary) => {
+              console.error('[Routes] Actor scraping completed successfully');
+
               // Send completion message
               req.wss.clients.forEach(client => {
                 if (client.readyState === 1) {
@@ -658,6 +677,9 @@ router.post("/scrape/start", async (req, res) => {
                   }));
                 }
               });
+
+              // Actor scraping done - increment counter
+              checkAllScrapingComplete();
             })
             .catch((error) => {
               console.error('[Routes] Error in auto actor scraping:', error);
@@ -670,13 +692,20 @@ router.post("/scrape/start", async (req, res) => {
                   }));
                 }
               });
+
+              // Actor scraping failed but still increment counter
+              checkAllScrapingComplete();
             });
-          }, 2000); // Wait 2 seconds before starting actor scraping
+          }, 1000);
         }
       })
       .catch(error => {
         console.error('[Routes] Scraping error:', error);
+        console.error('[Routes] Error stack:', error.stack);
         emitter.emit('error', { message: error.message });
+
+        // Even on error, increment counter to show close button
+        checkAllScrapingComplete();
       });
 
   } catch (error) {

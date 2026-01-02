@@ -42,25 +42,6 @@ class ScrapeSaver {
   }
 
   /**
-   * Finds the video file that starts with the ID
-   */
-  findVideoFile(id, videoPath) {
-    if (!fs.existsSync(videoPath)) {
-      return null;
-    }
-
-    const files = fs.readdirSync(videoPath);
-    const videoFile = files.find(f => {
-      const lower = f.toLowerCase();
-      return lower.startsWith(id.toLowerCase()) &&
-             (lower.endsWith(".mp4") || lower.endsWith(".mkv") ||
-              lower.endsWith(".avi") || lower.endsWith(".wmv"));
-    });
-
-    return videoFile ? path.join(videoPath, videoFile) : null;
-  }
-
-  /**
    * Downloads an image from URL
    */
   downloadImage(url, destPath) {
@@ -145,9 +126,32 @@ class ScrapeSaver {
     };
 
     try {
-      // 1. Create folder name
+      // 1. Get video file path from JSON (required field)
+      const videoFile = scrapeData.videoFile;
+
+      console.log(`[ScrapeSaver] videoFile from JSON: ${videoFile}`);
+
+      // videoFile is required in JSON
+      if (!videoFile) {
+        results.errors.push(`Missing videoFile field in JSON for ${item.id}`);
+        console.error(`[ScrapeSaver] videoFile field is missing in JSON`);
+        return results;
+      }
+
+      // Check if file exists
+      if (!fs.existsSync(videoFile)) {
+        results.errors.push(`Video file not found: ${videoFile}`);
+        console.error(`[ScrapeSaver] Video file doesn't exist: ${videoFile}`);
+        return results;
+      }
+
+      // 2. Create folder in the same directory as the video file
+      const videoDir = path.dirname(videoFile);
       const folderName = this.formatFolderName(item);
-      const folderPath = path.join(this.config.libraryPath, folderName);
+      const folderPath = path.join(videoDir, folderName);
+
+      console.log(`[ScrapeSaver] Creating folder: ${folderPath}`);
+      console.log(`[ScrapeSaver] Video source: ${videoFile}`);
 
       if (fs.existsSync(folderPath)) {
         results.errors.push(`Folder already exists: ${folderName}`);
@@ -157,33 +161,27 @@ class ScrapeSaver {
       fs.mkdirSync(folderPath, { recursive: true });
       results.folder = folderPath;
 
-      // 2. Move and rename video (if exists)
-      const videoPath = scrapeData.videoFile || this.config.videoPath;
-      const videoFile = this.findVideoFile(item.id, path.dirname(videoPath));
+      // 3. Move and rename video
+      const ext = path.extname(videoFile);
+      const newVideoPath = path.join(folderPath, `${item.id}${ext}`);
+      fs.renameSync(videoFile, newVideoPath);
+      results.video = newVideoPath;
+      console.log(`[ScrapeSaver] Moved video: ${videoFile} -> ${newVideoPath}`);
 
-      if (videoFile && fs.existsSync(videoFile)) {
-        const ext = path.extname(videoFile);
-        const newVideoPath = path.join(folderPath, `${item.id}${ext}`);
-        fs.renameSync(videoFile, newVideoPath);
-        results.video = newVideoPath;
-      } else {
-        results.errors.push(`Video file not found for ${item.id}`);
-      }
-
-      // 3. Generate NFO
+      // 4. Generate NFO
       // Note: Actor data should already be enriched from batch-actors process
       const nfoPath = path.join(folderPath, `${item.id}.nfo`);
       await saveNfoFull(nfoPath, item);
       results.nfo = nfoPath;
 
-      // 4. Download fanart
+      // 5. Download fanart
       if (item.coverUrl) {
         const fanartPath = path.join(folderPath, "fanart.jpg");
         try {
           await this.downloadImage(item.coverUrl, fanartPath);
           results.fanart = fanartPath;
 
-          // 5. Create poster
+          // 6. Create poster
           const posterPath = path.join(folderPath, "poster.jpg");
           const posterCreated = await this.createPoster(fanartPath, posterPath);
           if (posterCreated) {

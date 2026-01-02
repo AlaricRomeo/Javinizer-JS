@@ -2,7 +2,7 @@
 
 > **Beta Release v0.9.0** - Production-ready metadata management for JAV libraries
 
-A cross-platform, containerized web application for managing JAV (Japanese Adult Video) metadata, compatible with Jellyfin, Plex, and Kodi.
+A cross-platform web application for managing JAV (Japanese Adult Video) metadata, compatible with Jellyfin, Plex, and Kodi.
 
 ## ✨ Features
 
@@ -28,10 +28,9 @@ A cross-platform, containerized web application for managing JAV (Japanese Adult
 - 📦 **Actor Scraping** - Automatic actor data retrieval and caching
 
 ### Deployment
-- 🐳 **Docker Ready** - Pre-configured Dockerfile and docker-compose.yml
-- 🖥️ **Cross-Platform** - Works on Linux, macOS, Windows (via Docker or native Node.js)
-- 📊 **Health Checks** - Built-in health monitoring for containers
+- 🖥️ **Cross-Platform** - Works on Linux, macOS, Windows with Node.js
 - 🔧 **Easy Configuration** - Simple JSON configuration file
+- 🚀 **Simple Setup** - No containers needed, runs directly with Node.js
 
 ## ⚖️ Intended Use & Fair Use Policy
 
@@ -56,31 +55,10 @@ By using this software, you agree to:
 
 ## Requirements
 
-- Node.js 18+ (or Docker)
-- Chromium/Chrome (for scrapers - included in Docker image)
+- Node.js 18+
+- Chromium/Chrome (for scrapers requiring browser automation)
 
 ## Installation
-
-### Docker (Recommended)
-
-```bash
-# Clone repository
-git clone <repository-url>
-cd javinizer-js
-
-# Edit docker-compose.yml to set your library path
-nano docker-compose.yml
-
-# Start container
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-```
-
-The web interface will be available at `http://localhost:4004`
-
-### Local Development
 
 ```bash
 # Clone repository
@@ -214,11 +192,13 @@ node src/core/scraperManager.js SDDM-943 JUR-618
 ```
 
 The ScraperManager will:
-1. Read all files from your `libraryPath` (or process specified codes)
+1. Read all video files from your `libraryPath` (or process specified codes)
 2. Extract DVD codes from filenames
 3. Execute enabled scrapers sequentially in priority order
 4. Merge results based on priority rules
-5. Save merged JSON files to `data/scrape/{code}.json`
+5. Save merged JSON files to `data/scrape/{code}.json` (centralized storage)
+
+**Note**: Scraped JSON files are stored in a centralized `data/scrape/` directory, not per-library. Each JSON includes the full path to the source video file, allowing you to manage videos from multiple locations.
 
 ### Available Scrapers
 
@@ -309,8 +289,6 @@ javinizer-js/
 │   ├── scrape/           # Scraped JSON files
 │   └── actors/           # Actor cache and thumbnails
 ├── config.json           # Configuration (gitignored)
-├── Dockerfile            # Docker configuration
-├── docker-compose.yml    # Docker Compose setup
 └── package.json
 ```
 
@@ -361,7 +339,6 @@ All UI elements use `data-i18n` attributes for automatic translation.
 - [x] Actor management system
 - [x] Multi-language support (EN, IT, JA)
 - [x] WebUI integration with ScraperManager
-- [x] Docker containerization
 - [x] Actor scraping and caching
 - [x] Real-time scraping progress via WebSocket
 
@@ -373,54 +350,10 @@ All UI elements use `data-i18n` attributes for automatic translation.
 - Additional actor data sources
 - Performance optimizations for large libraries
 
-## Docker Deployment
-
-### Using docker-compose (Recommended)
-
-```bash
-# Edit docker-compose.yml to configure paths
-nano docker-compose.yml
-
-# Start services
-docker-compose up -d
-
-# Check logs
-docker-compose logs -f javinizer-js
-
-# Stop services
-docker-compose down
-```
-
-### Manual Docker
-
-```bash
-# Build image
-docker build -t javinizer-js .
-
-# Create volumes for persistent data
-docker volume create javinizer-config
-docker volume create javinizer-data
-
-# Run container
-docker run -d \
-  --name javinizer-js \
-  -p 4004:4004 \
-  -v javinizer-config:/config \
-  -v javinizer-data:/app/data \
-  -v /path/to/library:/library:ro \
-  -e CONFIG_PATH=/config/config.json \
-  -e LIBRARY_PATH=/library \
-  --shm-size=2gb \
-  javinizer-js
-```
-
-**Note:** Configuration is stored in the `javinizer-config` volume and persists across container restarts. The first time you run the container, it will create a default `config.json` which you can modify via the web UI.
-
-### Resource Requirements
+## Resource Requirements
 
 - **Memory**: 512MB minimum, 2GB recommended (for Chromium-based scrapers)
-- **SHM Size**: 2GB (required for Puppeteer/Chromium)
-- **CPU**: 1 core minimum, 2+ cores recommended for parallel scraping
+- **CPU**: 1 core minimum, 2+ cores recommended for better performance
 - **Disk**: Minimal (stores JSON metadata and actor thumbnails only)
 
 ## Contributing
@@ -466,7 +399,6 @@ For issues and feature requests, please use the [GitHub issue tracker](https://g
 - 👥 Complete actor management system with dedicated page
 - 🔍 Actor scraping and caching system
 - 🌐 WebSocket-based real-time scraping progress
-- 🐳 Docker containerization with docker-compose support
 - 🎨 Modernized UI with consistent styling across all pages
 
 **Scraper System:**
@@ -484,4 +416,3 @@ For issues and feature requests, please use the [GitHub issue tracker](https://g
 **Documentation:**
 - 📚 SCRAPER_DEVELOPMENT.md quick start guide
 - 📖 Comprehensive implementation guides
-- 🐳 Docker deployment documentation

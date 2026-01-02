@@ -15,27 +15,13 @@ const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
-const { loadConfig } = require('./config');
+const { loadConfig, getScrapePath } = require('./config');
 
 // ─────────────────────────────
 // Configuration Loading
 // ─────────────────────────────
 // Using centralized config from config.js
-
-/**
- * Get scrape path based on library path
- * Items are stored in {libraryPath}/.javinizer/scrape/
- */
-function getScrapePath() {
-  const config = loadConfig();
-  const libraryPath = config.libraryPath;
-
-  if (!libraryPath) {
-    throw new Error('libraryPath not configured');
-  }
-
-  return path.join(libraryPath, '.javinizer', 'scrape');
-}
+// getScrapePath() is now imported from config.js and always returns data/scrape
 
 // ─────────────────────────────
 // Library Reading
@@ -43,11 +29,12 @@ function getScrapePath() {
 
 /**
  * Extract DVD codes from library path
- * - Reads all files in libraryPath
- * - Skips directories
+ * - Reads ONLY video files in the root of libraryPath (NOT recursive)
  * - Extracts ID from filename (everything before first space or entire name if no space)
+ * - Supported video extensions: .mp4, .mkv, .avi, .wmv, .mov, .flv, .m4v, .ts
+ * - Used to find video files that need to be scraped
  *
- * @param {string} libraryPath - Path to library directory
+ * @param {string} libraryPath - Path to library directory containing video files
  * @returns {string[]} - Array of unique DVD codes
  */
 function extractCodesFromLibrary(libraryPath) {
@@ -55,23 +42,37 @@ function extractCodesFromLibrary(libraryPath) {
     throw new Error(`Library path not found: ${libraryPath}`);
   }
 
-  const files = fs.readdirSync(libraryPath);
+  const items = fs.readdirSync(libraryPath);
   const codes = new Set();
 
-  files.forEach(file => {
-    const filePath = path.join(libraryPath, file);
-    const stats = fs.statSync(filePath);
+  // Video file extensions to look for
+  const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts'];
 
-    // Skip directories
+  items.forEach(item => {
+    // Skip hidden files and directories
+    if (item.startsWith('.')) {
+      return;
+    }
+
+    const itemPath = path.join(libraryPath, item);
+    const stats = fs.statSync(itemPath);
+
+    // Skip directories - we only want video files in the root
     if (stats.isDirectory()) {
       return;
     }
 
-    // Extract code from filename (up to first space)
-    const spaceIndex = file.indexOf(' ');
-    const code = spaceIndex === -1 ? file : file.substring(0, spaceIndex);
+    // Check if it's a video file
+    const ext = path.extname(item).toLowerCase();
+    if (!videoExtensions.includes(ext)) {
+      return;
+    }
 
-    // Remove file extension if present
+    // Extract code from filename (up to first space)
+    const spaceIndex = item.indexOf(' ');
+    const code = spaceIndex === -1 ? item : item.substring(0, spaceIndex);
+
+    // Remove file extension
     const codeWithoutExt = code.replace(/\.[^.]+$/, '');
 
     if (codeWithoutExt) {
@@ -383,17 +384,37 @@ function saveToFile(code, data, sources, libraryPath) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  // Find video file in library
+  // Find video file in library (recursively search subdirectories)
   let videoFile = '';
   if (libraryPath && fs.existsSync(libraryPath)) {
-    const files = fs.readdirSync(libraryPath);
-    const matchingFile = files.find(file => {
-      const fileCode = file.split(' ')[0].replace(/\.[^.]+$/, '');
-      return fileCode.toLowerCase() === code.toLowerCase();
-    });
-    if (matchingFile) {
-      videoFile = path.join(libraryPath, matchingFile);
+    const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts'];
+
+    function findVideoRecursive(dirPath) {
+      const items = fs.readdirSync(dirPath);
+
+      for (const item of items) {
+        if (item.startsWith('.')) continue;
+
+        const itemPath = path.join(dirPath, item);
+        const stats = fs.statSync(itemPath);
+
+        if (stats.isDirectory()) {
+          const found = findVideoRecursive(itemPath);
+          if (found) return found;
+        } else {
+          const ext = path.extname(item).toLowerCase();
+          if (videoExtensions.includes(ext)) {
+            const fileCode = item.split(' ')[0].replace(/\.[^.]+$/, '');
+            if (fileCode.toLowerCase() === code.toLowerCase()) {
+              return itemPath;
+            }
+          }
+        }
+      }
+      return null;
     }
+
+    videoFile = findVideoRecursive(libraryPath) || '';
   }
 
   // Create wrapper structure matching WebUI expected format
@@ -511,72 +532,8 @@ async function scrapeAll(codes, emitter = null) {
     finalResults.push(merged);
   }
 
-  // AFTER all movies are scraped, start actor scraping if enabled
-  if (config.actorsEnabled) {
-    console.error('[ScraperManager] Starting batch actor processing...');
-
-    if (emitter) {
-      emitter.emit('progress', {
-        message: 'Starting actor scraping...'
-      });
-    }
-
-    try {
-      const { batchProcessActors } = require('./actorScraperManager');
-      const actorSummary = await batchProcessActors(emitter);
-
-      const actorsScraped = actorSummary.scraping?.scraped || 0;
-      const moviesUpdated = actorSummary.updating?.updated || 0;
-
-      console.error(`[ScraperManager] Actor processing completed: ${actorsScraped} actors scraped, ${moviesUpdated} movies updated`);
-
-      if (emitter) {
-        emitter.emit('progress', {
-          message: `✅ Actor scraping completed: ${actorsScraped} actors, ${moviesUpdated} movies updated`
-        });
-      }
-    } catch (error) {
-      console.error('[ScraperManager] Actor processing failed:', error.message);
-
-      if (emitter) {
-        emitter.emit('progress', {
-          message: `⚠️ Actor scraping failed: ${error.message}`
-        });
-      }
-    }
-  }
-
-  // Emit completion event AFTER all processing (movies + actors)
-  if (emitter) {
-    // Count successful vs failed results
-    // Check for meaningful data beyond just id/code
-    const successCount = finalResults.filter(r =>
-      r.title || r.studio || r.releaseDate ||
-      (r.actor && r.actor.length > 0) ||
-      (r.genres && r.genres.length > 0)
-    ).length;
-    const failedCount = finalResults.length - successCount;
-
-    let totalMessage;
-    if (failedCount === 0) {
-      totalMessage = config.actorsEnabled
-        ? `✅ Scraping completed. Saved ${successCount} movie(s) with actor data`
-        : `✅ Scraping completed. Saved ${successCount} movie(s)`;
-    } else if (successCount === 0) {
-      totalMessage = `❌ Scraping failed. All ${failedCount} movie(s) failed`;
-    } else {
-      totalMessage = config.actorsEnabled
-        ? `⚠️ Scraping completed with errors. Saved ${successCount} movie(s), ${failedCount} failed`
-        : `⚠️ Scraping completed with errors. Saved ${successCount} movie(s), ${failedCount} failed`;
-    }
-
-    emitter.emit('complete', {
-      message: totalMessage,
-      count: successCount,
-      failed: failedCount
-    });
-  }
-
+  // Note: Actor scraping is now handled in routes.js, not here
+  // This allows better control over the completion flow
   return finalResults;
 }
 

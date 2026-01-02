@@ -50,4 +50,13 @@ function saveConfig(config) {
   );
 }
 
-module.exports = { loadConfig, saveConfig };
+/**
+ * Get centralized scrape path
+ * Always returns data/scrape regardless of library path
+ * This allows managing scrapes from multiple libraries in one place
+ */
+function getScrapePath() {
+  return path.join(process.cwd(), 'data', 'scrape');
+}
+
+module.exports = { loadConfig, saveConfig, getScrapePath };

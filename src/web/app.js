@@ -272,8 +272,16 @@ document.getElementById("dirBrowserSelect").onclick = async () => {
 
     // Ricarica il primo item della nuova libreria
     // (the server will reload the library automatically)
-    setTimeout(() => {
-      loadItem("/item/current");
+    setTimeout(async () => {
+      if (currentMode === "scrape") {
+        // In scrape mode: check availability and load first scrape item
+        await checkScrapeAvailability();
+        const loaded = await loadItem("/item/scrape/current");
+        updateDeleteButtons(loaded);
+      } else {
+        // In edit mode: load first library item
+        await loadItem("/item/current");
+      }
     }, 500);
   } else {
     showNotification("✗ Errore nel salvataggio", "error");
@@ -352,10 +360,19 @@ async function checkLibraryCount() {
   }
 }
 
-async function checkScrapeAvailability() {
+async function checkScrapeAvailability(retryCount = 0) {
   try {
-    // Prima ricarica i file JSON
-    await fetch("/item/scrape/reload", { method: "POST" });
+    // Prima ricarica i file JSON (with retry on failure)
+    try {
+      await fetch("/item/scrape/reload", { method: "POST" });
+    } catch (reloadErr) {
+      // If reload fails and we haven't retried yet, wait and retry
+      if (retryCount < 2) {
+        await new Promise(resolve => setTimeout(resolve, 200 * (retryCount + 1)));
+        return checkScrapeAvailability(retryCount + 1);
+      }
+      throw reloadErr;
+    }
 
     // Poi conta
     const res = await fetch("/item/scrape/count");
@@ -391,6 +408,9 @@ async function switchMode(newMode) {
   // Salva il mode nel config.json
   await saveModeToConfig(newMode);
 
+  // Wait a moment for server to process the config save
+  await new Promise(resolve => setTimeout(resolve, 100));
+
   // Pulisci UI prima del cambio mode
   clearUI();
 
@@ -425,7 +445,16 @@ async function switchMode(newMode) {
       scrapePanel.style.pointerEvents = "auto";
     }
 
-    const loaded = await loadItem("/item/scrape/current");
+    // Check scrape availability first to ensure counter is updated
+    await checkScrapeAvailability();
+
+    let loaded = await loadItem("/item/scrape/current");
+
+    // If first load failed, retry after short delay (for initial page load timing issues)
+    if (!loaded) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      loaded = await loadItem("/item/scrape/current");
+    }
 
     // Update delete buttons visibility
     updateDeleteButtons(loaded);
@@ -442,17 +471,21 @@ async function switchMode(newMode) {
 }
 
 // Helper function to update delete buttons visibility
-function updateDeleteButtons(itemLoaded) {
+async function updateDeleteButtons(itemLoaded) {
   const deleteBtn = document.getElementById("deleteItem");
   const deleteAllBtn = document.getElementById("deleteAllItems");
-  const scrapeStatusEl = document.getElementById("scrapeStatus");
 
   if (!deleteBtn || !deleteAllBtn) return;
 
-  // Estrai il numero di items dal testo dello status
-  const statusText = scrapeStatusEl ? scrapeStatusEl.textContent : "";
-  const match = statusText.match(/(\d+)\s+item/);
-  const scrapeCount = match ? parseInt(match[1]) : 0;
+  // Get scrape count from server instead of parsing DOM
+  let scrapeCount = 0;
+  try {
+    const res = await fetch("/item/scrape/count");
+    const data = await res.json();
+    scrapeCount = data.ok ? data.count : 0;
+  } catch (err) {
+    console.error("Error getting scrape count:", err);
+  }
 
   // Show deleteItem only if there is a loaded item
   deleteBtn.style.display = itemLoaded ? "block" : "none";
@@ -1112,12 +1145,17 @@ function setupEventHandlers() {
         // Clear dirty fields
         clearDirtyFields();
 
-        // Carica il prossimo item in scrape mode
-        setTimeout(() => {
-          loadItem("/item/scrape/current");
+        // Carica il prossimo item in scrape mode (after deletion, current becomes next)
+        setTimeout(async () => {
+          const loaded = await loadItem("/item/scrape/current");
+
+          // Re-enable save button only after loading is complete
+          saveBtn.disabled = false;
           saveText.textContent = originalText;
-          // Aggiorna il contatore scrape
-          checkScrapeAvailability();
+
+          // Aggiorna il contatore scrape e i bottoni
+          await checkScrapeAvailability();
+          updateDeleteButtons(loaded);
         }, 1000);
 
       } else {
@@ -1390,9 +1428,35 @@ function setupActorModalEventListeners() {
 }
 
 // ─────────────────────────────
+// Wait for server to be ready
+// ─────────────────────────────
+async function waitForServer(maxRetries = 10) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const res = await fetch("/item/config");
+      if (res.ok) {
+        return true;
+      }
+    } catch (err) {
+      // Retry on error
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  console.error('[waitForServer] Server not ready after max retries');
+  return false;
+}
+
+// ─────────────────────────────
 // Inizializzazione i18n
 // ─────────────────────────────
 async function initializeApp() {
+  // Wait for server to be ready first
+  const serverReady = await waitForServer();
+  if (!serverReady) {
+    alert('Server not ready. Please refresh the page.');
+    return;
+  }
+
   // Setup event handlers
   setupEventHandlers();
   // Carica config per ottenere la lingua
@@ -1614,6 +1678,8 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
 
     case 'complete':
       appendProgress(progressDiv, '✅ ' + data.message, 'success');
+
+      // Show Close button - complete is only sent when ALL scraping is done
       closeBtn.style.display = 'block';
 
       // Auto-reload scrape items dopo completamento
@@ -1638,12 +1704,10 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
 
     case 'actorsUpdated':
       // Actors have been updated, reload current item to show new actor data
-      console.log('[WebSocket] Actors updated, reloading current item...');
       const currentUrl = window.location.hash || '/item/scrape/current';
       const itemUrl = currentUrl.startsWith('#') ? currentUrl.substring(1) : currentUrl;
-      loadItem(itemUrl).then(() => {
-        console.log('[WebSocket] Item reloaded with updated actor data');
-      });
+      loadItem(itemUrl);
+      // Note: Close button will be shown by subsequent 'complete' event
       break;
 
     case 'prompt':

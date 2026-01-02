@@ -1,21 +1,8 @@
 const fs = require("fs");
 const path = require("path");
-const { loadConfig } = require('./config');
+const { getScrapePath } = require('./config');
 
-/**
- * Get scrape path based on library path
- * Items are stored in {libraryPath}/.javinizer/scrape/
- */
-function getScrapePath() {
-  const config = loadConfig();
-  const libraryPath = config.libraryPath;
-
-  if (!libraryPath) {
-    return path.join(__dirname, "../../data/scrape"); // Fallback
-  }
-
-  return path.join(libraryPath, '.javinizer', 'scrape');
-}
+// getScrapePath() is now imported from config.js and always returns data/scrape
 
 /**
  * ScrapeReader - Navigation through JSON files in the scrape folder

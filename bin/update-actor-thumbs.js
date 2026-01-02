@@ -16,11 +16,9 @@ const {
   loadActorLocal,
   resolveActorId
 } = require('../src/core/actorScraperManager');
+const { getScrapePath } = require('../src/core/config');
 
-// Get scrape path
-function getScrapePath() {
-  return path.join(__dirname, '../data/scrape');
-}
+// getScrapePath() is now imported from config.js
 
 // Load config
 function loadConfig() {
