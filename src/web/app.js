@@ -104,7 +104,7 @@ function showNotification(message, type = "info", duration = 5000) {
   notification.textContent = message;
   notification.style.cssText = `
     position: fixed;
-    top: 20px;
+    top: 80px;
     right: 20px;
     padding: 15px 20px;
     border-radius: 4px;

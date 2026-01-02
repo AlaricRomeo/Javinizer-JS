@@ -73,6 +73,7 @@ function saveIndex(index) {
 
 /**
  * Update index with actor name variants
+ * Also adds inverted name variants to handle Japanese/Western name order differences
  *
  * @param {object} actor - Actor data
  */
@@ -80,23 +81,30 @@ function updateIndex(actor) {
   const index = loadIndex();
   const id = actor.id;
 
-  // Add main name
-  if (actor.name) {
-    index[actor.name.toLowerCase()] = id;
+  // Helper function to add name and its inverted variant
+  function addNameVariants(name) {
+    if (!name) return;
+
+    const nameLower = name.toLowerCase();
+    index[nameLower] = id;
+
+    // Also add inverted name (e.g., "Yuu Kawakami" → "kawakami yuu")
+    const parts = nameLower.trim().split(/\s+/);
+    if (parts.length === 2) {
+      const invertedName = `${parts[1]} ${parts[0]}`;
+      index[invertedName] = id;
+    }
   }
 
-  // Add alternative name
-  if (actor.altName) {
-    index[actor.altName.toLowerCase()] = id;
-  }
+  // Add main name and its variants
+  addNameVariants(actor.name);
 
-  // Add other names
+  // Add alternative name and its variants
+  addNameVariants(actor.altName);
+
+  // Add other names and their variants
   if (actor.otherNames && Array.isArray(actor.otherNames)) {
-    actor.otherNames.forEach(name => {
-      if (name) {
-        index[name.toLowerCase()] = id;
-      }
-    });
+    actor.otherNames.forEach(name => addNameVariants(name));
   }
 
   saveIndex(index);
@@ -104,13 +112,30 @@ function updateIndex(actor) {
 
 /**
  * Resolve actor name to ID using index
+ * Tries exact match first, then inverted name (for Japanese/Western name order differences)
  *
  * @param {string} name - Actor name (any variant)
  * @returns {string|null} - Actor ID or null if not found
  */
 function resolveActorId(name) {
   const index = loadIndex();
-  return index[name.toLowerCase()] || null;
+  const nameLower = name.toLowerCase();
+
+  // Try exact match first
+  if (index[nameLower]) {
+    return index[nameLower];
+  }
+
+  // Try inverted name (e.g., "Kawakami Yuu" → "yuu kawakami")
+  const parts = nameLower.trim().split(/\s+/);
+  if (parts.length === 2) {
+    const invertedName = `${parts[1]} ${parts[0]}`;
+    if (index[invertedName]) {
+      return index[invertedName];
+    }
+  }
+
+  return null;
 }
 
 // ─────────────────────────────
