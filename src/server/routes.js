@@ -182,7 +182,10 @@ router.get("/lang/:code", (req, res) => {
 // ─────────────────────────────
 router.get("/browse", (req, res) => {
   try {
-    const dirPath = req.query.path || process.env.HOME || "/";
+    // Cross-platform home directory fallback
+    const os = require('os');
+    const homeDir = os.homedir();
+    const dirPath = req.query.path || homeDir;
 
     // Security: verify that the directory exists and is readable
     if (!fs.existsSync(dirPath)) {
@@ -206,8 +209,10 @@ router.get("/browse", (req, res) => {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    // Add parent directory if we are not at root
-    const parent = dirPath !== "/" ? path.dirname(dirPath) : null;
+    // Add parent directory if we are not at root (cross-platform root detection)
+    const parsedPath = path.parse(dirPath);
+    const isRoot = parsedPath.root === dirPath;
+    const parent = !isRoot ? path.dirname(dirPath) : null;
 
     res.json({
       ok: true,

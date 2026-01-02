@@ -35,8 +35,17 @@ class ScrapeSaver {
       .replace(/<STUDIO>/g, item.studio || "")
       .replace(/<ORIGINALTITLE>/g, item.originalTitle || "");
 
-    // Remove invalid characters for file names
-    format = format.replace(/[<>:"/\\|?*]/g, "");
+    // Remove invalid characters for file names (Windows and Unix)
+    format = format.replace(/[<>:"/\\|?*\x00-\x1f]/g, "");
+
+    // Remove trailing spaces and periods (invalid on Windows)
+    format = format.replace(/[\s.]+$/, "");
+
+    // Check for Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    const reservedNames = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+    if (reservedNames.test(format)) {
+      format = `_${format}`;
+    }
 
     return format.trim();
   }

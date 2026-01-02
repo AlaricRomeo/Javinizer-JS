@@ -1,14 +1,33 @@
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
-// Use CONFIG_PATH environment variable if set (Docker), otherwise use local config.json
+// Use CONFIG_PATH environment variable if set, otherwise use local config.json
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(process.cwd(), "config.json");
+
+// Get cross-platform default library path
+function getDefaultLibraryPath() {
+  const homeDir = os.homedir();
+
+  // Try Videos folder first (common for media), then Documents
+  const videosPath = path.join(homeDir, 'Videos');
+  const documentsPath = path.join(homeDir, 'Documents');
+
+  if (fs.existsSync(videosPath)) {
+    return videosPath;
+  } else if (fs.existsSync(documentsPath)) {
+    return documentsPath;
+  }
+
+  // Fallback to home directory
+  return homeDir;
+}
 
 function loadConfig() {
   // If config file doesn't exist, create default config
   if (!fs.existsSync(CONFIG_PATH)) {
     const defaultConfig = {
-      libraryPath: process.env.LIBRARY_PATH || "/library",
+      libraryPath: process.env.LIBRARY_PATH || getDefaultLibraryPath(),
       mode: "scrape",
       language: "en",
       scrapers: {
