@@ -118,6 +118,11 @@ router.post("/reload", (req, res) => {
 // ─────────────────────────────
 router.get("/count", (req, res) => {
   try {
+    // Load library on first request if not loaded yet
+    if (libraryReader.items.length === 0 && !libraryReader.fullyLoaded) {
+      libraryReader.loadLibrary();
+    }
+
     const count = libraryReader.count();
     const status = libraryReader.getStatus();
     res.json({ ok: true, count, status });
@@ -150,7 +155,36 @@ router.get("/config", (req, res) => {
     // Ensure mode and scrapers always exist
     if (!config.mode) config.mode = "scrape";
     if (!config.scrapers) config.scrapers = [];
-    res.json({ ok: true, config });
+
+    // Get available scrapers dynamically
+    const scrapersBaseDir = path.join(__dirname, '../../scrapers');
+
+    // Get movie scrapers
+    const moviesDir = path.join(scrapersBaseDir, 'movies');
+    const availableMovieScrapers = fs.existsSync(moviesDir)
+      ? fs.readdirSync(moviesDir).filter(name => {
+          const scraperPath = path.join(moviesDir, name);
+          return fs.statSync(scraperPath).isDirectory() && !name.startsWith('_');
+        })
+      : [];
+
+    // Get actor scrapers
+    const actorsDir = path.join(scrapersBaseDir, 'actors');
+    const availableActorScrapers = fs.existsSync(actorsDir)
+      ? fs.readdirSync(actorsDir).filter(name => {
+          const scraperPath = path.join(actorsDir, name);
+          return fs.statSync(scraperPath).isDirectory() && !name.startsWith('_');
+        })
+      : [];
+
+    res.json({
+      ok: true,
+      config,
+      availableScrapers: {
+        movies: availableMovieScrapers,
+        actors: availableActorScrapers
+      }
+    });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
@@ -412,18 +446,43 @@ router.post("/scrape/reload", (req, res) => {
 // Save the current item in scrape mode (create folder, move video, generate NFO, download images)
 router.post("/scrape/save", async (req, res) => {
   try {
-    // Get the current item with modified data from the client
-    const modifiedData = req.body.item;
+    // Get the item ID and modified data from the client
+    const { itemId, item: modifiedData } = req.body;
 
-    // Get the original item from scrapeReader
-    const currentScrapeItem = scrapeReader.getCurrent();
-
-    if (!currentScrapeItem) {
-      return res.json(fail("No scrape item loaded"));
+    if (!itemId) {
+      return res.json(fail("Item ID missing"));
     }
 
-    // Merge modified data with original data
-    const itemToSave = { ...currentScrapeItem.data, ...modifiedData };
+    // Load the JSON file directly using the itemId
+    const outputDir = getScrapePath();
+    const jsonPath = path.join(outputDir, `${itemId}.json`);
+
+    if (!fs.existsSync(jsonPath)) {
+      return res.json(fail(`JSON file not found: ${itemId}`));
+    }
+
+    // Read the original JSON data
+    const jsonData = fs.readFileSync(jsonPath, "utf8");
+    const originalJson = JSON.parse(jsonData);
+
+    // The JSON structure is: { videoFile, scrapedAt, sources, data: {...} }
+    // modifiedData contains the updated item data from the client
+    // We need to merge modifiedData into originalJson.data, keeping videoFile at root level
+    const itemToSave = {
+      ...originalJson.data,  // Original scraped data
+      ...modifiedData        // Modified data from client (has the same structure as data)
+    };
+
+    // Create a currentScrapeItem object compatible with ScrapeSaver
+    // ScrapeSaver expects: { videoFile, scrapedAt, sources, data }
+    const currentScrapeItem = {
+      id: itemId,
+      jsonPath: jsonPath,
+      videoFile: originalJson.videoFile,  // Keep videoFile from original JSON
+      scrapedAt: originalJson.scrapedAt,
+      sources: originalJson.sources,
+      data: originalJson.data
+    };
 
     // Create ScrapeSaver instance with updated config
     const currentConfig = loadConfig();
@@ -457,10 +516,20 @@ router.post("/scrape/save", async (req, res) => {
         console.error(`[Routes] Actor scraping completed: ${actorResults.scraped} scraped, ${actorResults.failed} failed`);
       }
 
-      // Remove the JSON file from the list (it has been processed)
-      scrapeReader.deleteCurrent();
+      // Remove the JSON file (it has been processed and saved)
+      try {
+        fs.unlinkSync(jsonPath);
+        console.error(`[Routes] Deleted processed JSON: ${jsonPath}`);
+      } catch (err) {
+        console.error(`[Routes] Failed to delete JSON ${jsonPath}:`, err.message);
+      }
 
-      // Reload the library to show the new item
+      // Reload scrape items list
+      scrapeReader.loadScrapeItems();
+
+      // Reset and reload the library to show the new item
+      // We need to reset to ensure the count is accurate after adding a new item
+      libraryReader.reset();
       libraryReader.loadLibrary();
 
       res.json({
@@ -472,7 +541,7 @@ router.post("/scrape/save", async (req, res) => {
           nfo: results.nfo ? path.basename(results.nfo) : null,
           fanart: results.fanart ? path.basename(results.fanart) : null,
           poster: results.poster ? path.basename(results.poster) : null,
-          warnings: results.errors
+          warnings: results.warnings
         },
         actors: actorResults
       });

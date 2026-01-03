@@ -33,10 +33,23 @@ async function scrapeSingle(code) {
 
   try {
     const url = buildUrl(code);
-    const html = await fetchPage(url);
+    let html = await fetchPage(url);
 
     console.error('[Scrape] Parsing HTML...');
-    const result = parseHTML(html, code);
+    let result = parseHTML(html, code);
+
+    // If we got a redirect (multiple results, taking first one)
+    if (result.needsRedirect) {
+      console.error(`[Scrape] Multiple results found, following first result: ${result.needsRedirect}`);
+      html = await fetchPage(result.needsRedirect);
+      result = parseHTML(html, code);
+
+      // If still redirecting, something is wrong
+      if (result.needsRedirect) {
+        console.error('[Scrape] Redirect loop detected, aborting');
+        return { code };
+      }
+    }
 
     console.error('[Scrape] Scrape completed successfully');
     return result;

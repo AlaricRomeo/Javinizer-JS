@@ -5,18 +5,79 @@ echo "   Javinizer-JS - JAV Metadata Manager"
 echo "============================================"
 echo ""
 
+# Function to detect package manager
+detect_package_manager() {
+    if command -v apt &> /dev/null; then
+        PKG_MANAGER="apt"
+    elif command -v dnf &> /dev/null; then
+        PKG_MANAGER="dnf"
+    elif command -v yum &> /dev/null; then
+        PKG_MANAGER="yum"
+    elif command -v pacman &> /dev/null; then
+        PKG_MANAGER="pacman"
+    elif command -v zypper &> /dev/null; then
+        PKG_MANAGER="zypper"
+    elif command -v emerge &> /dev/null; then
+        PKG_MANAGER="emerge"
+    elif command -v apk &> /dev/null; then
+        PKG_MANAGER="apk"
+    else
+        echo "[ERROR] No supported package manager found!"
+        echo "Please install Node.js manually from: https://nodejs.org/"
+        exit 1
+    fi
+}
+
+# Function to install Node.js based on package manager
+install_nodejs() {
+    case $PKG_MANAGER in
+        "apt")
+            echo "[INFO] Installing Node.js using apt..."
+            sudo apt update
+            sudo apt install -y nodejs npm
+            ;;
+        "dnf"|"yum")
+            echo "[INFO] Installing Node.js using $PKG_MANAGER..."
+            sudo $PKG_MANAGER install -y nodejs npm
+            ;;
+        "pacman")
+            echo "[INFO] Installing Node.js using pacman..."
+            sudo pacman -S --noconfirm nodejs npm
+            ;;
+        "zypper")
+            echo "[INFO] Installing Node.js using zypper..."
+            sudo zypper install -y nodejs npm
+            ;;
+        "emerge")
+            echo "[INFO] Installing Node.js using emerge..."
+            sudo emerge -av nodejs npm
+            ;;
+        "apk")
+            echo "[INFO] Installing Node.js using apk..."
+            sudo apk add nodejs npm
+            ;;
+    esac
+}
+
 # Check if Node.js is installed
 if ! command -v node &> /dev/null; then
-    echo "[ERROR] Node.js is not installed!"
-    echo ""
-    echo "Please install Node.js from: https://nodejs.org/"
-    echo ""
-    echo "Or use your package manager:"
-    echo "  Ubuntu/Debian: sudo apt install nodejs npm"
-    echo "  Fedora:        sudo dnf install nodejs npm"
-    echo "  Arch:          sudo pacman -S nodejs npm"
-    echo "  macOS:         brew install node"
-    echo ""
+    echo "[INFO] Node.js is not installed. Detecting package manager..."
+    detect_package_manager
+    install_nodejs
+
+    # Verify installation
+    if ! command -v node &> /dev/null; then
+        echo "[ERROR] Failed to install Node.js!"
+        exit 1
+    fi
+    echo "[INFO] Node.js installed successfully."
+else
+    echo "[INFO] Node.js is already installed."
+fi
+
+# Check if npm is available
+if ! command -v npm &> /dev/null; then
+    echo "[ERROR] npm is not installed!"
     exit 1
 fi
 

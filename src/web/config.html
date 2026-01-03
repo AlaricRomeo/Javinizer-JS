@@ -40,7 +40,7 @@
                         <input type="text" id="scrapers" name="scrapers" placeholder="e.g. javlibrary, r18dev">
                         <div class="info-text">
                             <span data-i18n="config.scraperHelp">List of enabled scrapers in priority order (first = highest priority).</span><br>
-                            <span data-i18n="config.availableScrapers">Available scrapers:</span> <strong>javlibrary</strong>, <strong>r18dev</strong>
+                            <span data-i18n="config.availableScrapers">Available scrapers:</span> <strong id="availableMovieScrapers">Loading...</strong>
                         </div>
                     </div>
                 </div>
@@ -70,8 +70,9 @@
                     <div class="form-group">
                         <label for="actorsScrapers" data-i18n="config.actorScraperNames">Actor Scraper Names (comma-separated)</label>
                         <input type="text" id="actorsScrapers" name="actorsScrapers" placeholder="e.g. javdb">
-                        <div class="info-text" data-i18n="config.actorScraperHelp">
-                            List of enabled actor scrapers in priority order (first = highest priority). Each scraper has built-in caching. Available scrapers: **javdb** (javdatabase.com with intelligent caching).
+                        <div class="info-text">
+                            <span data-i18n="config.actorScraperHelp">List of enabled actor scrapers in priority order (first = highest priority).</span><br>
+                            <span data-i18n="config.availableScrapers">Available scrapers:</span> <strong id="availableActorScrapers">Loading...</strong>
                         </div>
                     </div>
                 </div>
@@ -110,6 +111,7 @@
             { key: 'contentRating', label: 'Content Rating' },
             { key: 'genres', label: 'Genres' },
             { key: 'tags', label: 'Tags' },
+            { key: 'actor', label: 'Actors' },
             { key: 'coverUrl', label: 'Cover URL' },
             { key: 'screenshotUrl', label: 'Screenshot URL' },
             { key: 'trailerUrl', label: 'Trailer URL' }
@@ -260,6 +262,17 @@
 
                 // Now populate the form with config data
                 config = cfg;
+
+                // Display available scrapers
+                if (cfgData.availableScrapers) {
+                    // Movie scrapers
+                    const movieScrapers = cfgData.availableScrapers.movies || [];
+                    document.getElementById('availableMovieScrapers').textContent = movieScrapers.join(', ') || 'None';
+
+                    // Actor scrapers
+                    const actorScrapers = cfgData.availableScrapers.actors || [];
+                    document.getElementById('availableActorScrapers').textContent = actorScrapers.join(', ') || 'None';
+                }
 
                 // Set scrapers (new structure only)
                 const scrapersArray = (config.scrapers && config.scrapers.video) ? config.scrapers.video : [];

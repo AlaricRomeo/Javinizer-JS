@@ -268,7 +268,7 @@ document.getElementById("dirBrowserSelect").onclick = async () => {
 
   if (saved) {
     // Mostra notifica di successo
-    showNotification("✓ Library path aggiornato e salvato", "success");
+    showNotification(window.i18n ? window.i18n.t("messages.pathUpdated") : "✓ Library path aggiornato e salvato", "success");
 
     // Ricarica il primo item della nuova libreria
     // (the server will reload the library automatically)
@@ -284,7 +284,7 @@ document.getElementById("dirBrowserSelect").onclick = async () => {
       }
     }, 500);
   } else {
-    showNotification("✗ Errore nel salvataggio", "error");
+    showNotification(window.i18n ? window.i18n.t("messages.pathUpdateError") : "✗ Errore nel salvataggio", "error");
   }
 };
 
@@ -1017,10 +1017,10 @@ function setupEventHandlers() {
       if (data.ok) {
         showNotification(data.message, "success");
       } else {
-        showNotification("Errore: " + data.error, "error");
+        showNotification((window.i18n ? window.i18n.t("messages.errorPrefix") : "Errore: ") + data.error, "error");
       }
     } catch (err) {
-      showNotification("Errore durante la pulizia della cache", "error");
+      showNotification(window.i18n ? window.i18n.t("messages.errorClearingCache") : "Errore durante la pulizia della cache", "error");
     }
   };
 
@@ -1040,11 +1040,11 @@ function setupEventHandlers() {
       const data = await res.json();
 
       if (!data.ok) {
-        showNotification("Errore durante l'eliminazione", "error");
+        showNotification(window.i18n ? window.i18n.t("messages.errorDeleting") : "Errore durante l'eliminazione", "error");
         return;
       }
 
-      showNotification("Item eliminato", "success");
+      showNotification(window.i18n ? window.i18n.t("messages.itemDeleted") : "Item eliminato", "success");
 
       // Aggiorna il contatore
       await checkScrapeAvailability();
@@ -1056,7 +1056,7 @@ function setupEventHandlers() {
       updateDeleteButtons(loaded);
 
     } catch (err) {
-      showNotification("Errore durante l'eliminazione", "error");
+      showNotification(window.i18n ? window.i18n.t("messages.errorDeleting") : "Errore durante l'eliminazione", "error");
     }
   };
 
@@ -1082,11 +1082,14 @@ function setupEventHandlers() {
       const data = await res.json();
 
       if (!data.ok) {
-        showNotification("Errore durante l'eliminazione", "error");
+        showNotification(window.i18n ? window.i18n.t("messages.errorDeleting") : "Errore durante l'eliminazione", "error");
         return;
       }
 
-      showNotification(`Eliminati ${data.deleted} items`, "success");
+      const message = window.i18n
+        ? window.i18n.t("messages.itemsDeleted", { count: data.deleted })
+        : `Eliminati ${data.deleted} item`;
+      showNotification(message, "success");
 
       // Aggiorna il contatore
       await checkScrapeAvailability();
@@ -1098,7 +1101,7 @@ function setupEventHandlers() {
       updateDeleteButtons(false);
 
     } catch (err) {
-      showNotification("Errore durante l'eliminazione", "error");
+      showNotification(window.i18n ? window.i18n.t("messages.errorDeleting") : "Errore durante l'eliminazione", "error");
     }
   };
 
@@ -1124,7 +1127,10 @@ function setupEventHandlers() {
         const res = await fetch("/item/scrape/save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ item: currentItem })
+          body: JSON.stringify({
+            itemId: currentItem.id,  // Include JSON ID to identify which item to save
+            item: currentItem
+          })
         });
 
         const data = await res.json();
@@ -1214,7 +1220,7 @@ function setupEventHandlers() {
       }
 
     } catch (err) {
-      showNotification("Errore durante il salvataggio", "error");
+      showNotification(window.i18n ? window.i18n.t("messages.errorSaving") : "Errore durante il salvataggio", "error");
       saveBtn.disabled = false;
       saveText.textContent = originalText;
     }

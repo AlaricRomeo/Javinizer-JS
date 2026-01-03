@@ -84,7 +84,11 @@ class ScrapeSaver {
    */
   async createPoster(fanartPath, posterPath) {
     try {
-      const image = sharp(fanartPath);
+      // Read the file into a buffer first to avoid file locking issues on Windows
+      const imageBuffer = await fs.promises.readFile(fanartPath);
+
+      // Create Sharp instance from buffer instead of file path
+      const image = sharp(imageBuffer);
       const metadata = await image.metadata();
 
       // Calculate dimensions for crop (ratio 71:100 = width:height)
@@ -131,7 +135,8 @@ class ScrapeSaver {
       nfo: null,
       fanart: null,
       poster: null,
-      errors: []
+      errors: [],
+      warnings: []
     };
 
     try {
@@ -144,13 +149,6 @@ class ScrapeSaver {
       if (!videoFile) {
         results.errors.push(`Missing videoFile field in JSON for ${item.id}`);
         console.error(`[ScrapeSaver] videoFile field is missing in JSON`);
-        return results;
-      }
-
-      // Check if file exists
-      if (!fs.existsSync(videoFile)) {
-        results.errors.push(`Video file not found: ${videoFile}`);
-        console.error(`[ScrapeSaver] Video file doesn't exist: ${videoFile}`);
         return results;
       }
 
@@ -170,12 +168,19 @@ class ScrapeSaver {
       fs.mkdirSync(folderPath, { recursive: true });
       results.folder = folderPath;
 
-      // 3. Move and rename video
-      const ext = path.extname(videoFile);
-      const newVideoPath = path.join(folderPath, `${item.id}${ext}`);
-      fs.renameSync(videoFile, newVideoPath);
-      results.video = newVideoPath;
-      console.log(`[ScrapeSaver] Moved video: ${videoFile} -> ${newVideoPath}`);
+      // Check if file exists - ora diventa un warning invece di un errore
+      if (!fs.existsSync(videoFile)) {
+        const warningMsg = `Video file not found: ${videoFile}`;
+        console.warn(`[ScrapeSaver] ${warningMsg} - Procedo comunque senza video`);
+        results.warnings.push(warningMsg);
+      } else {
+        // Solo se il file esiste, lo spostiamo
+        const ext = path.extname(videoFile);
+        const newVideoPath = path.join(folderPath, `${item.id}${ext}`);
+        fs.renameSync(videoFile, newVideoPath);
+        results.video = newVideoPath;
+        console.log(`[ScrapeSaver] Moved video: ${videoFile} -> ${newVideoPath}`);
+      }
 
       // 4. Generate NFO
       // Note: Actor data should already be enriched from batch-actors process

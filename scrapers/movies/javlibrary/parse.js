@@ -7,13 +7,47 @@ const cheerio = require('cheerio');
 const { createEmptyMovie, removeEmptyFields } = require('../schema');
 
 /**
+ * Extract first result URL from search results page
+ * @param {string} html - HTML content from search results
+ * @returns {string|null} URL to first result detail page, or null if not a search results page
+ */
+function extractFirstResultUrl(html) {
+  const $ = cheerio.load(html);
+
+  // Check if this is a search results page by looking for the results list
+  const firstResult = $('.video a[href*="?v="]').first();
+
+  if (firstResult.length) {
+    let url = firstResult.attr('href');
+    if (url) {
+      // Convert relative to absolute if needed
+      if (url.startsWith('/')) {
+        url = 'https://www.javlibrary.com' + url;
+      } else if (!url.startsWith('http')) {
+        url = 'https://www.javlibrary.com/en/' + url;
+      }
+      return url;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse javlibrary HTML page
  * @param {string} html - HTML content
  * @param {string} code - Movie code
- * @returns {object} Standard format movie object
+ * @returns {object} Standard format movie object or { needsRedirect: url } if on search results
  */
 function parseHTML(html, code) {
   const $ = cheerio.load(html);
+
+  // Check if we're on a search results page instead of a detail page
+  const firstResultUrl = extractFirstResultUrl(html);
+  if (firstResultUrl) {
+    // Return redirect instruction
+    return { needsRedirect: firstResultUrl };
+  }
 
   // Start with standard format
   const movie = createEmptyMovie(code);

@@ -1,49 +1,52 @@
 # Javinizer-js
 
-> **Beta Release v0.9.0** - Production-ready metadata management for JAV libraries
+> **Version 1.0** - Production-ready metadata management for JAV libraries
 
-A cross-platform web application for managing JAV (Japanese Adult Video) metadata, compatible with Jellyfin, Plex, and Kodi.
+A powerful, cross-platform web application for managing JAV (Japanese Adult Video) metadata. Fully compatible with Jellyfin, Plex, and Kodi media servers.
 
-## ✨ Features
+## Features
 
 ### Core Functionality
-- 🔍 **Automated Scraping** - Plugin-based scraper system for automatic metadata retrieval
-- 📝 **Manual Editing** - Full-featured web UI for editing NFO files
-- 👥 **Actor Management** - Dedicated actors page with search, thumbnails, and data caching
-- 🌐 **Web Interface** - Modern, responsive UI with real-time updates via WebSocket
-- 💾 **NFO Preservation** - Manual edits preserve custom NFO fields not managed by scrapers
-- 📁 **Library Browser** - Built-in file system browser for library management
+- **Automated Scraping** - Plugin-based scraper system for automatic metadata retrieval from multiple sources
+- **Manual Editing** - Full-featured web UI for manual NFO file editing and library management
+- **Actor Management** - Dedicated actors page with search, thumbnails, and automatic data caching
+- **Web Interface** - Modern, responsive UI with real-time updates via WebSocket
+- **NFO Preservation** - Manual edits are preserved and merged with scraped data intelligently
+- **Library Browser** - Built-in file system browser for easy library navigation
+- **Error Resilience** - Automatic validation and recovery from common library issues
 
 ### Multi-language Support
-- 🇬🇧 **English** - Full interface translation
-- 🇮🇹 **Italiano** - Complete Italian translation
-- 🇯🇵 **日本語** - Complete Japanese translation
-- 🔧 **Extensible** - Easy to add new languages via JSON files
+- English - Full interface translation
+- Italiano - Complete Italian translation
+- 日本語 - Complete Japanese translation
+- Extensible - Easy to add new languages via JSON files
 
 ### Scraper System
-- 🔌 **Plugin Architecture** - Add new scrapers without modifying core code
-- 🎯 **Priority System** - Configure scraper priority per field
-- 🔄 **Data Merging** - Intelligent merging from multiple sources
-- 🌐 **Interactive Support** - Handle Cloudflare, CAPTCHA, and user interactions
-- 📦 **Actor Scraping** - Automatic actor data retrieval and caching
+- **Plugin Architecture** - Add new scrapers without modifying core code
+- **Priority System** - Configure scraper priority per field for optimal metadata quality
+- **Data Merging** - Intelligent merging from multiple sources with conflict resolution
+- **Interactive Support** - Handle Cloudflare, CAPTCHA, and other interactive challenges
+- **Actor Scraping** - Automatic actor data retrieval with built-in caching
+- **Rate Limiting** - Respects source websites with built-in rate limiting (max 80 items per session)
 
-### Deployment
-- 🖥️ **Cross-Platform** - Works on Linux, macOS, Windows with Node.js
-- 🔧 **Easy Configuration** - Simple JSON configuration file
-- 🚀 **Simple Setup** - No containers needed, runs directly with Node.js
+### Cross-Platform Support
+- **Windows** - Full support with optimized file handling and browser cleanup
+- **Linux** - Automatic package manager detection and Node.js installation
+- **macOS** - Native support with all features enabled
+- **No Containers** - Runs directly with Node.js for simple deployment
 
-## ⚖️ Intended Use & Fair Use Policy
+## Intended Use & Fair Use Policy
 
 **Javinizer-js is designed exclusively for personal, home use.**
 
-This software is intended to help individuals manage metadata for their legally-owned media libraries. To ensure responsible use and comply with fair use principles:
+This software helps individuals manage metadata for their legally-owned media libraries. To ensure responsible use:
 
-- ✅ **Personal home media library management only**
-- ✅ **Rate-limited scraping** - Maximum 80 items per session to respect source websites
-- ✅ **Caching system** - Minimizes redundant requests to external sources
-- ❌ **NOT for commercial use**
-- ❌ **NOT for bulk/automated scraping operations**
-- ❌ **NOT for redistribution of scraped data**
+- Personal home media library management only
+- Rate-limited scraping (max 80 items per session) to respect source websites
+- Caching system minimizes redundant requests
+- NOT for commercial use
+- NOT for bulk/automated scraping operations
+- NOT for redistribution of scraped data
 
 By using this software, you agree to:
 1. Use it only for organizing your personal media collection
@@ -55,14 +58,36 @@ By using this software, you agree to:
 
 ## Requirements
 
-- Node.js 18+
-- Chromium/Chrome (for scrapers requiring browser automation)
+- **Node.js** 18 or higher
+- **Chromium/Chrome** (automatically installed via Puppeteer for browser automation)
+- **Disk Space** - Minimal (stores JSON metadata and actor thumbnails only)
+- **Memory** - 512MB minimum, 2GB recommended for browser-based scrapers
 
-## Installation
+## Quick Start
+
+### Linux (with start.sh)
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/yourusername/javinizer-js.git
+cd javinizer-js
+
+# Run the automatic setup script
+./start.sh
+```
+
+The `start.sh` script will:
+- Detect your Linux distribution automatically
+- Install Node.js if not present (using apt, yum, dnf, or pacman)
+- Install npm dependencies
+- Create config.json from example if needed
+- Start the server
+
+### Windows / macOS / Manual Installation
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/javinizer-js.git
 cd javinizer-js
 
 # Install dependencies
@@ -72,7 +97,8 @@ npm install
 cp config.example.json config.json
 
 # Edit config with your library path
-nano config.json
+# Windows: notepad config.json
+# macOS/Linux: nano config.json
 
 # Start server
 npm start
@@ -82,74 +108,46 @@ The web interface will be available at `http://localhost:4004`
 
 ## Configuration
 
-Edit `config.json`:
+Edit `config.json` to customize your setup:
 
 ```json
 {
   "libraryPath": "/path/to/your/jav/library",
-  "mode": "scrape",
-  "language": "en",
-  "scrapers": {
-    "video": ["javlibrary", "r18dev"],
-    "actors": {
-      "enabled": true,
-      "scrapers": ["javdb"],
-      "externalPath": ""
-    }
-  },
-  "fieldPriorities": {
-    "title": ["javlibrary", "r18dev"],
-    "description": ["r18dev", "javlibrary"]
-  }
+  "language": "en"
 }
 ```
 
 ### Configuration Options
 
-- **libraryPath**: Root directory of your JAV library
-- **mode**: Operating mode - `scrape` or `edit`
-- **language**: UI language - `en`, `it`, or `ja`
-- **scrapers.video**: List of enabled video scrapers in priority order
-- **scrapers.actors.enabled**: Enable/disable actor scraping
-- **scrapers.actors.scrapers**: List of actor scrapers in priority order (each scraper has built-in caching)
-- **scrapers.actors.externalPath**: Optional external path for actor cache (for sharing across instances or with media servers). If not set, uses internal cache at `data/actors/`
-- **fieldPriorities**: Override scraper priority for specific metadata fields
+- **libraryPath** - Root directory of your JAV library (required)
+- **language** - UI language: `en` (English), `it` (Italiano), or `ja` (日本語)
 
-### Actor Scraper Caching
-
-Each actor scraper automatically manages its cache:
-1. **Checks cache first** (external path if configured, otherwise internal)
-2. **Returns cached data** if complete
-3. **Scrapes online** if data is missing or incomplete
-4. **Saves to cache** (external path if configured, otherwise internal)
-
-This means you don't need a separate "local" scraper - caching is built into every scraper!
-
-### Supported Languages
-
-- `en` - English
-- `it` - Italiano
-- `ja` - 日本語 (Japanese)
-
-Language can be changed from the web UI or in config.json.
+Additional settings can be configured from the web UI settings page:
+- Scraper selection and priority
+- Actor scraping settings
+- Field-level scraper priorities
+- External actor cache path (optional)
 
 ## Library Structure
 
-Expected directory structure:
+Your library should follow this structure for best results:
 
 ```
 /your/library/
   ├── [ID-001]/
-  │   ├── [ID-001].nfo
-  │   └── [ID-001].mp4 (optional)
+  │   ├── [ID-001].nfo       # Metadata file (required)
+  │   └── [ID-001].mp4       # Video file (optional)
   ├── [ID-002]/
-  │   └── [ID-002].nfo
+  │   ├── [ID-002].nfo
+  │   └── [ID-002].mkv
   └── ...
 ```
 
+**Note:** Video files are optional. If not present, the system will show warnings but continue processing metadata normally.
+
 ## NFO Format
 
-Compatible with Jellyfin/Plex/Kodi NFO format:
+NFO files are compatible with Jellyfin, Plex, and Kodi:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -177,202 +175,181 @@ Compatible with Jellyfin/Plex/Kodi NFO format:
 </movie>
 ```
 
-## ScraperManager
+## Available Scrapers
 
-Javinizer-js includes a powerful, modular scraping system for automatic metadata retrieval.
-
-### Quick Start
-
-```bash
-# Scrape all files in your library
-node src/core/scraperManager.js
-
-# Scrape specific codes
-node src/core/scraperManager.js SDDM-943 JUR-618
-```
-
-The ScraperManager will:
-1. Read all video files from your `libraryPath` (or process specified codes)
-2. Extract DVD codes from filenames
-3. Execute enabled scrapers sequentially in priority order
-4. Merge results based on priority rules
-5. Save merged JSON files to `data/scrape/{code}.json` (centralized storage)
-
-**Note**: Scraped JSON files are stored in a centralized `data/scrape/` directory, not per-library. Each JSON includes the full path to the source video file, allowing you to manage videos from multiple locations.
-
-### Available Scrapers
-
-**Video Scrapers:**
+### Video Metadata Scrapers
 - **javlibrary** - Scrapes javlibrary.com (interactive, Cloudflare protected)
-- **r18dev** - Scrapes r18.dev (automatic)
+- **r18dev** - Scrapes r18.dev (automatic, fast)
 
-**Actor Scrapers:**
-- **javdb** - Scrapes javdatabase.com (automatic, with built-in caching)
+### Actor Data Scrapers
+- **javdatabase** - Scrapes javdatabase.com (automatic, with built-in caching)
 
-### Web UI Integration
+## Web Interface
 
-The web UI includes integrated scraping:
-- **Scrape Mode**: Scrape and save metadata in one workflow
-- **Real-time Progress**: WebSocket updates show scraping progress
-- **Interactive Handling**: UI prompts for CAPTCHA/Cloudflare challenges
-- **Actor Search**: Search and scrape actor data from the actors page
+### Main Features
 
-### Add New Scraper
+1. **Library Browser** - Navigate through your library items
+2. **Metadata Editor** - Edit all NFO fields with live preview
+3. **Scraper Integration** - Scrape and save metadata in one workflow
+4. **Actor Management** - Dedicated page for managing actor data
+5. **Settings** - Configure scrapers, language, and preferences
+6. **Real-time Updates** - WebSocket-based progress tracking
 
-Create a new scraper plugin in minutes:
+### Workflow Modes
+
+The application supports different workflows:
+
+1. **Browse & Edit** - Manually browse and edit existing NFO files
+2. **Scrape & Save** - Automatically scrape metadata and save to library
+3. **Actor Search** - Find and cache actor information
+
+## Error Handling & Resilience
+
+Version 1.0 includes robust error handling:
+
+- **Automatic NFO Validation** - Invalid NFO elements are automatically detected and removed
+- **Missing File Recovery** - Graceful handling of manually deleted folders
+- **Warning System** - Non-critical issues (like missing video files) generate warnings instead of errors
+- **Browser Cleanup** - Automatic cleanup of Puppeteer browser instances on Windows
+- **File Lock Prevention** - Safe file handling to prevent Windows file locking issues
+
+## Adding New Scrapers
+
+Create a new scraper plugin in minutes without modifying core code:
 
 ```bash
 # 1. Create scraper directory
-mkdir scrapers/myscraper
+mkdir scrapers/movies/myscraper
 
-# 2. Create run.js (see SCRAPER_DEVELOPMENT.md for template)
-nano scrapers/myscraper/run.js
+# 2. Create run.js (see SCRAPER_DEVELOPMENT.md for details)
+# Your scraper just needs to export a function that returns metadata
 
 # 3. Test your scraper
-node scrapers/myscraper/run.js TEST-001
+node scrapers/movies/myscraper/run.js TEST-001
 
-# 4. Enable in config.json
-# Add "myscraper" to scrapers.video array
+# 4. Enable in web UI settings
+# Add "myscraper" to enabled scrapers list
 
 # Done! No core code changes needed
 ```
 
-**No code changes needed!** Each scraper is an independent plugin following a simple contract.
+See [SCRAPER_DEVELOPMENT.md](SCRAPER_DEVELOPMENT.md) for the complete guide.
 
-### Documentation
-
-- **[SCRAPER_DEVELOPMENT.md](SCRAPER_DEVELOPMENT.md)** - Quick start guide for creating scrapers ⭐
-- **[SCRAPER_IMPLEMENTATION_GUIDE.md](SCRAPER_IMPLEMENTATION_GUIDE.md)** - Comprehensive implementation guide
-- **[SCRAPER_MANAGER_USAGE.md](SCRAPER_MANAGER_USAGE.md)** - How to use ScraperManager
-- **[SCRAPER_MANAGER.md](SCRAPER_MANAGER.md)** - Technical details
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and philosophy
-- **[scrapers/README.md](scrapers/README.md)** - Scrapers overview
-
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 javinizer-js/
 ├── src/
 │   ├── core/              # Core business logic
-│   │   ├── buildItem.js
-│   │   ├── config.js
-│   │   ├── libraryReader.js
-│   │   ├── nfoMapper.js
-│   │   ├── saveNfo.js
-│   │   ├── scraperManager.js
-│   │   └── actorScraperManager.js
+│   │   ├── libraryReader.js      # NFO file reading and validation
+│   │   ├── scrapeSaver.js        # Save scraped data to library
+│   │   ├── scraperManager.js     # Orchestrate multiple scrapers
+│   │   ├── nfoMapper.js          # Map JSON to NFO XML
+│   │   └── ...
 │   ├── lang/              # i18n translation files
-│   │   ├── en.json
-│   │   ├── it.json
-│   │   └── ja.json
+│   │   ├── en.json        # English
+│   │   ├── it.json        # Italian
+│   │   └── ja.json        # Japanese
 │   ├── server/            # Express server
-│   │   ├── index.js
-│   │   └── routes.js
+│   │   ├── index.js       # Server entry point
+│   │   └── routes.js      # API routes
 │   └── web/               # Frontend
-│       ├── app.js
-│       ├── actors.js
-│       ├── i18n.js
-│       ├── index.html
-│       ├── actors.html
-│       └── config.html
+│       ├── app.js         # Main page
+│       ├── actors.js      # Actors page
+│       ├── i18n.js        # Internationalization
+│       └── *.html         # UI pages
 ├── scrapers/              # Scraper plugins
 │   ├── movies/
-│   │   ├── javlibrary/
-│   │   ├── r18dev/
-│   │   └── javdb/
+│   │   ├── javlibrary/    # JAVLibrary scraper
+│   │   ├── r18dev/        # R18.dev scraper
+│   │   └── _template/     # Template for new scrapers
 │   └── actors/
-│       ├── javdatabase/
-│       └── local/
+│       └── javdatabase/   # Actor scraper
 ├── data/                  # Runtime data
-│   ├── scrape/           # Scraped JSON files
+│   ├── scrape/           # Scraped JSON files (centralized)
 │   └── actors/           # Actor cache and thumbnails
-├── config.json           # Configuration (gitignored)
-└── package.json
+├── config.json           # User configuration (gitignored)
+├── config.example.json   # Example configuration
+├── start.sh              # Linux auto-setup script
+└── package.json          # npm configuration
 ```
-
-### Adding a New Language
-
-1. Create `src/lang/XX.json` (where XX is language code)
-2. Copy structure from `en.json` and translate all keys
-3. Add option to language selector in `navbar.html`:
-```html
-<option value="xx">Language Name</option>
-```
-
-All UI elements use `data-i18n` attributes for automatic translation.
 
 ## API Endpoints
 
+The application provides a REST API for integration:
+
 ### Items
-- `GET /item/current` - Get current item
-- `GET /item/next` - Get next item
-- `GET /item/prev` - Get previous item
-- `POST /item/save` - Save changes (PATCH mode)
-- `DELETE /item/:id` - Delete item
+- `GET /item/current` - Get current library item
+- `GET /item/next` - Navigate to next item
+- `GET /item/prev` - Navigate to previous item
+- `POST /item/save` - Save NFO changes
+- `DELETE /item/:id` - Delete item from library
 
 ### Configuration
-- `GET /item/config` - Get configuration
+- `GET /item/config` - Get current configuration
 - `POST /item/config` - Update configuration
 
 ### Localization
-- `GET /item/lang/:code` - Get translation file
+- `GET /item/lang/:code` - Get translation file (en, it, ja)
 
 ### File System
 - `GET /item/browse?path=...` - Browse directories
 
 ### Actors
-- `GET /actors` - Get all actors
+- `GET /actors` - List all cached actors
 - `POST /actors` - Create/update actor
 - `DELETE /actors/:id` - Delete actor
-- `POST /actors/search` - Search for actor data
+- `POST /actors/search` - Search and scrape actor data
 
-### Scraping
-- WebSocket endpoint for real-time scraping progress
+### WebSocket
+- Real-time scraping progress updates
+- Error notifications
+- Status messages
 
-## Roadmap
+## Development
 
-### Completed ✅
-- [x] Scraper integration
-- [x] Plugin-based scraper architecture
-- [x] Actor management system
-- [x] Multi-language support (EN, IT, JA)
-- [x] WebUI integration with ScraperManager
-- [x] Actor scraping and caching
-- [x] Real-time scraping progress via WebSocket
+### Running in Development Mode
 
-### Future Considerations 💭
-- **Manual Scrape Mode** - Choose specific scraper and search key manually
-- **Poster Grid View** - Visual library browser with poster thumbnails
-- **Plugin Marketplace** - Community-driven scraper repository
-- Additional scrapers (community contributions welcome)
-- Additional actor data sources
-- Performance optimizations for large libraries
+```bash
+# Install nodemon for auto-restart on changes
+npm install
 
-## Resource Requirements
+# Run with auto-reload
+npm run dev
+```
 
-- **Memory**: 512MB minimum, 2GB recommended (for Chromium-based scrapers)
-- **CPU**: 1 core minimum, 2+ cores recommended for better performance
-- **Disk**: Minimal (stores JSON metadata and actor thumbnails only)
+### Adding a New Language
+
+1. Create `src/lang/XX.json` (where XX is the language code)
+2. Copy the structure from `en.json` and translate all keys
+3. Language will be automatically available in the UI selector
+
+All UI elements use `data-i18n` attributes for automatic translation.
 
 ## Contributing
 
 Contributions are welcome! Areas where help is appreciated:
 
-- **New Scrapers**: Add support for additional JAV sites
-- **Translations**: Add new language translations
-- **Bug Reports**: Report issues via GitHub Issues
-- **Feature Requests**: Suggest new features
-- **Documentation**: Improve docs and guides
+- **New Scrapers** - Add support for additional JAV metadata sources
+- **Translations** - Add new language translations
+- **Bug Reports** - Report issues via GitHub Issues
+- **Feature Requests** - Suggest improvements
+- **Documentation** - Improve guides and examples
 
-Please:
+Please follow these steps:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+## Documentation
+
+- **[SCRAPER_DEVELOPMENT.md](SCRAPER_DEVELOPMENT.md)** - Quick start guide for creating scrapers
+- **[SCRAPER_IMPLEMENTATION_GUIDE.md](SCRAPER_IMPLEMENTATION_GUIDE.md)** - Comprehensive scraper implementation guide
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and philosophy
+- **[scrapers/README.md](scrapers/README.md)** - Scrapers overview
 
 ## License
 
@@ -392,27 +369,51 @@ For issues and feature requests, please use the [GitHub issue tracker](https://g
 
 ## Changelog
 
-### v0.9.0 Beta (2024-12-28)
+### v1.0.0 (2026-01-03)
+
+**Production Release - Stable and Feature Complete**
 
 **Major Features:**
-- ✨ Multi-language support (English, Italian, Japanese)
-- 👥 Complete actor management system with dedicated page
-- 🔍 Actor scraping and caching system
-- 🌐 WebSocket-based real-time scraping progress
-- 🎨 Modernized UI with consistent styling across all pages
+- Multi-language support (English, Italian, Japanese)
+- Complete actor management system with dedicated page
+- Actor scraping and caching system
+- WebSocket-based real-time scraping progress
+- Modern, responsive UI with consistent styling
+- Cross-platform support (Windows, Linux, macOS)
 
 **Scraper System:**
-- 🔌 Plugin architecture for easy scraper development
-- 🎯 Per-field priority configuration
-- 📦 Multiple actor scrapers (local, javdatabase)
-- 🔄 Intelligent data merging from multiple sources
+- Plugin architecture for easy scraper development
+- Per-field priority configuration
+- Multiple video scrapers (javlibrary, r18dev)
+- Actor scraper with automatic caching (javdatabase)
+- Intelligent data merging from multiple sources
+- Interactive scraper support for Cloudflare/CAPTCHA
 
-**Technical Improvements:**
-- 🏗️ Modular CSS architecture (separate files for different pages)
-- 🔧 Shared modal components for consistency
-- ⚡ Retry mechanism for better reliability
-- 🐛 Multiple bug fixes and optimizations
+**Stability Improvements:**
+- Automatic NFO validation and error recovery
+- Graceful handling of missing video files (warnings instead of errors)
+- Protection against manual folder deletion errors
+- Windows-optimized file handling and browser cleanup
+- Robust error handling throughout the application
+
+**Platform Support:**
+- Linux auto-setup script with package manager detection
+- Windows file locking prevention and browser cleanup
+- macOS full compatibility
+
+**Technical:**
+- Modular CSS architecture
+- Shared UI components for consistency
+- Retry mechanisms for better reliability
+- Comprehensive error logging and user feedback
+- WebSocket connection management
 
 **Documentation:**
-- 📚 SCRAPER_DEVELOPMENT.md quick start guide
-- 📖 Comprehensive implementation guides
+- Complete README with quick start guides
+- SCRAPER_DEVELOPMENT.md for plugin developers
+- Comprehensive implementation guides
+- API documentation
+
+---
+
+**Ready for production use.** This release represents a stable, feature-complete version suitable for managing personal JAV libraries.

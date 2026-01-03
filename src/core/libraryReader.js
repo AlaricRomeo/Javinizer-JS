@@ -132,7 +132,18 @@ class LibraryReader {
    */
   getCurrent() {
     if (this.currentIndex === -1) return null;
-    return this.items[this.currentIndex];
+
+    // Controlla se l'elemento corrente è ancora valido
+    const current = this.items[this.currentIndex];
+    if (current && !fs.existsSync(current.nfo)) {
+      this.items.splice(this.currentIndex, 1);
+      if (this.currentIndex >= this.items.length) {
+        this.currentIndex = this.items.length > 0 ? this.items.length - 1 : -1;
+      }
+      return this.getCurrent();
+    }
+
+    return current;
   }
 
   /**
@@ -140,8 +151,19 @@ class LibraryReader {
    */
   getItem(index) {
     if (index < 0 || index >= this.items.length) return null;
+
+    // Controlla se l'elemento è ancora valido
+    const item = this.items[index];
+    if (item && !fs.existsSync(item.nfo)) {
+      this.items.splice(index, 1);
+      if (this.currentIndex >= index && this.currentIndex > 0) {
+        this.currentIndex--;
+      }
+      return this.getItem(index < this.items.length ? index : index - 1);
+    }
+
     this.currentIndex = index;
-    return this.getCurrent();
+    return item;
   }
 
   /**
@@ -177,7 +199,36 @@ class LibraryReader {
    * @returns {object|null} - Found item or null
    */
   findById(id) {
-    return this.items.find(item => item.id === id) || null;
+    const item = this.items.find(item => item.id === id);
+    if (item && !fs.existsSync(item.nfo)) {
+      const index = this.items.indexOf(item);
+      this.items.splice(index, 1);
+      if (this.currentIndex >= index && this.currentIndex > 0) {
+        this.currentIndex--;
+      }
+      return null;
+    }
+    return item || null;
+  }
+
+  /**
+   * Validates and cleans up invalid items (missing NFO files)
+   */
+  validateAndCleanup() {
+    const validItems = [];
+    for (const item of this.items) {
+      if (fs.existsSync(item.nfo)) {
+        validItems.push(item);
+      } else {
+        console.warn(`[LibraryReader] File mancante: ${item.nfo}. Rimosso dalla libreria.`);
+      }
+    }
+    this.items = validItems;
+
+    // Aggiorna l'indice corrente se necessario
+    if (this.currentIndex >= this.items.length) {
+      this.currentIndex = this.items.length > 0 ? this.items.length - 1 : -1;
+    }
   }
 
   /**
@@ -187,13 +238,68 @@ class LibraryReader {
     if (this.currentIndex === -1) return null;
 
     const current = this.items[this.currentIndex];
-    const files = fs.readdirSync(current.path);
-    const nfoFile = files.find(f => f.toLowerCase().endsWith(".nfo"));
 
-    if (!nfoFile) return null;
+    try {
+      const files = fs.readdirSync(current.path);
+      const nfoFile = files.find(f => f.toLowerCase().endsWith(".nfo"));
 
-    current.nfo = path.join(current.path, nfoFile);
-    return current;
+      if (!nfoFile) {
+        // Rimuovi l'elemento se non ha più un file NFO
+        this.items.splice(this.currentIndex, 1);
+        if (this.currentIndex >= this.items.length) {
+          this.currentIndex = this.items.length > 0 ? this.items.length - 1 : -1;
+        }
+        return this.getCurrent();
+      }
+
+      current.nfo = path.join(current.path, nfoFile);
+      return current;
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        // Rimuovi l'elemento se la cartella non esiste più
+        this.items.splice(this.currentIndex, 1);
+        if (this.currentIndex >= this.items.length) {
+          this.currentIndex = this.items.length > 0 ? this.items.length - 1 : -1;
+        }
+        return this.getCurrent();
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Reloads a specific item by ID (useful for lazy updates)
+   */
+  reloadItemById(id) {
+    const index = this.items.findIndex(item => item.id === id);
+    if (index === -1) return null;
+
+    const item = this.items[index];
+
+    try {
+      const files = fs.readdirSync(item.path);
+      const nfoFile = files.find(f => f.toLowerCase().endsWith(".nfo"));
+
+      if (!nfoFile) {
+        this.items.splice(index, 1);
+        if (this.currentIndex >= index && this.currentIndex > 0) {
+          this.currentIndex--;
+        }
+        return null;
+      }
+
+      item.nfo = path.join(item.path, nfoFile);
+      return item;
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        this.items.splice(index, 1);
+        if (this.currentIndex >= index && this.currentIndex > 0) {
+          this.currentIndex--;
+        }
+        return null;
+      }
+      throw err;
+    }
   }
 
   /**
