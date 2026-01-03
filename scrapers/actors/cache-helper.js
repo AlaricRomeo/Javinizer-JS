@@ -48,11 +48,24 @@ function getActorsCachePath() {
 }
 
 /**
- * Load actor index from .index.json
+ * Load actor index from actors-index.json
+ * Auto-migrates from old .index.json if found
  */
 function loadIndex() {
   const actorsPath = getActorsCachePath();
-  const indexPath = path.join(actorsPath, '.index.json');
+  const indexPath = path.join(actorsPath, 'actors-index.json');
+  const oldIndexPath = path.join(actorsPath, '.index.json');
+
+  // Auto-migrate from old .index.json to actors-index.json (Windows compatibility)
+  if (!fs.existsSync(indexPath) && fs.existsSync(oldIndexPath)) {
+    try {
+      console.error('[CacheHelper] Migrating .index.json to actors-index.json for Windows compatibility...');
+      fs.renameSync(oldIndexPath, indexPath);
+      console.error('[CacheHelper] Migration complete');
+    } catch (error) {
+      console.error('[CacheHelper] Failed to migrate index:', error.message);
+    }
+  }
 
   if (!fs.existsSync(indexPath)) {
     return {};
@@ -68,11 +81,11 @@ function loadIndex() {
 }
 
 /**
- * Save actor index to .index.json
+ * Save actor index to actors-index.json
  */
 function saveIndex(index) {
   const actorsPath = getActorsCachePath();
-  const indexPath = path.join(actorsPath, '.index.json');
+  const indexPath = path.join(actorsPath, 'actors-index.json');
 
   // Ensure directory exists
   if (!fs.existsSync(actorsPath)) {

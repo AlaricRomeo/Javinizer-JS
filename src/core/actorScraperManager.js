@@ -7,7 +7,7 @@
  * - Executes enabled actor scrapers sequentially
  * - Merges results based on priority rules
  * - Caches actors locally in data/actors/
- * - Uses .index.json for name variant mapping
+ * - Uses actors-index.json for name variant mapping
  */
 
 const { spawn } = require('child_process');
@@ -28,14 +28,27 @@ const { loadConfig, getScrapePath } = require('./config');
 // ─────────────────────────────
 
 /**
- * Load actor index from .index.json
+ * Load actor index from actors-index.json
  * Maps name variants to normalized slug IDs
+ * Auto-migrates from old .index.json if found
  *
  * @returns {object} - Index mapping
  */
 function loadIndex() {
   const actorsPath = getActorsCachePath();
-  const indexPath = path.join(actorsPath, '.index.json');
+  const indexPath = path.join(actorsPath, 'actors-index.json');
+  const oldIndexPath = path.join(actorsPath, '.index.json');
+
+  // Auto-migrate from old .index.json to actors-index.json (Windows compatibility)
+  if (!fs.existsSync(indexPath) && fs.existsSync(oldIndexPath)) {
+    try {
+      console.error('[ActorScraperManager] Migrating .index.json to actors-index.json for Windows compatibility...');
+      fs.renameSync(oldIndexPath, indexPath);
+      console.error('[ActorScraperManager] Migration complete');
+    } catch (error) {
+      console.error('[ActorScraperManager] Failed to migrate index:', error.message);
+    }
+  }
 
   if (!fs.existsSync(indexPath)) {
     return {};
@@ -51,13 +64,13 @@ function loadIndex() {
 }
 
 /**
- * Save actor index to .index.json
+ * Save actor index to actors-index.json
  *
  * @param {object} index - Index mapping
  */
 function saveIndex(index) {
   const actorsPath = getActorsCachePath();
-  const indexPath = path.join(actorsPath, '.index.json');
+  const indexPath = path.join(actorsPath, 'actors-index.json');
 
   // Ensure actors directory exists
   if (!fs.existsSync(actorsPath)) {

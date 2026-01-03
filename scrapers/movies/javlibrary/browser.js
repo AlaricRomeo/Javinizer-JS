@@ -11,7 +11,7 @@ let browser = null;
 let sessionPage = null; // Keep the same page/tab alive
 let _s = 0; // Session usage counter
 
-const COOKIES_FILE = path.join(__dirname, '.cookies.json');
+const COOKIES_FILE = path.join(__dirname, 'cookies.json');
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const _m = 80; // Max operations per session
 
@@ -46,7 +46,7 @@ async function initBrowser(headless = false) {
   console.error(`[Browser] Launching browser${headless ? ' (headless)' : ''}...`);
 
   // Use a persistent user data directory to maintain session across runs
-  const userDataDir = path.join(__dirname, '.browser-data');
+  const userDataDir = path.join(__dirname, 'browser-data');
 
   // Clean cache if it's too old
   cleanOldCache(userDataDir);

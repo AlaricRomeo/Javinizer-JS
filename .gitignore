@@ -35,6 +35,10 @@ temp/
 *.tmp
 todo.md
 
+# Javlibrary scraper browser data and cache
+scrapers/movies/javlibrary/browser-data/
+scrapers/movies/javlibrary/cookies.json
+
 # Build artifacts (se in futuro aggiungi build step)
 dist/
 build/
