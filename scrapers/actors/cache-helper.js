@@ -59,9 +59,7 @@ function loadIndex() {
   // Auto-migrate from old .index.json to actors-index.json (Windows compatibility)
   if (!fs.existsSync(indexPath) && fs.existsSync(oldIndexPath)) {
     try {
-      console.error('[CacheHelper] Migrating .index.json to actors-index.json for Windows compatibility...');
       fs.renameSync(oldIndexPath, indexPath);
-      console.error('[CacheHelper] Migration complete');
     } catch (error) {
       console.error('[CacheHelper] Failed to migrate index:', error.message);
     }

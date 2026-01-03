@@ -42,9 +42,7 @@ function loadIndex() {
   // Auto-migrate from old .index.json to actors-index.json (Windows compatibility)
   if (!fs.existsSync(indexPath) && fs.existsSync(oldIndexPath)) {
     try {
-      console.error('[ActorScraperManager] Migrating .index.json to actors-index.json for Windows compatibility...');
       fs.renameSync(oldIndexPath, indexPath);
-      console.error('[ActorScraperManager] Migration complete');
     } catch (error) {
       console.error('[ActorScraperManager] Failed to migrate index:', error.message);
     }
