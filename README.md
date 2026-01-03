@@ -65,46 +65,129 @@ By using this software, you agree to:
 
 ## Quick Start
 
-### Linux (with start.sh)
+### 🪟 Windows (Easiest Method)
+
+**For users who want to just double-click and run:**
+
+1. **Download the project:**
+   - Click the green "Code" button on GitHub
+   - Select "Download ZIP"
+   - Extract the ZIP file to a folder (e.g., `C:\javinizer-js`)
+
+2. **Install Node.js** (if not already installed):
+   - Download from https://nodejs.org/
+   - Run the installer and follow the prompts
+   - Accept all default options
+
+3. **Run Javinizer-JS:**
+   - Open the extracted folder
+   - **Double-click `start.bat`**
+   - The script will automatically:
+     - Check if Node.js is installed
+     - Install all required dependencies
+     - Start the server
+     - Open your browser at http://localhost:4004
+
+4. **First-time setup:**
+   - Click the ⚙️ Settings icon in the web interface
+   - Browse and select your JAV library folder
+   - Choose your preferred language
+   - Save settings
+
+**That's it!** Javinizer-JS is now running. The browser will open automatically.
+
+---
+
+### 🐧 Linux (Automatic Setup)
+
+**One command to install and run everything:**
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/javinizer-js.git
-cd javinizer-js
+# Download and enter the project folder
+git clone https://github.com/AlaricRomeo/Javinizer-JS.git
+cd Javinizer-JS
 
 # Run the automatic setup script
 ./start.sh
 ```
 
-The `start.sh` script will:
-- Detect your Linux distribution automatically
-- Install Node.js if not present (using apt, yum, dnf, or pacman)
-- Install npm dependencies
-- Create config.json from example if needed
-- Start the server
+The `start.sh` script automatically:
+- Detects your Linux distribution (Ubuntu, Fedora, Arch, etc.)
+- Installs Node.js if not present (using apt, dnf, yum, pacman, etc.)
+- Installs all npm dependencies
+- Starts the server
+- Opens your browser at http://localhost:4004
 
-### Windows / macOS / Manual Installation
+**Alternative (if you prefer manual steps):**
+
+1. Make sure Node.js 18+ is installed:
+   ```bash
+   node --version  # Should show v18 or higher
+   ```
+
+2. Install dependencies and run:
+   ```bash
+   npm install
+   npm start
+   ```
+
+3. Open your browser to http://localhost:4004
+
+---
+
+### 🍎 macOS
+
+**Option 1: Quick start (recommended)**
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/javinizer-js.git
-cd javinizer-js
+# Download the project
+git clone https://github.com/AlaricRomeo/Javinizer-JS.git
+cd Javinizer-JS
 
-# Install dependencies
-npm install
-
-# Copy example config
-cp config.example.json config.json
-
-# Edit config with your library path
-# Windows: notepad config.json
-# macOS/Linux: nano config.json
-
-# Start server
-npm start
+# Run the setup script
+./start.sh
 ```
 
-The web interface will be available at `http://localhost:4004`
+**Option 2: Manual installation**
+
+1. Install Node.js from https://nodejs.org/ (or use `brew install node`)
+
+2. Download and setup:
+   ```bash
+   git clone https://github.com/AlaricRomeo/Javinizer-JS.git
+   cd Javinizer-JS
+   npm install
+   npm start
+   ```
+
+3. Open http://localhost:4004 in your browser
+
+---
+
+### ⚙️ First-Time Configuration
+
+After starting Javinizer-JS for the first time:
+
+1. **Open the web interface** at http://localhost:4004
+2. **Click the ⚙️ Settings icon** (top right)
+3. **Set your library path:**
+   - Windows: `C:\Users\YourName\Videos\JAV`
+   - Linux/macOS: `/home/username/Videos/JAV`
+4. **Choose your language:** English, Italiano, or 日本語
+5. **Click Save**
+
+Your library should follow this structure:
+```
+/your/library/
+  ├── [ID-001]/
+  │   ├── [ID-001].nfo       # Metadata file (required)
+  │   └── [ID-001].mp4       # Video file (optional)
+  ├── [ID-002]/
+  │   └── [ID-002].nfo
+  └── ...
+```
+
+**Note:** Video files are optional - Javinizer works with NFO files only if you prefer.
 
 ## Configuration
 
