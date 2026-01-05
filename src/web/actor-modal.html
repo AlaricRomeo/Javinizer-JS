@@ -13,25 +13,42 @@
         <!-- Name (full width) -->
         <div class="form-group">
           <label class="form-label" data-i18n="actorModal.name">Name</label>
-          <input type="text" id="actorEditName" class="form-input" data-i18n="[placeholder]placeholders.actorNamePlaceholder">
+          <input type="text" id="actorEditName" class="form-input"
+            data-i18n="[placeholder]placeholders.actorNamePlaceholder">
         </div>
 
         <!-- Alternate Name (full width) -->
         <div class="form-group">
           <label class="form-label" data-i18n="actorModal.altName">Alternate Name (Japanese, etc.)</label>
-          <input type="text" id="actorEditAltName" class="form-input" data-i18n="[placeholder]placeholders.altNamePlaceholder">
+          <input type="text" id="actorEditAltName" class="form-input"
+            data-i18n="[placeholder]placeholders.altNamePlaceholder">
         </div>
 
-        <!-- Two columns: Role, Thumb URL -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-          <div class="form-group">
-            <label class="form-label" data-i18n="actorModal.role">Role</label>
-            <input type="text" id="actorEditRole" class="form-input" data-i18n="[placeholder]placeholders.role" value="Actress">
+        <!-- Role (full width) -->
+        <div class="form-group">
+          <label class="form-label" data-i18n="actorModal.role">Role</label>
+          <input type="text" id="actorEditRole" class="form-input" data-i18n="[placeholder]placeholders.role"
+            value="Actress">
+        </div>
+
+        <!-- Thumb URL (full width) -->
+        <div class="form-group">
+          <label class="form-label" data-i18n="actorModal.thumbUrl">Thumb URL</label>
+          <input type="url" id="actorEditThumb" class="form-input" placeholder="https://...">
+        </div>
+
+        <!-- Upload Image -->
+        <div class="form-group">
+          <label class="form-label" data-i18n="actorModal.uploadImage">Or Upload Image</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="file" id="actorEditUpload" accept="image/*" style="flex: 1;">
+            <button type="button" id="actorEditUploadBtn" class="btn btn-secondary"
+              style="padding: 8px 16px; white-space: nowrap;">
+              <span>📤</span>
+              <span data-i18n="buttons.upload">Upload</span>
+            </button>
           </div>
-          <div class="form-group">
-            <label class="form-label" data-i18n="actorModal.thumbUrl">Thumb URL</label>
-            <input type="url" id="actorEditThumb" class="form-input" placeholder="https://...">
-          </div>
+          <div id="actorEditUploadStatus" style="margin-top: 4px; font-size: 12px; display: none;"></div>
         </div>
 
         <!-- Two columns: Birthdate, Height -->
@@ -70,6 +87,10 @@
           <img id="actorEditPreviewImg" src="" alt="Preview" style="display: none;">
           <span id="actorEditPreviewPlaceholder" class="preview-placeholder">👤</span>
         </div>
+        <button type="button" id="actorEditDeletePhoto" class="btn btn-sm btn-danger"
+          style="margin-top: 5px; width: 100%; display: none;">
+          <span data-i18n="buttons.deleteLocalPhoto">Delete Local Photo</span>
+        </button>
       </div>
     </div>
 
@@ -84,13 +105,15 @@
         <span>🔍</span>
         <span id="actorEditSearchText" data-i18n="actorModal.searchActor">Search Actor</span>
       </button>
-      <div id="actorEditSearchStatus" style="margin-top: 8px; font-size: 12px; color: #666; text-align: center; display: none;"></div>
+      <div id="actorEditSearchStatus"
+        style="margin-top: 8px; font-size: 12px; color: #666; text-align: center; display: none;"></div>
     </div>
 
     <!-- Footer buttons -->
     <div class="modal-footer">
       <button type="button" class="btn btn-secondary" id="actorEditCancel" data-i18n="buttons.cancel">Cancel</button>
-      <button type="button" class="btn btn-danger" id="actorEditRemove" style="display: none;" data-i18n="buttons.remove">Remove</button>
+      <button type="button" class="btn btn-danger" id="actorEditRemove" style="display: none;"
+        data-i18n="buttons.remove">Remove</button>
       <button type="button" class="btn btn-primary" id="actorEditSave" data-i18n="buttons.save">Save</button>
     </div>
   </div>

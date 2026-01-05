@@ -1,3 +1,5 @@
+console.log('🚀 app.js v5 loaded!');
+
 let currentItem = null;
 let currentMode = null; // "edit" or "scrape" - will be set in initializeApp
 
@@ -206,16 +208,26 @@ async function loadDirectories(path) {
   }
 
   currentBrowserPath = data.current;
-  document.getElementById("dirBrowserPath").value = data.current;
+
+  // Display "My Computer" if showing drives list on Windows
+  if (data.current === 'DRIVES') {
+    document.getElementById("dirBrowserPath").value = "💻 My Computer";
+  } else {
+    document.getElementById("dirBrowserPath").value = data.current;
+  }
 
   const listEl = document.getElementById("dirBrowserList");
   listEl.innerHTML = "";
 
-  // Aggiungi directory
+  // Add directories (or drives)
   data.directories.forEach(dir => {
     const dirDiv = document.createElement("div");
     dirDiv.style.cssText = "padding: 10px; cursor: pointer; border-bottom: 1px solid #eee;";
-    dirDiv.innerHTML = `📁 ${dir.name}`;
+
+    // Use drive icon for drives, folder icon for regular directories
+    const icon = data.current === 'DRIVES' ? '💾' : '📁';
+    dirDiv.innerHTML = `${icon} ${dir.name}`;
+
     dirDiv.onmouseover = () => dirDiv.style.backgroundColor = "#e9ecef";
     dirDiv.onmouseout = () => dirDiv.style.backgroundColor = "transparent";
     dirDiv.onclick = () => loadDirectories(dir.path);
@@ -223,10 +235,13 @@ async function loadDirectories(path) {
   });
 
   if (data.directories.length === 0) {
-    listEl.innerHTML = "<div style='color: #999; text-align: center; padding: 20px;'>Nessuna sottocartella</div>";
+    const emptyMsg = data.current === 'DRIVES'
+      ? "No drives found"
+      : "Nessuna sottocartella";
+    listEl.innerHTML = `<div style='color: #999; text-align: center; padding: 20px;'>${emptyMsg}</div>`;
   }
 
-  // Abilita/disabilita bottone Su
+  // Enable/disable Up button
   document.getElementById("dirBrowserUp").disabled = data.parent === null;
 }
 
@@ -250,6 +265,12 @@ document.getElementById("dirBrowserUp").onclick = async () => {
 document.getElementById("dirBrowserSelect").onclick = async () => {
   const selectBtn = document.getElementById("dirBrowserSelect");
   const originalText = selectBtn.textContent;
+
+  // Prevent selecting "DRIVES" as a path
+  if (currentBrowserPath === 'DRIVES') {
+    alert("Please select a drive first, not the drives list.");
+    return;
+  }
 
   // Aggiorna UI
   document.getElementById("libraryPath").value = currentBrowserPath;
@@ -709,17 +730,54 @@ function createActorThumbnail(thumbUrl, actorName) {
   const thumbnailDiv = document.createElement('div');
   thumbnailDiv.className = 'thumbnail';
 
-  if (thumbUrl) {
+  if (actorName) {
+    // Normalize actor name to match the ID format used for files
+    const normalizedActorName = normalizeActorNameForFile(actorName);
+
+    // First, try to load from local actors cache
+    const localImageUrl = `/actors/${normalizedActorName}.jpg`;
+
+    const img = document.createElement('img');
+    img.alt = actorName || 'Actor';
+
+    // Set up error handler for when local image doesn't exist
+    img.onerror = () => {
+      // If local image fails, try the original thumb URL
+      if (thumbUrl && thumbUrl !== localImageUrl) {
+        img.src = thumbUrl;
+      } else {
+        thumbnailDiv.innerHTML = '👤';
+      }
+    };
+
+    // Try to load the local image first
+    img.src = localImageUrl;
+    thumbnailDiv.appendChild(img);
+  } else if (thumbUrl) {
+    // If no actor name but thumb URL exists, use the thumb URL
     const img = document.createElement('img');
     img.src = thumbUrl;
     img.alt = actorName || 'Actor';
     img.onerror = () => { thumbnailDiv.innerHTML = '👤'; };
     thumbnailDiv.appendChild(img);
   } else {
+    // No actor name and no thumb URL
     thumbnailDiv.innerHTML = '👤';
   }
 
   return thumbnailDiv;
+}
+
+// Helper function to normalize actor name for file lookup (similar to backend normalizeActorName)
+function normalizeActorNameForFile(name) {
+  if (!name) return '';
+
+  // Convert to lowercase and replace spaces and special characters with hyphens
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')  // Replace special characters with spaces
+    .trim()
+    .replace(/\s+/g, '-');         // Replace spaces with hyphens
 }
 
 function renderActors() {
@@ -1245,13 +1303,18 @@ function setupEventHandlers() {
 // Setup event listeners for actor modal
 // Called after modal is loaded (either immediately or after async load)
 function setupActorModalEventListeners() {
+  console.log('[setupActorModalEventListeners] Called');
+
   // Check if modal exists, if not wait for it
   if (!document.getElementById("actorEditModal")) {
+    console.log('[setupActorModalEventListeners] Modal not found, waiting for actorModalLoaded event');
     window.addEventListener('actorModalLoaded', () => {
       setupActorModalEventListeners();
     }, { once: true });
     return;
   }
+
+  console.log('[setupActorModalEventListeners] Modal found, setting up event listeners');
 
   // Event listeners per Actor Edit Modal
   document.getElementById("actorEditCancel").onclick = closeActorModal;
@@ -1432,6 +1495,95 @@ function setupActorModalEventListeners() {
       // Re-enable button
       searchBtn.disabled = false;
       searchText.textContent = "Cerca Attore";
+    }
+  };
+
+  // Upload Image button
+  const uploadBtn = document.getElementById("actorEditUploadBtn");
+  console.log('[setupActorModalEventListeners] Upload button:', uploadBtn);
+
+  if (!uploadBtn) {
+    console.error('[setupActorModalEventListeners] Upload button not found!');
+    return;
+  }
+
+  console.log('[setupActorModalEventListeners] Setting up upload button click handler');
+  uploadBtn.onclick = async () => {
+    console.log('[Upload] Button clicked!');
+    const fileInput = document.getElementById("actorEditUpload");
+    const uploadStatus = document.getElementById("actorEditUploadStatus");
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+      uploadStatus.style.display = "block";
+      uploadStatus.style.color = "#dc3545";
+      uploadStatus.textContent = "Please select a file first";
+      setTimeout(() => {
+        uploadStatus.style.display = "none";
+      }, 3000);
+      return;
+    }
+
+    const file = fileInput.files[0];
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      uploadStatus.style.display = "block";
+      uploadStatus.style.color = "#dc3545";
+      uploadStatus.textContent = "File too large (max 5MB)";
+      setTimeout(() => {
+        uploadStatus.style.display = "none";
+      }, 3000);
+      return;
+    }
+
+    // Show uploading status
+    uploadBtn.disabled = true;
+    uploadStatus.style.display = "block";
+    uploadStatus.style.color = "#667eea";
+    uploadStatus.textContent = "Uploading...";
+
+    try {
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await fetch('/item/actors/upload-image', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (result.ok && result.url) {
+        // Update thumb URL field with uploaded image URL
+        document.getElementById("actorEditThumb").value = result.url;
+
+        // Update preview
+        updateActorPreview(result.url);
+
+        // Show success
+        uploadStatus.style.color = "#28a745";
+        uploadStatus.textContent = "✓ Image uploaded successfully!";
+
+        // Clear file input
+        fileInput.value = "";
+
+        setTimeout(() => {
+          uploadStatus.style.display = "none";
+        }, 3000);
+      } else {
+        throw new Error(result.error || 'Upload failed');
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      uploadStatus.style.color = "#dc3545";
+      uploadStatus.textContent = error.message || "Upload failed";
+
+      setTimeout(() => {
+        uploadStatus.style.display = "none";
+      }, 5000);
+    } finally {
+      uploadBtn.disabled = false;
     }
   };
 }

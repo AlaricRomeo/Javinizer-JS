@@ -4,12 +4,15 @@ const express = require("express");
 const router = express.Router();
 const fs = require("fs");
 const path = require("path");
+const multer = require("multer");
+const crypto = require("crypto");
 
 // Core
 const LibraryReader = require("../core/libraryReader");
 const ScrapeReader = require("../core/scrapeReader");
 const ScrapeSaver = require("../core/scrapeSaver");
 const { saveNfoPatch } = require("../core/saveNfo");
+const { cleanupTempDirectory } = require("../core/utils");
 
 // getScrapePath() is now imported from config.js and always returns data/scrape
 
@@ -163,18 +166,18 @@ router.get("/config", (req, res) => {
     const moviesDir = path.join(scrapersBaseDir, 'movies');
     const availableMovieScrapers = fs.existsSync(moviesDir)
       ? fs.readdirSync(moviesDir).filter(name => {
-          const scraperPath = path.join(moviesDir, name);
-          return fs.statSync(scraperPath).isDirectory() && !name.startsWith('_');
-        })
+        const scraperPath = path.join(moviesDir, name);
+        return fs.statSync(scraperPath).isDirectory() && !name.startsWith('_');
+      })
       : [];
 
     // Get actor scrapers
     const actorsDir = path.join(scrapersBaseDir, 'actors');
     const availableActorScrapers = fs.existsSync(actorsDir)
       ? fs.readdirSync(actorsDir).filter(name => {
-          const scraperPath = path.join(actorsDir, name);
-          return fs.statSync(scraperPath).isDirectory() && !name.startsWith('_');
-        })
+        const scraperPath = path.join(actorsDir, name);
+        return fs.statSync(scraperPath).isDirectory() && !name.startsWith('_');
+      })
       : [];
 
     res.json({
@@ -219,7 +222,34 @@ router.get("/browse", (req, res) => {
     // Cross-platform home directory fallback
     const os = require('os');
     const homeDir = os.homedir();
-    const dirPath = req.query.path || homeDir;
+    let dirPath = req.query.path || homeDir;
+
+    // Special case: On Windows, if dirPath is "DRIVES", list all available drives
+    if (process.platform === 'win32' && dirPath === 'DRIVES') {
+      // Get available drives on Windows
+      const drives = [];
+      for (let i = 65; i <= 90; i++) { // A-Z
+        const driveLetter = String.fromCharCode(i);
+        const drivePath = `${driveLetter}:\\`;
+        try {
+          if (fs.existsSync(drivePath)) {
+            drives.push({
+              name: `${driveLetter}:`,
+              path: drivePath
+            });
+          }
+        } catch (err) {
+          // Skip drives that are not accessible
+        }
+      }
+
+      return res.json({
+        ok: true,
+        current: 'DRIVES',
+        parent: null,
+        directories: drives
+      });
+    }
 
     // Security: verify that the directory exists and is readable
     if (!fs.existsSync(dirPath)) {
@@ -246,7 +276,16 @@ router.get("/browse", (req, res) => {
     // Add parent directory if we are not at root (cross-platform root detection)
     const parsedPath = path.parse(dirPath);
     const isRoot = parsedPath.root === dirPath;
-    const parent = !isRoot ? path.dirname(dirPath) : null;
+
+    // On Windows, when at root, parent should be "DRIVES" to allow drive switching
+    let parent;
+    if (process.platform === 'win32' && isRoot) {
+      parent = 'DRIVES';
+    } else if (!isRoot) {
+      parent = path.dirname(dirPath);
+    } else {
+      parent = null;
+    }
 
     res.json({
       ok: true,
@@ -727,49 +766,49 @@ router.post("/scrape/start", async (req, res) => {
             const { batchProcessActors } = require('../core/actorScraperManager');
 
             batchProcessActors()
-            .then((summary) => {
-              console.error('[Routes] Actor scraping completed successfully');
+              .then((summary) => {
+                console.error('[Routes] Actor scraping completed successfully');
 
-              // Send completion message
-              req.wss.clients.forEach(client => {
-                if (client.readyState === 1) {
-                  client.send(JSON.stringify({
-                    event: 'progress',
-                    data: {
-                      message: `✅ Actor scraping completed: ${summary.scraping.total} actors processed (${summary.scraping.scraped} new, ${summary.scraping.cached} cached, ${summary.scraping.failed} failed). ${summary.updating.updated} movie files updated.`
-                    },
-                    scrapeId
-                  }));
+                // Send completion message
+                req.wss.clients.forEach(client => {
+                  if (client.readyState === 1) {
+                    client.send(JSON.stringify({
+                      event: 'progress',
+                      data: {
+                        message: `✅ Actor scraping completed: ${summary.scraping.total} actors processed (${summary.scraping.scraped} new, ${summary.scraping.cached} cached, ${summary.scraping.failed} failed). ${summary.updating.updated} movie files updated.`
+                      },
+                      scrapeId
+                    }));
 
-                  // Send actorsUpdated event to trigger client reload
-                  client.send(JSON.stringify({
-                    event: 'actorsUpdated',
-                    data: {
-                      updated: summary.updating.updated
-                    },
-                    scrapeId
-                  }));
-                }
+                    // Send actorsUpdated event to trigger client reload
+                    client.send(JSON.stringify({
+                      event: 'actorsUpdated',
+                      data: {
+                        updated: summary.updating.updated
+                      },
+                      scrapeId
+                    }));
+                  }
+                });
+
+                // Actor scraping done - increment counter
+                checkAllScrapingComplete();
+              })
+              .catch((error) => {
+                console.error('[Routes] Error in auto actor scraping:', error);
+                req.wss.clients.forEach(client => {
+                  if (client.readyState === 1) {
+                    client.send(JSON.stringify({
+                      event: 'progress',
+                      data: { message: `❌ Actor scraping failed: ${error.message}` },
+                      scrapeId
+                    }));
+                  }
+                });
+
+                // Actor scraping failed but still increment counter
+                checkAllScrapingComplete();
               });
-
-              // Actor scraping done - increment counter
-              checkAllScrapingComplete();
-            })
-            .catch((error) => {
-              console.error('[Routes] Error in auto actor scraping:', error);
-              req.wss.clients.forEach(client => {
-                if (client.readyState === 1) {
-                  client.send(JSON.stringify({
-                    event: 'progress',
-                    data: { message: `❌ Actor scraping failed: ${error.message}` },
-                    scrapeId
-                  }));
-                }
-              });
-
-              // Actor scraping failed but still increment counter
-              checkAllScrapingComplete();
-            });
           }, 1000);
         }
       })
@@ -918,6 +957,7 @@ const {
   scrapeActor
 } = require('../core/actorScraperManager');
 
+
 // GET /actors - List all actors
 router.get("/actors", async (req, res) => {
   try {
@@ -963,6 +1003,71 @@ router.post("/actors/save", async (req, res) => {
     // Generate ID from name if not provided
     if (!actorData.id) {
       actorData.id = normalizeActorName(actorData.name);
+    }
+
+    // Update thumbUrl if thumb is a remote URL
+    if (actorData.thumb && actorData.thumb.startsWith('http')) {
+      actorData.thumbUrl = actorData.thumb;
+    }
+
+    // Priority 1: Check for uploadedFile field (new clean approach)
+    // Priority 2: Check if thumb is a temporary uploaded file (starts with /media/temp_) - for backward compatibility
+    const uploadedPath = actorData.uploadedFile || (actorData.thumb && actorData.thumb.startsWith('/media/temp_') ? actorData.thumb : null);
+
+    if (uploadedPath) {
+      const tempFilename = uploadedPath.replace('/media/', '');
+      const tempPath = path.join(__dirname, '../../data/temp', tempFilename);
+
+      if (fs.existsSync(tempPath)) {
+        // Get actors cache path
+        const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+        const actorsPath = getActorsCachePath();
+
+        // Ensure actors directory exists
+        if (!fs.existsSync(actorsPath)) {
+          fs.mkdirSync(actorsPath, { recursive: true });
+        }
+
+        // Generate new filename using actor ID and original extension
+        const ext = path.extname(tempFilename);
+        const newFilename = `${actorData.id}${ext}`;
+        const newPath = path.join(actorsPath, newFilename);
+
+        // Cleanup: remove ANY existing image files for this actor ID
+        // This prevents having both .jpg and .png for the same actor
+        const extensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+        extensions.forEach(e => {
+          const oldPath = path.join(actorsPath, `${actorData.id}${e}`);
+          if (fs.existsSync(oldPath)) {
+            try {
+              fs.unlinkSync(oldPath);
+            } catch (err) {
+              console.error(`[ActorSave] Failed to delete old image ${oldPath}: ${err.message}`);
+            }
+          }
+        });
+
+        // Move file from temp to actors cache
+        const fsPromises = require('fs').promises;
+        try {
+          await fsPromises.copyFile(tempPath, newPath);
+          await fsPromises.unlink(tempPath);
+        } catch (moveErr) {
+          console.error('[ActorSave] Error moving temp file:', moveErr);
+          return res.json({ ok: false, error: `Failed to move uploaded image: ${moveErr.message}` });
+        }
+
+        // Update actor meta to use the new filename
+        actorData.thumbLocal = newFilename;
+
+        // Clear the thumb field as it's now local
+        actorData.thumb = '';
+      }
+    } else if (actorData.thumb && actorData.thumb.startsWith('/media/upload_')) {
+      // Handle legacy case
+      const filename = actorData.thumb.replace('/media/', '');
+      actorData.thumbLocal = filename;
+      actorData.thumb = '';
     }
 
     // Ensure meta object exists
@@ -1027,33 +1132,102 @@ router.post("/actors/delete", async (req, res) => {
   }
 });
 
-// POST /actors/search - Search for actor data
-router.post("/actors/search", async (req, res) => {
+// ─────────────────────────────
+// POST /actors/delete-image
+// Delete local actor image
+// ─────────────────────────────
+router.post("/actors/delete-image", async (req, res) => {
   try {
-    const { name } = req.body;
+    const { id } = req.body;
+    if (!id) throw new Error("Missing actor ID");
 
-    if (!name) {
-      return res.json({ ok: false, error: 'Actor name required' });
-    }
+    // Use centralized cache helper
+    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+    const actorsPath = getActorsCachePath();
 
-    // Check if already in cache
-    const actorId = resolveActorId(name);
-    if (actorId) {
-      const actor = loadActorLocal(actorId);
-      if (actor) {
-        return res.json({ ok: true, actor });
+    // Delete image files (try all extensions)
+    const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
+    let deleted = false;
+
+    for (const ext of extensions) {
+      const imagePath = path.join(actorsPath, `${id}.${ext}`);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+        deleted = true;
       }
     }
 
-    // Scrape actor
-    const actor = await scrapeActor(name);
-
-    if (!actor) {
-      return res.json({ ok: false, error: 'Actor not found' });
+    if (!deleted) {
+      return res.json({ ok: false, error: "No local image found to delete" });
     }
 
-    res.json({ ok: true, actor });
+    res.json({ ok: true });
   } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+
+// ─────────────────────────────
+// POST /actors/upload-image
+// Upload actor thumbnail image
+// ─────────────────────────────
+
+// Configure multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB max
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only images
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+router.post("/actors/upload-image", upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.json({ ok: false, error: 'No file uploaded' });
+    }
+
+    // Use temporary directory for uploaded images
+    const tempPath = path.join(__dirname, '../../data/temp');
+
+    // Ensure temp directory exists
+    if (!fs.existsSync(tempPath)) {
+      fs.mkdirSync(tempPath, { recursive: true });
+    }
+
+    // Generate unique filename using hash of file content + timestamp
+    const hash = crypto.createHash('md5').update(req.file.buffer).digest('hex').substring(0, 8);
+    const timestamp = Date.now();
+    const ext = path.extname(req.file.originalname) || '.jpg';
+    const filename = `temp_${timestamp}_${hash}${ext}`;
+    const filepath = path.join(tempPath, filename);
+
+    // Save file
+    fs.writeFileSync(filepath, req.file.buffer);
+
+    // Return the URL path (relative to /media endpoint)
+    // For temporary files, we'll use a special identifier
+    const imageUrl = `/media/${filename}`;
+
+    // Lazy cleanup of old temp files (older than 24h)
+    cleanupTempDirectory(24);
+
+    res.json({
+      ok: true,
+      url: imageUrl,
+      filename: filename
+    });
+
+  } catch (err) {
+    console.error('[Upload] Error:', err);
     res.json({ ok: false, error: err.message });
   }
 });

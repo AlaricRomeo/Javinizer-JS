@@ -14,6 +14,7 @@
     "mode": "Modalità",
     "scraperPanel": "Pannello Scraper",
     "basicInfo": "Informazioni di Base",
+    "DELETE_LOCAL_PHOTO": "Elimina Foto Locale",
     "production": "Produzione",
     "rating": "Rating e Classificazione",
     "categories": "Categorie",
@@ -63,7 +64,9 @@
     "interrupt": "Interrompi",
     "continue": "Continua",
     "stop": "Ferma",
-    "search": "🔍 Cerca Attore"
+    "search": "🔍 Cerca Attore",
+    "upload": "Carica",
+    "deleteLocalPhoto": "Elimina Foto Locale"
   },
   "placeholders": {
     "noImage": "Nessuna immagine",
@@ -86,6 +89,7 @@
     "noChanges": "Nessuna modifica da salvare",
     "saved": "✓ Item salvato con successo",
     "removeActor": "Rimuovi",
+    "confirmDeletePhoto": "Sei sicuro di voler eliminare la foto locale?",
     "missingName": "Nome mancante",
     "unknown": "Sconosciuto",
     "noNfoInLibrary": "Nessun NFO nella libreria",
@@ -132,6 +136,7 @@
     "altName": "Nome Alternativo (giapponese, ecc.)",
     "role": "Ruolo",
     "thumbUrl": "Thumb URL",
+    "uploadImage": "Oppure Carica Immagine",
     "preview": "Anteprima",
     "searchActor": "Cerca Attore"
   },

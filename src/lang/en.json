@@ -14,6 +14,7 @@
     "mode": "Mode",
     "scraperPanel": "Scraper Panel",
     "basicInfo": "Basic Information",
+    "DELETE_LOCAL_PHOTO": "Delete Local Photo",
     "production": "Production",
     "rating": "Rating & Classification",
     "categories": "Categories",
@@ -63,7 +64,9 @@
     "interrupt": "Interrupt",
     "continue": "Continue",
     "stop": "Stop",
-    "search": "🔍 Search Actor"
+    "search": "🔍 Search Actor",
+    "upload": "Upload",
+    "deleteLocalPhoto": "Delete Local Photo"
   },
   "placeholders": {
     "noImage": "No image",
@@ -86,6 +89,7 @@
     "noChanges": "No changes to save",
     "saved": "✓ Item saved successfully",
     "removeActor": "Remove",
+    "confirmDeletePhoto": "Are you sure you want to delete the local photo?",
     "missingName": "Missing name",
     "unknown": "Unknown",
     "noNfoInLibrary": "No NFO files in library",
@@ -132,6 +136,7 @@
     "altName": "Alternate Name (Japanese, etc.)",
     "role": "Role",
     "thumbUrl": "Thumb URL",
+    "uploadImage": "Or Upload Image",
     "preview": "Preview",
     "searchActor": "Search Actor"
   },

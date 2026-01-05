@@ -14,6 +14,7 @@
     "mode": "モード",
     "scraperPanel": "スクレイパーパネル",
     "basicInfo": "基本情報",
+    "DELETE_LOCAL_PHOTO": "ローカル写真を削除",
     "production": "制作情報",
     "rating": "評価と分類",
     "categories": "カテゴリー",
@@ -63,7 +64,9 @@
     "interrupt": "中断",
     "continue": "続ける",
     "stop": "停止",
-    "search": "🔍 女優を検索"
+    "search": "🔍 女優を検索",
+    "upload": "アップロード",
+    "deleteLocalPhoto": "ローカル写真を削除"
   },
   "placeholders": {
     "noImage": "画像なし",
@@ -86,6 +89,7 @@
     "noChanges": "保存する変更はありません",
     "saved": "✓ アイテムが正常に保存されました",
     "removeActor": "削除",
+    "confirmDeletePhoto": "ローカル写真を削除してもよろしいですか？",
     "missingName": "名前がありません",
     "unknown": "不明",
     "noNfoInLibrary": "ライブラリにNFOファイルがありません",
@@ -132,6 +136,7 @@
     "altName": "別名（日本語など）",
     "role": "役割",
     "thumbUrl": "サムネイルURL",
+    "uploadImage": "または画像をアップロード",
     "preview": "プレビュー",
     "searchActor": "女優を検索"
   },

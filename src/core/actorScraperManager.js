@@ -320,35 +320,35 @@ function executeActorScraper(scraperName, actorName) {
  *
  * Priority:
  * 1. Original URL from scraper (thumbUrl) - always works, filesystem-independent
- * 2. Absolute path (if actorsPath configured and file exists)
- * 3. Relative path /actors/filename - for WebUI compatibility
+ * 2. Uploaded local files (thumbLocal starting with upload_) - use /media/ endpoint
+ * 3. Absolute path (if actorsPath configured and file exists)
+ * 4. Relative path /actors/filename - for WebUI compatibility
  *
  * @param {object} actorData - Actor data object
  * @returns {string} - Best thumb URL to use
  */
 function resolveActorThumb(actorData) {
-  const config = loadConfig();
-
   // Priority 1: Use original URL if available
   if (actorData.thumbUrl && actorData.thumbUrl.startsWith('http')) {
     return actorData.thumbUrl;
   }
 
-  // Priority 2: Use absolute path if actorsPath is configured
-  if (config.actorsPath && actorData.thumbLocal) {
-    const absolutePath = path.join(config.actorsPath, actorData.thumbLocal);
-    if (fs.existsSync(absolutePath)) {
-      return absolutePath;
-    }
+  // Priority 2: Use thumb field BUT only if it's a remote URL
+  // If it's a local /actors/ or /media/ path, we ignore it for "resolution" 
+  // as the frontend handles local lookup via ID and thumbLocal.
+  if (actorData.thumb && actorData.thumb.startsWith('http')) {
+    return actorData.thumb;
   }
 
-  // Priority 3: Fallback to relative path (for WebUI)
-  if (actorData.thumbLocal) {
-    return `/actors/${path.basename(actorData.thumbLocal)}`;
+  // Priority 3: For local uploaded files, use /media/ endpoint (if in temp)
+  if (actorData.thumbLocal && (actorData.thumbLocal.startsWith('upload_') || actorData.thumbLocal.startsWith('temp_'))) {
+    return `/media/${actorData.thumbLocal}`;
   }
 
-  // Final fallback: use whatever thumb value exists
-  return actorData.thumb || '';
+  // Final fallback: return empty string. 
+  // We NO LONGER return speculative /actors/ paths here because 
+  // we want the <thumb> field in the NFO to remain empty when the file is local.
+  return '';
 }
 
 // ─────────────────────────────
@@ -362,14 +362,103 @@ function resolveActorThumb(actorData) {
  * @returns {boolean} - True if complete
  */
 function isActorComplete(actor) {
-  const requiredFields = ['name', 'altName', 'birthdate', 'height', 'bust', 'waist', 'hips', 'thumb'];
+  // Check ALL fields - if any field is empty, we should scrape online to fill it
+  const fieldsToCheck = ['name', 'altName', 'birthdate', 'height', 'bust', 'waist', 'hips', 'thumb'];
 
-  return requiredFields.every(field => {
+  const emptyFields = [];
+  const isComplete = fieldsToCheck.every(field => {
     const value = actor[field];
-    if (typeof value === 'string') return value !== '';
-    if (typeof value === 'number') return value > 0;
-    return value !== null && value !== undefined;
+    let isEmpty = false;
+
+    if (typeof value === 'string') {
+      isEmpty = value === '';
+    } else if (typeof value === 'number') {
+      isEmpty = value <= 0;
+    } else {
+      isEmpty = value === null || value === undefined;
+    }
+
+    if (isEmpty) {
+      emptyFields.push(field);
+    }
+
+    return !isEmpty;
   });
+
+  if (!isComplete) {
+    console.log(`[ActorScraperManager] Actor incomplete. Missing fields: ${emptyFields.join(', ')}`);
+  }
+
+  return isComplete;
+}
+
+/**
+ * Merge local actor data with scraped data
+ * Local data takes priority for non-empty fields
+ *
+ * @param {object} localActor - Local actor data
+ * @param {object} scrapedActor - Scraped actor data
+ * @returns {object} - Merged actor data
+ */
+function mergeLocalWithScraped(localActor, scrapedActor) {
+  const { createEmptyActor } = require('../../scrapers/actors/schema');
+
+  console.log('[ActorScraperManager] Merging local and scraped data:');
+  console.log('[ActorScraperManager] Local actor:', JSON.stringify(localActor, null, 2));
+  console.log('[ActorScraperManager] Scraped actor:', JSON.stringify(scrapedActor, null, 2));
+
+  // Start with scraped data as base
+  const merged = { ...scrapedActor };
+
+  // Override with local data for non-empty fields
+  Object.keys(localActor).forEach(fieldName => {
+    // Skip meta field (will be handled separately)
+    if (fieldName === 'meta') return;
+
+    const localValue = localActor[fieldName];
+
+    // Check if local value is non-empty
+    const isEmpty = localValue === null ||
+      localValue === undefined ||
+      localValue === '' ||
+      localValue === 0 ||
+      (Array.isArray(localValue) && localValue.length === 0);
+
+    // Use local value if not empty
+    if (!isEmpty) {
+      console.log(`[ActorScraperManager] Using local value for ${fieldName}: ${localValue}`);
+      merged[fieldName] = localValue;
+    } else {
+      console.log(`[ActorScraperManager] Local value for ${fieldName} is empty, using scraped value: ${scrapedActor[fieldName]}`);
+    }
+  });
+
+  // Preserve important local metadata
+  merged.meta = merged.meta || {};
+  if (localActor.meta) {
+    // Preserve thumbLocal if it was manually uploaded (starts with upload_)
+    if (localActor.meta.thumbLocal && localActor.meta.thumbLocal.startsWith('upload_')) {
+      merged.thumbLocal = localActor.meta.thumbLocal;
+    }
+
+    // Preserve any custom metadata
+    if (localActor.meta.custom) {
+      merged.meta.custom = localActor.meta.custom;
+    }
+  }
+
+  // Update metadata
+  merged.meta.sources = merged.meta.sources || [];
+  if (localActor.meta && localActor.meta.sources) {
+    // Merge sources from both local and scraped
+    const allSources = [...new Set([...localActor.meta.sources, ...merged.meta.sources])];
+    merged.meta.sources = allSources;
+  }
+  merged.meta.lastUpdate = new Date().toISOString();
+
+  console.log('[ActorScraperManager] Merged result:', JSON.stringify(merged, null, 2));
+
+  return merged;
 }
 
 /**
@@ -428,9 +517,9 @@ function mergeActorData(actorName, scraperResults, scraperPriority) {
 
         // Check if value is non-empty
         const isEmpty = value === null ||
-                       value === '' ||
-                       value === 0 ||
-                       (Array.isArray(value) && value.length === 0);
+          value === '' ||
+          value === 0 ||
+          (Array.isArray(value) && value.length === 0);
 
         if (!isEmpty) {
           merged[fieldName] = value;
@@ -575,10 +664,37 @@ async function getActor(actorName) {
 
   if (actorId) {
     // Try to load from local storage
-    const actor = loadActorLocal(actorId);
-    if (actor) {
+    const localActor = loadActorLocal(actorId);
+
+    if (localActor) {
       console.log(`[ActorScraperManager] Loaded actor from cache: ${actorId}`);
-      return actor;
+      console.log(`[ActorScraperManager] Actor data:`, JSON.stringify(localActor, null, 2));
+
+      // Check if local data is complete
+      if (isActorComplete(localActor)) {
+        console.log(`[ActorScraperManager] Actor is complete, returning from cache`);
+        return localActor;
+      }
+
+      // Local data is incomplete - scrape online to fill missing fields
+      console.log(`[ActorScraperManager] Actor in cache but incomplete, scraping to fill missing fields: ${actorId}`);
+
+      const scrapedActor = await scrapeActor(actorName);
+
+      if (scrapedActor) {
+        // Merge local and scraped data (local takes priority for non-empty fields)
+        const mergedActor = mergeLocalWithScraped(localActor, scrapedActor);
+
+        // Save the merged data
+        saveActorLocal(mergedActor);
+
+        console.log(`[ActorScraperManager] Merged local and scraped data for: ${actorId}`);
+        return mergedActor;
+      }
+
+      // Scraping failed, return incomplete local data
+      console.log(`[ActorScraperManager] Scraping failed, returning incomplete local data: ${actorId}`);
+      return localActor;
     }
   }
 

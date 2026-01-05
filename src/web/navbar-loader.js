@@ -36,9 +36,14 @@ function initLanguageSelector() {
     return;
   }
 
-  // Set current language
-  const currentLang = window.i18n ? window.i18n.getCurrentLanguage() : 'en';
-  selector.value = currentLang;
+  // Function to update selector value based on current language
+  const updateSelectorValue = () => {
+    const currentLang = window.i18n ? window.i18n.getCurrentLanguage() : 'en';
+    selector.value = currentLang;
+  };
+
+  // Set initial value
+  updateSelectorValue();
 
   // Handle language change
   selector.addEventListener('change', async (e) => {
@@ -48,6 +53,9 @@ function initLanguageSelector() {
       await window.i18n.changeLanguage(newLang);
     }
   });
+
+  // Listen for language changes to update selector
+  window.addEventListener('languageChanged', updateSelectorValue);
 }
 
 // Auto-load navbar when DOM is ready
