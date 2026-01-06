@@ -81,15 +81,38 @@ if ! command -v npm &> /dev/null; then
     exit 1
 fi
 
-# Check if dependencies are installed
-if [ ! -d "node_modules" ]; then
-    echo "[INFO] Installing dependencies..."
+# Check if dependencies are installed and up-to-date
+if [ ! -d "node_modules" ] || [ ! -f "package-lock.json" ] || [ "$(find package.json -newer package-lock.json 2>/dev/null)" ]; then
+    echo "[INFO] Installing or updating dependencies..."
     npm install
     if [ $? -ne 0 ]; then
         echo "[ERROR] Failed to install dependencies!"
         exit 1
     fi
     echo ""
+else
+    # Check if any dependencies are missing by trying to require them
+    echo "[INFO] Checking if all dependencies are installed..."
+    missing_deps=0
+
+    # Check for each dependency in package.json
+    deps=$(node -p "Object.keys(require('./package.json').dependencies).join(' ')")
+    for dep in $deps; do
+        if ! node -e "require('$dep')" 2>/dev/null; then
+            echo "[INFO] Missing dependency: $dep"
+            missing_deps=1
+        fi
+    done
+
+    if [ $missing_deps -eq 1 ]; then
+        echo "[INFO] Installing missing dependencies..."
+        npm install
+        if [ $? -ne 0 ]; then
+            echo "[ERROR] Failed to install dependencies!"
+            exit 1
+        fi
+        echo ""
+    fi
 fi
 
 # Start the server and open browser

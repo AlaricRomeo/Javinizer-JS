@@ -15,7 +15,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM Check if dependencies are installed
+REM Check if dependencies are installed and up-to-date
 if not exist "node_modules\" (
     echo [INFO] Installing dependencies...
     call npm install
@@ -25,6 +25,45 @@ if not exist "node_modules\" (
         exit /b 1
     )
     echo.
+) else (
+    REM Check if package-lock.json exists or is older than package.json
+    if not exist "package-lock.json" (
+        echo [INFO] Installing or updating dependencies...
+        call npm install
+        if %ERRORLEVEL% NEQ 0 (
+            echo [ERROR] Failed to install dependencies!
+            pause
+            exit /b 1
+        )
+        echo.
+    ) else (
+        REM Compare timestamps using PowerShell
+        for /f %%i in ('powershell -command "if ((Get-Item package.json).LastWriteTime -gt (Get-Item package-lock.json).LastWriteTime) { exit 1 } else { exit 0 }" 2^>nul') do set TIMESTAMP_CHECK=%%i
+        if %TIMESTAMP_CHECK% EQU 1 (
+            echo [INFO] Installing or updating dependencies...
+            call npm install
+            if %ERRORLEVEL% NEQ 0 (
+                echo [ERROR] Failed to install dependencies!
+                pause
+                exit /b 1
+            )
+            echo.
+        ) else (
+            REM Check if any dependencies are missing by trying to require them
+            echo [INFO] Checking if all dependencies are installed...
+            node -e "Object.keys(require('./package.json').dependencies).forEach(dep => { try { require(dep); } catch(e) { console.log('Missing dependency: ' + dep); process.exit(1); } }); process.exit(0);" 2>nul
+            if %ERRORLEVEL% EQU 1 (
+                echo [INFO] Installing missing dependencies...
+                call npm install
+                if %ERRORLEVEL% NEQ 0 (
+                    echo [ERROR] Failed to install dependencies!
+                    pause
+                    exit /b 1
+                )
+                echo.
+            )
+        )
+    )
 )
 
 REM Start the server and open browser
