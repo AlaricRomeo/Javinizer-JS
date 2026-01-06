@@ -225,7 +225,7 @@ function saveActorLocal(actor) {
  * @returns {Promise<object|null>} - Scraped actor data or null
  */
 function executeActorScraper(scraperName, actorName) {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     const scraperPath = path.join(__dirname, '../../scrapers/actors', scraperName, 'run.js');
 
     // Check if scraper exists
@@ -235,9 +235,51 @@ function executeActorScraper(scraperName, actorName) {
       return;
     }
 
-    console.log(`[ActorScraperManager] Executing scraper: ${scraperName} for ${actorName}`);
+    console.log(`[ActorScraperManager] Executing scraper in-process: ${scraperName} for ${actorName}`);
 
-    // Spawn scraper process
+    // Try to require the scraper module and execute in-process
+    try {
+      const scraperModule = require(scraperPath);
+
+      // Prefer exported function `scrapeJavDB` or `scrapeActor` if available
+      const fn = (scraperModule && (scraperModule.scrapeJavDB || scraperModule.scrapeActor || scraperModule.scrape))
+        ? (scraperModule.scrapeJavDB || scraperModule.scrapeActor || scraperModule.scrape)
+        : null;
+
+      if (typeof fn === 'function') {
+        // Run scraper with timeout
+        const timeoutMs = 30000; // 30s
+
+        const runPromise = (async () => {
+          try {
+            const result = await fn(actorName);
+            return result || null;
+          } catch (err) {
+            console.error(`[ActorScraperManager] Scraper ${scraperName} threw:`, err.message);
+            return null;
+          }
+        })();
+
+        const timeoutPromise = new Promise(res => setTimeout(() => res(null), timeoutMs));
+
+        const final = await Promise.race([runPromise, timeoutPromise]);
+
+        if (final === null) {
+          console.error(`[ActorScraperManager] Scraper ${scraperName} timed out or returned null`);
+        } else {
+          console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully (in-process)`);
+        }
+
+        resolve(final);
+        return;
+      }
+    } catch (error) {
+      console.error(`[ActorScraperManager] In-process require failed for ${scraperName}:`, error.message);
+      // fall back to spawn below
+    }
+
+    // Fallback: spawn child process (kept for compatibility)
+    console.log(`[ActorScraperManager] Falling back to spawn for scraper: ${scraperName}`);
     const child = spawn('node', [scraperPath, actorName], {
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -245,14 +287,12 @@ function executeActorScraper(scraperName, actorName) {
     let stdout = '';
     let hasResolved = false;
 
-    // Set timeout (30 seconds) - increase to avoid killing slow headless browser launches
     const timeout = setTimeout(() => {
       if (!hasResolved) {
-        console.error(`[ActorScraperManager] Scraper ${scraperName} timed out after 10s`);
+        console.error(`[ActorScraperManager] Scraper ${scraperName} timed out after 30s`);
         hasResolved = true;
         child.kill('SIGTERM');
 
-        // Force kill after 2 seconds if still running
         setTimeout(() => {
           if (!child.killed) {
             console.error(`[ActorScraperManager] Force killing scraper ${scraperName}`);
@@ -262,22 +302,18 @@ function executeActorScraper(scraperName, actorName) {
 
         resolve(null);
       }
-    }, 10000);
+    }, 30000);
 
-    // Collect stdout
     child.stdout.on('data', (data) => {
       stdout += data.toString();
     });
 
-    // Capture stderr (progress logs)
     child.stderr.on('data', (data) => {
       console.log(data.toString());
     });
 
-    // Handle process exit
     child.on('close', (code) => {
       if (hasResolved) return;
-
       clearTimeout(timeout);
       hasResolved = true;
 
@@ -287,24 +323,20 @@ function executeActorScraper(scraperName, actorName) {
         return;
       }
 
-      // Parse JSON output
       try {
         const result = JSON.parse(stdout);
         console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
         resolve(result);
-      } catch (error) {
-        console.error(`[ActorScraperManager] Failed to parse JSON from ${scraperName}:`, error.message);
+      } catch (err) {
+        console.error(`[ActorScraperManager] Failed to parse JSON from ${scraperName}:`, err.message);
         resolve(null);
       }
     });
 
-    // Handle process error
     child.on('error', (error) => {
       if (hasResolved) return;
-
       clearTimeout(timeout);
       hasResolved = true;
-
       console.error(`[ActorScraperManager] Failed to execute ${scraperName}:`, error.message);
       resolve(null);
     });
