@@ -44,13 +44,9 @@ function clearDirtyFields() {
   });
   dirtyFields.clear();
 
-  // In scrape mode il bottone rimane sempre abilitato
+  // In scrape mode il bottone rimane sempre abilitato ma aggiorna anche il badge
   if (currentMode === "scrape") {
-    const saveBtn = document.getElementById("saveItem");
-    if (saveBtn) {
-      saveBtn.disabled = false;
-      saveBtn.classList.add("has-changes");
-    }
+    updateSaveButton();
   } else {
     updateSaveButton();
   }
