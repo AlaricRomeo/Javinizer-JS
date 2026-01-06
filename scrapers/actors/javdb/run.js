@@ -122,15 +122,34 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
     // Set user agent
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
 
-    // Navigate to page
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Navigate to page and capture response
+    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Check if page exists (404 check)
-    const pageContent = await page.content();
-    if (pageContent.includes('404') || pageContent.includes('Not Found')) {
-      console.error('[JAVDB] Actor not found (404)');
+    // Prefer HTTP status code for existence checks (more reliable)
+    const status = response ? response.status() : null;
+    console.error(`[JAVDB] HTTP status: ${status}`);
+
+    if (!response || (status >= 400 && status !== 301 && status !== 302)) {
+      console.error('[JAVDB] Actor not found (HTTP)');
 
       // On first attempt, try inverted name
+      if (!tryInvertedName) {
+        console.error('[JAVDB] Trying inverted name...');
+        const result = await scrapeJavDB(actorName, true, browser);
+        if (shouldCloseBrowser) await browser.close();
+        return result;
+      }
+
+      if (shouldCloseBrowser) await browser.close();
+      return null;
+    }
+
+    // Fall back to DOM checks if status looks OK but page still might be a block
+    const pageContent = await page.content();
+    const hasName = await page.$('h1.idol-name');
+    if (!hasName && (pageContent.includes('404') || pageContent.includes('Not Found'))) {
+      console.error('[JAVDB] Actor not found (DOM)');
+
       if (!tryInvertedName) {
         console.error('[JAVDB] Trying inverted name...');
         const result = await scrapeJavDB(actorName, true, browser);

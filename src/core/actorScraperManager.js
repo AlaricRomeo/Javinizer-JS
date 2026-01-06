@@ -245,7 +245,7 @@ function executeActorScraper(scraperName, actorName) {
     let stdout = '';
     let hasResolved = false;
 
-    // Set timeout (10 seconds)
+    // Set timeout (30 seconds) - increase to avoid killing slow headless browser launches
     const timeout = setTimeout(() => {
       if (!hasResolved) {
         console.error(`[ActorScraperManager] Scraper ${scraperName} timed out after 10s`);
