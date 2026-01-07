@@ -21,6 +21,29 @@
     "mediaUrls": "Media URLs",
     "actors": "Actors"
   },
+  "buttons": {
+    "save": "💾 Save Changes",
+    "addActor": "+ Add Actor",
+    "cancel": "Cancel",
+    "select": "Select",
+    "remove": "Remove",
+    "browse": "📁",
+    "scrapeNow": "🔍 Scrape Now!",
+    "clearCache": "🗑️ Clear Scrapers Cache",
+    "deleteItem": "🗑️ Delete Item",
+    "deleteAllItems": "🗑️ Delete All Items",
+    "manageActors": "👥 Manage Actors",
+    "edit": "EDIT",
+    "scrape": "SCRAPE",
+    "close": "Close",
+    "interrupt": "Interrupt",
+    "continue": "Continue",
+    "stop": "Stop",
+    "search": "🔍 Search Actor",
+    "upload": "Upload",
+    "deleteLocalPhoto": "Delete Local Photo",
+    "copyActorsToFolder": "Copy actors in movie folder"
+  },
   "fields": {
     "id": "ID",
     "contentId": "Content ID",
@@ -66,7 +89,8 @@
     "stop": "Stop",
     "search": "🔍 Search Actor",
     "upload": "Upload",
-    "deleteLocalPhoto": "Delete Local Photo"
+    "deleteLocalPhoto": "Delete Local Photo",
+    "copyActorsToFolder": "Copy actors in movie folder"
   },
   "placeholders": {
     "noImage": "No image",
@@ -122,6 +146,9 @@
     "enterActorNameFirstAlert": "Please enter actor name first",
     "confirmRemoveActorPrompt": "Remove {name}?",
     "confirmDeleteActor": "Are you sure you want to delete {name}?",
+    "confirmCopyActorsToFolder": "Are you sure you want to copy actor thumbnails to the movie folder? This will create an 'actors' folder and copy all actor thumbnails.",
+    "copyingActors": "Copying actors...",
+    "actorsCopiedSuccessfully": "✓ Actors copied successfully",
     "enterActorName": "Please enter actor name",
     "searching": "Searching...",
     "searchingActorData": "Searching for actor data...",

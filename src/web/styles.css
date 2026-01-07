@@ -382,6 +382,15 @@ button:disabled {
 .add-actor-btn:hover {
   background: #218838;
 }
+.copy-actors-btn {
+  background: #17a2b8;
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+}
+.copy-actors-btn:hover {
+  background: #138496;
+}
 /* Save button */
 .save-panel {
   position: sticky;

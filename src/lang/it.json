@@ -21,7 +21,7 @@
     "mediaUrls": "Media URLs",
     "actors": "Attori"
   },
-  "fields": {
+  "buttons": {
     "id": "ID",
     "contentId": "Content ID",
     "title": "Titolo",
@@ -66,7 +66,8 @@
     "stop": "Ferma",
     "search": "🔍 Cerca Attore",
     "upload": "Carica",
-    "deleteLocalPhoto": "Elimina Foto Locale"
+    "deleteLocalPhoto": "Elimina Foto Locale",
+    "copyActorsToFolder": "Copia attori nella cartella del film"
   },
   "placeholders": {
     "noImage": "Nessuna immagine",
@@ -123,6 +124,9 @@
     "enterActorNameFirstAlert": "Inserisci il nome dell'attore prima di cercare",
     "confirmRemoveActorPrompt": "Rimuovere {name}?",
     "confirmDeleteActor": "Sei sicuro di voler eliminare {name}?",
+    "confirmCopyActorsToFolder": "Sei sicuro di voler copiare le miniature degli attori nella cartella del film? Questo creerà una cartella 'actors' e copierà tutte le miniature degli attori.",
+    "copyingActors": "Copia attori in corso...",
+    "actorsCopiedSuccessfully": "✓ Attori copiati con successo",
     "enterActorNameFirst": "Inserisci prima il nome dell'attore",
     "searching": "Ricerca in corso...",
     "searchingActorData": "Cercando dati dell'attore...",
