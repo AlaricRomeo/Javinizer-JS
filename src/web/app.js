@@ -436,6 +436,7 @@ async function switchMode(newMode) {
   const scrapeBtn = document.getElementById("modeScrape");
   const saveBtn = document.getElementById("saveItem");
   const scrapePanel = document.querySelector(".scraper-panel");
+  const copyActorsBtn = document.getElementById("copyActorsToFolder");
 
   if (newMode === "edit") {
     // Edit mode
@@ -446,6 +447,11 @@ async function switchMode(newMode) {
     if (scrapePanel) {
       scrapePanel.style.opacity = "0.5";
       scrapePanel.style.pointerEvents = "none";
+    }
+
+    // Show copy actors button in edit mode
+    if (copyActorsBtn) {
+      copyActorsBtn.style.display = "block";
     }
 
     // Force refresh library count before loading item
@@ -463,6 +469,11 @@ async function switchMode(newMode) {
     if (scrapePanel) {
       scrapePanel.style.opacity = "1";
       scrapePanel.style.pointerEvents = "auto";
+    }
+
+    // Hide copy actors button in scrape mode
+    if (copyActorsBtn) {
+      copyActorsBtn.style.display = "none";
     }
 
     // Check scrape availability first to ensure counter is updated
@@ -566,6 +577,12 @@ function clearUI() {
   const debugJson = document.getElementById("debugJson");
   if (debugJson) {
     debugJson.textContent = "{}";
+  }
+
+  // Hide copy actors button when clearing UI
+  const copyActorsBtn = document.getElementById("copyActorsToFolder");
+  if (copyActorsBtn) {
+    copyActorsBtn.style.display = "none";
   }
 }
 
@@ -946,6 +963,14 @@ function renderItem(item) {
   // Clear dirty fields quando carichiamo un nuovo item
   clearDirtyFields();
 
+  // Show copy actors button if in edit mode
+  if (currentMode === "edit") {
+    const copyActorsBtn = document.getElementById("copyActorsToFolder");
+    if (copyActorsBtn) {
+      copyActorsBtn.style.display = "block";
+    }
+  }
+
   // Debug JSON
   updateDebugJson();
 }
@@ -1226,8 +1251,82 @@ function setupEventHandlers() {
     openActorModal(null);
   };
 
+  // Copy actors to movie folder button
+  const copyActorsBtn = document.getElementById("copyActorsToFolder");
+  if (copyActorsBtn) {
+    copyActorsBtn.onclick = async () => {
+      // Show confirmation dialog with i18n text
+      const confirmText = window.i18n ? window.i18n.t("messages.confirmCopyActorsToFolder") : "Are you sure you want to copy actor thumbnails to the movie folder? This will create an 'actors' folder and copy all actor thumbnails.";
+      if (confirm(confirmText)) {
+        await copyActorsToMovieFolder();
+      }
+    };
+  }
+
   // Setup Actor Modal Event Listeners (when modal is loaded)
   setupActorModalEventListeners();
+}
+
+// Copy actors to movie folder functionality
+async function copyActorsToMovieFolder() {
+  if (!currentItem || !currentItem.actor || !currentItem.folderId) {
+    showNotification(
+      window.i18n ? window.i18n.t("messages.errorPrefix") + "No actors or movie folder available" : "Errore: No actors or movie folder available",
+      "error"
+    );
+    return;
+  }
+
+  const actors = currentItem.actor;
+  if (actors.length === 0) {
+    showNotification(
+      window.i18n ? window.i18n.t("messages.errorPrefix") + "No actors to copy" : "Errore: No actors to copy",
+      "error"
+    );
+    return;
+  }
+
+  // Show progress notification
+  const progressNotification = showNotification(
+    window.i18n ? window.i18n.t("messages.copyingActors") : "Copying actors...",
+    "info",
+    0 // Don't auto-hide
+  );
+
+  try {
+    // Call backend API to copy actors
+    const response = await fetch("/item/actors/copy-to-movie", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        folderId: currentItem.folderId,
+        actors: actors
+      })
+    });
+
+    const result = await response.json();
+
+    if (!result.ok) {
+      throw new Error(result.error || "Failed to copy actors");
+    }
+
+    // Success notification
+    showNotification(
+      window.i18n ? window.i18n.t("messages.actorsCopiedSuccessfully") : "✓ Actors copied successfully",
+      "success"
+    );
+  } catch (error) {
+    console.error("Error copying actors to movie folder:", error);
+    showNotification(
+      (window.i18n ? window.i18n.t("messages.errorPrefix") : "Error: ") + error.message,
+      "error"
+    );
+  } finally {
+    // Remove progress notification
+    if (progressNotification) {
+      progressNotification.remove();
+    }
+  }
 }
 
 // Setup event listeners for actor modal

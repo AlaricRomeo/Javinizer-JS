@@ -66,7 +66,8 @@
     "stop": "停止",
     "search": "🔍 女優を検索",
     "upload": "アップロード",
-    "deleteLocalPhoto": "ローカル写真を削除"
+    "deleteLocalPhoto": "ローカル写真を削除",
+    "copyActorsToFolder": "動画フォルダに女優をコピー"
   },
   "placeholders": {
     "noImage": "画像なし",
@@ -123,6 +124,9 @@
     "enterActorNameFirstAlert": "まず女優名を入力してください",
     "confirmRemoveActorPrompt": "{name}を削除しますか？",
     "confirmDeleteActor": "{name}を削除してもよろしいですか？",
+    "confirmCopyActorsToFolder": "女優のサムネイルを動画フォルダにコピーしてもよろしいですか？これにより「actors」フォルダが作成され、すべての女優サムネイルがコピーされます。",
+    "copyingActors": "女優をコピー中...",
+    "actorsCopiedSuccessfully": "✓ 女優を正常にコピーしました",
     "enterActorNameFirst": "まず女優名を入力してください",
     "searching": "検索中...",
     "searchingActorData": "女優データを検索中...",

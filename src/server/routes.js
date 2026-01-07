@@ -1232,4 +1232,135 @@ router.post("/actors/upload-image", upload.single('image'), async (req, res) => 
   }
 });
 
+// ─────────────────────────────
+// POST /actors/copy-to-movie
+// Copy actor thumbnails to movie folder
+// ─────────────────────────────
+router.post("/actors/copy-to-movie", async (req, res) => {
+  try {
+    const { folderId, actors } = req.body;
+
+    if (!folderId) {
+      return res.json({ ok: false, error: 'Movie folder ID is required' });
+    }
+
+    if (!actors || !Array.isArray(actors) || actors.length === 0) {
+      return res.json({ ok: false, error: 'Actor list is required and must not be empty' });
+    }
+
+    // Get library path from config
+    const config = loadConfig();
+    if (!config.libraryPath) {
+      return res.json({ ok: false, error: 'Library path not configured' });
+    }
+
+    // Find the movie folder in the library
+    const movieFolderPath = path.join(config.libraryPath, folderId);
+
+    if (!fs.existsSync(movieFolderPath)) {
+      return res.json({ ok: false, error: `Movie folder does not exist: ${movieFolderPath}` });
+    }
+
+    // Create actors subfolder in the movie folder
+    const actorsFolderPath = path.join(movieFolderPath, 'actors');
+    if (!fs.existsSync(actorsFolderPath)) {
+      fs.mkdirSync(actorsFolderPath, { recursive: true });
+    }
+
+    // Get actors cache path
+    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+    const actorsCachePath = getActorsCachePath();
+
+    let copiedCount = 0;
+    const errors = [];
+
+    // Copy each actor's thumbnail to the movie's actors folder
+    for (const actor of actors) {
+      if (!actor.name) {
+        errors.push(`Skipping actor without name`);
+        continue;
+      }
+
+      try {
+        // Normalize actor name to match the file naming convention
+        const { normalizeActorName } = require('../../scrapers/actors/schema');
+        const actorId = normalizeActorName(actor.name);
+
+        // Look for the actor image in the cache (try common extensions)
+        const extensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+        let sourceImagePath = null;
+
+        for (const ext of extensions) {
+          const imagePath = path.join(actorsCachePath, `${actorId}${ext}`);
+          if (fs.existsSync(imagePath)) {
+            sourceImagePath = imagePath;
+            break;
+          }
+        }
+
+        if (!sourceImagePath) {
+          // If image not found in cache, try to get from actor's thumb URL in the movie data
+          if (actor.thumb && actor.thumb.startsWith('http')) {
+            try {
+              // Download the image from the thumb URL
+              const response = await fetch(actor.thumb);
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              }
+
+              const buffer = Buffer.from(await response.arrayBuffer());
+
+              // Determine file extension from URL or content type
+              let ext = path.extname(new URL(actor.thumb).pathname).toLowerCase();
+              if (!ext || ext === '.') {
+                // Default to jpg if extension not found in URL
+                ext = '.jpg';
+              }
+
+              // Save the downloaded image to the actors folder
+              const downloadedImagePath = path.join(actorsCachePath, `${actorId}${ext}`);
+              fs.writeFileSync(downloadedImagePath, buffer);
+
+              sourceImagePath = downloadedImagePath;
+            } catch (downloadError) {
+              errors.push(`Failed to download actor image for ${actor.name} from ${actor.thumb}: ${downloadError.message}`);
+              continue;
+            }
+          } else {
+            errors.push(`Actor image not found for: ${actor.name} (ID: ${actorId}) and no thumb URL available to download`);
+            continue;
+          }
+        }
+
+        // Determine the destination filename following Kodi/Jellyfin standards
+        // The filename must match exactly the <name> value in the movie NFO for proper association
+        // No transformations - the filename should be the exact actor name with .jpg extension
+        const kodiJellyfinSafeName = actor.name
+          .replace(/[<>:"/\\|?*]/g, '')  // Remove invalid filename characters
+          .trim();                       // Remove leading/trailing whitespace
+
+        const destFilename = `${kodiJellyfinSafeName}.jpg`;
+        const destPath = path.join(actorsFolderPath, destFilename);
+
+        // Copy the image file
+        fs.copyFileSync(sourceImagePath, destPath);
+        copiedCount++;
+      } catch (copyError) {
+        errors.push(`Failed to copy image for ${actor.name}: ${copyError.message}`);
+      }
+    }
+
+    res.json({
+      ok: true,
+      message: `Successfully copied ${copiedCount} actor thumbnails to movie folder`,
+      copied: copiedCount,
+      errors: errors
+    });
+
+  } catch (err) {
+    console.error('[CopyActorsToMovie] Error:', err);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 module.exports = router;
