@@ -5,6 +5,7 @@
 
 (async function() {
   try {
+    // Load the shared actor modal HTML
     const response = await fetch('/actor-modal.html');
     const html = await response.text();
 

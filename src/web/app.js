@@ -812,107 +812,41 @@ function renderActors() {
 }
 
 // ─────────────────────────────
-// Actor Edit Modal
+// Actor Edit Modal - Using Unified System Only
 // ─────────────────────────────
+
+// Note: Using unified ActorModal system functions
+// All actor modal functionality is handled by actor-modal.js
+
+// Variable specific to movie context
 let editingActorIndex = null;
 
 function openActorModal(index = null) {
+  // Set the modal mode to 'movie' for index.html context and use unified system
+  ActorModal.setActorModalMode('movie');
+  // Store the index for later use in save/remove operations
   editingActorIndex = index;
-  const modal = document.getElementById("actorEditModal");
+  ActorModal.openActorModal(index);
 
-  if (!modal || !document.getElementById("actorEditModalTitle")) {
-    return;
-  }
-
-  const modalTitle = document.getElementById("actorEditModalTitle");
-  const removeBtn = document.getElementById("actorEditRemove");
-  const sourceInfo = document.getElementById("actorEditSourceInfo");
-
-  const isNewActor = index === null;
-  const actor = isNewActor ? {} : currentItem.actor[index];
-
-  // Imposta titolo
-  modalTitle.textContent = window.i18n
-    ? window.i18n.t(isNewActor ? "actorModal.titleAdd" : "actorModal.title")
-    : (isNewActor ? "Aggiungi Attore" : "Modifica Attore");
-
-  // Update preview first
-  updateActorPreview(actor.thumb || "");
-
-  // Popola campi base
-  const nameEl = document.getElementById("actorEditName");
-  const altNameEl = document.getElementById("actorEditAltName");
-  const roleEl = document.getElementById("actorEditRole");
-  const thumbEl = document.getElementById("actorEditThumb");
-
-  if (nameEl) nameEl.value = actor.name || "";
-  if (altNameEl) altNameEl.value = actor.altName || "";
-  if (roleEl) roleEl.value = actor.role || "Actress";
-  if (thumbEl) thumbEl.value = actor.thumb || "";
-
-  // Popola campi estesi
-  const birthdateEl = document.getElementById("actorEditBirthdate");
-  const heightEl = document.getElementById("actorEditHeight");
-  const bustEl = document.getElementById("actorEditBust");
-  const waistEl = document.getElementById("actorEditWaist");
-  const hipsEl = document.getElementById("actorEditHips");
-
-  if (birthdateEl) birthdateEl.value = actor.birthdate || "";
-  if (heightEl) heightEl.value = actor.height || "";
-  if (bustEl) bustEl.value = actor.bust || "";
-  if (waistEl) waistEl.value = actor.waist || "";
-  if (hipsEl) hipsEl.value = actor.hips || "";
-
-  // Mostra fonte dati se disponibile
-  if (!isNewActor && actor.meta && actor.meta.sources) {
-    const sourceSpan = document.getElementById("actorEditSource");
-    if (sourceSpan) {
-      sourceSpan.textContent = actor.meta.sources.join(", ");
-      sourceInfo.style.display = "block";
+  // Update the visibility of the remove button after the modal is opened
+  setTimeout(() => {
+    const removeBtn = document.getElementById("actorEditRemove");
+    if (removeBtn) {
+      removeBtn.style.display = index === null ? "none" : "block";
     }
-  } else {
-    if (sourceInfo) sourceInfo.style.display = "none";
-  }
-
-  // Manage remove button visibility
-  if (removeBtn) removeBtn.style.display = isNewActor ? "none" : "block";
-
-  // Show modal using CSS class
-  modal.classList.add("active");
+  }, 100); // Small delay to ensure modal is fully loaded
 }
 
 function closeActorModal() {
-  const modal = document.getElementById("actorEditModal");
-  if (modal) {
-    modal.classList.remove("active");
-  }
+  // Use unified system
+  ActorModal.closeActorModal();
+  // Reset the local variable when closing
   editingActorIndex = null;
 }
 
 function updateActorPreview(url) {
-  const previewImg = document.getElementById("actorEditPreviewImg");
-  const placeholder = document.getElementById("actorEditPreviewPlaceholder");
-
-  // Protezione: verifica che gli elementi esistano
-  if (!previewImg || !placeholder) {
-    console.warn("Preview elements not found in DOM");
-    return;
-  }
-
-  if (url && url.trim() !== "") {
-    previewImg.src = url;
-    previewImg.style.display = "block";
-    placeholder.style.display = "none";
-
-    // Gestisci errore caricamento immagine
-    previewImg.onerror = () => {
-      previewImg.style.display = "none";
-      placeholder.style.display = "block";
-    };
-  } else {
-    previewImg.style.display = "none";
-    placeholder.style.display = "block";
-  }
+  // Use unified system
+  ActorModal.updateActorPreview(url);
 }
 
 // Funzione per editing attore
@@ -1321,6 +1255,7 @@ function setupActorModalEventListeners() {
     closeBtn.onclick = closeActorModal;
   }
 
+  // Save actor button
   document.getElementById("actorEditSave").onclick = () => {
     const name = document.getElementById("actorEditName").value;
     const altName = document.getElementById("actorEditAltName").value;
@@ -1367,6 +1302,7 @@ function setupActorModalEventListeners() {
     closeActorModal();
   };
 
+  // Remove actor button
   document.getElementById("actorEditRemove").onclick = () => {
     if (editingActorIndex !== null) {
       const actorName = currentItem.actor[editingActorIndex].name || "questo attore";
