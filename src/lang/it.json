@@ -21,7 +21,7 @@
     "mediaUrls": "Media URLs",
     "actors": "Attori"
   },
-  "buttons": {
+  "fields": {
     "id": "ID",
     "contentId": "Content ID",
     "title": "Titolo",
@@ -67,7 +67,8 @@
     "search": "🔍 Cerca Attore",
     "upload": "Carica",
     "deleteLocalPhoto": "Elimina Foto Locale",
-    "copyActorsToFolder": "Copia attori nella cartella del film"
+    "copyActorsToFolder": "Copia attori nella cartella del film",
+    "play": "▶ Riproduci"
   },
   "placeholders": {
     "noImage": "Nessuna immagine",
@@ -207,6 +208,8 @@
     "saveConfig": "💾 Salva Configurazione",
     "saveSuccess": "Configurazione salvata con successo!",
     "saveFailed": "Errore nel salvataggio della configurazione",
-    "loadFailed": "Errore nel caricamento della configurazione"
+    "loadFailed": "Errore nel caricamento della configurazione",
+    "videoPlayerPath": "Percorso Player Video",
+    "videoPlayerPathHelp": "Percorso all'eseguibile del lettore video. Lasciare vuoto per disabilitare la funzione di riproduzione video."
   }
 }

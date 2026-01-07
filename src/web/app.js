@@ -144,6 +144,20 @@ async function loadConfig() {
 
   document.getElementById("libraryPath").value =
     data.config.libraryPath || "";
+
+  return data.config;
+}
+
+// Carica la configurazione per ottenere il video player path
+async function getVideoPlayerPath() {
+  const res = await fetch("/item/config");
+  const data = await res.json();
+
+  if (!data.ok) {
+    return null;
+  }
+
+  return data.config.videoPlayerPath || null;
 }
 
 // Salva il mode nel config
@@ -1263,6 +1277,12 @@ function setupEventHandlers() {
     };
   }
 
+  // Play video button
+  const playVideoBtn = document.getElementById("playVideo");
+  if (playVideoBtn) {
+    playVideoBtn.onclick = playVideo;
+  }
+
   // Setup Actor Modal Event Listeners (when modal is loaded)
   setupActorModalEventListeners();
 }
@@ -1706,6 +1726,99 @@ async function initializeApp() {
     checkLibraryCount();
     checkScrapeAvailability();
   }, 5000);
+
+  // Show/hide play button based on video player path
+  updatePlayButtonVisibility();
+}
+
+// ─────────────────────────────
+// Update Play Button Visibility
+// ─────────────────────────────
+
+async function updatePlayButtonVisibility() {
+  const videoPlayerPath = await getVideoPlayerPath();
+  const playButtonContainer = document.querySelector('.play-button-container');
+
+  if (playButtonContainer) {
+    if (videoPlayerPath && videoPlayerPath.trim() !== '') {
+      playButtonContainer.style.display = 'block';
+    } else {
+      playButtonContainer.style.display = 'none';
+    }
+  }
+}
+
+// ─────────────────────────────
+// Play Video Functionality
+// ─────────────────────────────
+
+async function playVideo() {
+  if (!currentItem || !currentItem.id) {
+    showNotification("No item selected", "error");
+    return;
+  }
+
+  const videoPlayerPath = await getVideoPlayerPath();
+  if (!videoPlayerPath || videoPlayerPath.trim() === '') {
+    showNotification("Video player path not configured", "error");
+    return;
+  }
+
+  try {
+    // Determine video path based on current mode
+    let videoPath = null;
+
+    if (currentMode === "scrape") {
+      // In scrape mode, get videoFile from the original JSON using the item ID
+      if (currentItem.id) {
+        const response = await fetch(`/item/scrape/video/${encodeURIComponent(currentItem.id)}`);
+        const data = await response.json();
+
+        if (data.ok && data.videoFile) {
+          videoPath = data.videoFile;
+        }
+      }
+    } else if (currentMode === "edit") {
+      // In edit mode, construct video path from library path + folder name
+      const libraryPath = document.getElementById("libraryPath").value;
+      if (libraryPath && currentItem.folderId) {
+        // Look for video files in the movie folder
+        const response = await fetch(`/item/videos/${encodeURIComponent(currentItem.folderId)}`);
+        const data = await response.json();
+
+        if (data.ok && data.videos && data.videos.length > 0) {
+          // Use the first video file found
+          videoPath = data.videos[0];
+        }
+      }
+    }
+
+    if (!videoPath) {
+      showNotification("Video file not found", "error");
+      return;
+    }
+
+    // Send request to server to play the video
+    const response = await fetch('/item/play-video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoPath: videoPath,
+        videoPlayerPath: videoPlayerPath
+      })
+    });
+
+    const result = await response.json();
+
+    if (result.ok) {
+      showNotification("Playing video...", "success");
+    } else {
+      showNotification(result.error || "Failed to play video", "error");
+    }
+  } catch (error) {
+    console.error("Error playing video:", error);
+    showNotification("Error playing video: " + error.message, "error");
+  }
 }
 
 // ─────────────────────────────
