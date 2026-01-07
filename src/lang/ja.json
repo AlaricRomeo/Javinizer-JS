@@ -67,7 +67,8 @@
     "search": "🔍 女優を検索",
     "upload": "アップロード",
     "deleteLocalPhoto": "ローカル写真を削除",
-    "copyActorsToFolder": "動画フォルダに女優をコピー"
+    "copyActorsToFolder": "動画フォルダに女優をコピー",
+    "play": "▶ 再生"
   },
   "placeholders": {
     "noImage": "画像なし",
@@ -207,6 +208,8 @@
     "saveConfig": "💾 設定を保存",
     "saveSuccess": "設定が正常に保存されました！",
     "saveFailed": "設定の保存に失敗しました",
-    "loadFailed": "設定の読み込みに失敗しました"
+    "loadFailed": "設定の読み込みに失敗しました",
+    "videoPlayerPath": "ビデオプレーヤーパス",
+    "videoPlayerPathHelp": "ビデオプレーヤーの実行ファイルパス。ビデオ再生機能を無効にするには空のままにしてください。"
   }
 }

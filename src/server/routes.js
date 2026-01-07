@@ -1233,132 +1233,136 @@ router.post("/actors/upload-image", upload.single('image'), async (req, res) => 
 });
 
 // ─────────────────────────────
-// POST /actors/copy-to-movie
-// Copy actor thumbnails to movie folder
+// POST /item/play-video
+// Play video using configured video player
 // ─────────────────────────────
-router.post("/actors/copy-to-movie", async (req, res) => {
+router.post("/play-video", async (req, res) => {
   try {
-    const { folderId, actors } = req.body;
+    const { videoPath, videoPlayerPath } = req.body;
 
-    if (!folderId) {
-      return res.json({ ok: false, error: 'Movie folder ID is required' });
+    if (!videoPath) {
+      return res.json({ ok: false, error: 'Video path is required' });
     }
 
-    if (!actors || !Array.isArray(actors) || actors.length === 0) {
-      return res.json({ ok: false, error: 'Actor list is required and must not be empty' });
+    if (!videoPlayerPath) {
+      return res.json({ ok: false, error: 'Video player path is required' });
     }
 
-    // Get library path from config
+    const { spawn } = require('child_process');
+    const pathModule = require('path');
+
+    // Sanitize paths to prevent command injection
+    // Resolve to absolute paths to ensure they're within allowed directories
+    const sanitizedPlayerPath = pathModule.resolve(videoPlayerPath);
+
+    // Additional security check: ensure paths start with expected directories
+    const allowedPaths = [
+      pathModule.resolve('.'), // Current working directory
+      pathModule.resolve('./data'), // Data directory
+      pathModule.resolve(require('os').homedir()) // Home directory
+    ];
+
+    // For video player path, check if it looks like a full path (contains path separator)
+    // Only validate paths that look like full paths, allow executables in PATH
+    if (videoPlayerPath.includes(pathModule.sep)) {
+      const isPathAllowed = (testPath, allowedList) => {
+        return allowedList.some(allowed => testPath.startsWith(allowed + pathModule.sep) || testPath === allowed);
+      };
+
+      if (!isPathAllowed(sanitizedPlayerPath, allowedPaths)) {
+        return res.json({ ok: false, error: 'Video player path is not in allowed directories' });
+      }
+
+      // Check if video player executable exists
+      if (!fs.existsSync(sanitizedPlayerPath)) {
+        return res.json({ ok: false, error: `Video player does not exist: ${sanitizedPlayerPath}` });
+      }
+    }
+
+    // For video path, we trust the path provided by our own server API
+    // but still check if the file exists
+    if (!fs.existsSync(videoPath)) {
+      return res.json({ ok: false, error: `Video file does not exist: ${videoPath}` });
+    }
+
+    // Try to execute the video player
+    // Use the original paths (not sanitized) to allow executables in PATH
+    const child = spawn(videoPlayerPath, [videoPath], {
+      detached: true,
+      stdio: 'ignore'
+    });
+
+    // Unref to allow the main process to exit without waiting for the video player
+    child.unref();
+
+    res.json({ ok: true, message: 'Video player launched successfully' });
+
+  } catch (err) {
+    console.error('[PlayVideo] Error:', err);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// GET /item/scrape/video/:itemId
+// Get the original video file path for a scrape item
+// ─────────────────────────────
+router.get("/scrape/video/:itemId", async (req, res) => {
+  try {
+    const itemId = req.params.itemId;
+    const outputDir = require('../core/config').getScrapePath();
+    const jsonPath = path.join(outputDir, `${itemId}.json`);
+
+    if (!fs.existsSync(jsonPath)) {
+      return res.json({ ok: false, error: `JSON file not found: ${jsonPath}` });
+    }
+
+    const jsonData = fs.readFileSync(jsonPath, "utf8");
+    const originalJson = JSON.parse(jsonData);
+
+    if (!originalJson.videoFile) {
+      return res.json({ ok: false, error: 'videoFile not found in JSON' });
+    }
+
+    res.json({ ok: true, videoFile: originalJson.videoFile });
+
+  } catch (err) {
+    console.error('[GetScrapeVideo] Error:', err);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// GET /item/videos/:folderId
+// Get list of video files in a movie folder
+// ─────────────────────────────
+router.get("/videos/:folderId", async (req, res) => {
+  try {
+    const folderId = req.params.folderId;
     const config = loadConfig();
+
     if (!config.libraryPath) {
       return res.json({ ok: false, error: 'Library path not configured' });
     }
 
-    // Find the movie folder in the library
-    const movieFolderPath = path.join(config.libraryPath, folderId);
+    const folderPath = path.join(config.libraryPath, folderId);
 
-    if (!fs.existsSync(movieFolderPath)) {
-      return res.json({ ok: false, error: `Movie folder does not exist: ${movieFolderPath}` });
+    if (!fs.existsSync(folderPath)) {
+      return res.json({ ok: false, error: `Folder does not exist: ${folderPath}` });
     }
 
-    // Create actors subfolder in the movie folder
-    const actorsFolderPath = path.join(movieFolderPath, 'actors');
-    if (!fs.existsSync(actorsFolderPath)) {
-      fs.mkdirSync(actorsFolderPath, { recursive: true });
-    }
+    // Get all video files in the folder
+    const videoExtensions = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg', '.3gp', '.3g2', '.m2ts', '.ts', '.vob', '.iso'];
+    const files = fs.readdirSync(folderPath);
+    const videoFiles = files.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return videoExtensions.includes(ext);
+    }).map(file => path.join(folderPath, file));
 
-    // Get actors cache path
-    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
-    const actorsCachePath = getActorsCachePath();
-
-    let copiedCount = 0;
-    const errors = [];
-
-    // Copy each actor's thumbnail to the movie's actors folder
-    for (const actor of actors) {
-      if (!actor.name) {
-        errors.push(`Skipping actor without name`);
-        continue;
-      }
-
-      try {
-        // Normalize actor name to match the file naming convention
-        const { normalizeActorName } = require('../../scrapers/actors/schema');
-        const actorId = normalizeActorName(actor.name);
-
-        // Look for the actor image in the cache (try common extensions)
-        const extensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-        let sourceImagePath = null;
-
-        for (const ext of extensions) {
-          const imagePath = path.join(actorsCachePath, `${actorId}${ext}`);
-          if (fs.existsSync(imagePath)) {
-            sourceImagePath = imagePath;
-            break;
-          }
-        }
-
-        if (!sourceImagePath) {
-          // If image not found in cache, try to get from actor's thumb URL in the movie data
-          if (actor.thumb && actor.thumb.startsWith('http')) {
-            try {
-              // Download the image from the thumb URL
-              const response = await fetch(actor.thumb);
-              if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-              }
-
-              const buffer = Buffer.from(await response.arrayBuffer());
-
-              // Determine file extension from URL or content type
-              let ext = path.extname(new URL(actor.thumb).pathname).toLowerCase();
-              if (!ext || ext === '.') {
-                // Default to jpg if extension not found in URL
-                ext = '.jpg';
-              }
-
-              // Save the downloaded image to the actors folder
-              const downloadedImagePath = path.join(actorsCachePath, `${actorId}${ext}`);
-              fs.writeFileSync(downloadedImagePath, buffer);
-
-              sourceImagePath = downloadedImagePath;
-            } catch (downloadError) {
-              errors.push(`Failed to download actor image for ${actor.name} from ${actor.thumb}: ${downloadError.message}`);
-              continue;
-            }
-          } else {
-            errors.push(`Actor image not found for: ${actor.name} (ID: ${actorId}) and no thumb URL available to download`);
-            continue;
-          }
-        }
-
-        // Determine the destination filename following Kodi/Jellyfin standards
-        // The filename must match exactly the <name> value in the movie NFO for proper association
-        // No transformations - the filename should be the exact actor name with .jpg extension
-        const kodiJellyfinSafeName = actor.name
-          .replace(/[<>:"/\\|?*]/g, '')  // Remove invalid filename characters
-          .trim();                       // Remove leading/trailing whitespace
-
-        const destFilename = `${kodiJellyfinSafeName}.jpg`;
-        const destPath = path.join(actorsFolderPath, destFilename);
-
-        // Copy the image file
-        fs.copyFileSync(sourceImagePath, destPath);
-        copiedCount++;
-      } catch (copyError) {
-        errors.push(`Failed to copy image for ${actor.name}: ${copyError.message}`);
-      }
-    }
-
-    res.json({
-      ok: true,
-      message: `Successfully copied ${copiedCount} actor thumbnails to movie folder`,
-      copied: copiedCount,
-      errors: errors
-    });
+    res.json({ ok: true, videos: videoFiles });
 
   } catch (err) {
-    console.error('[CopyActorsToMovie] Error:', err);
+    console.error('[GetVideos] Error:', err);
     res.json({ ok: false, error: err.message });
   }
 });

@@ -28,6 +28,14 @@
                     <div class="info-text" style="margin-bottom: 20px;" data-i18n="config.libraryPathInfo">
                         Library path is now configured from the main interface and saved automatically.
                     </div>
+
+                    <div class="form-group">
+                        <label for="videoPlayerPath" data-i18n="config.videoPlayerPath">Video Player Path</label>
+                        <input type="text" id="videoPlayerPath" name="videoPlayerPath" placeholder="e.g. mpv, vlc, or full path to executable">
+                        <div class="info-text" data-i18n="config.videoPlayerPathHelp">
+                            Path to your video player executable. Leave empty to disable video playback feature.
+                        </div>
+                    </div>
                 </div>
 
 
@@ -197,10 +205,14 @@
             const actorsScrapersInput = document.getElementById('actorsScrapers').value.trim();
             const actorsScrapers = actorsScrapersInput ? actorsScrapersInput.split(',').map(s => s.trim()).filter(Boolean) : ['javdb'];
 
+            // Collect video player path
+            const videoPlayerPath = document.getElementById('videoPlayerPath').value.trim();
+
             const newConfig = {
                 libraryPath: currentConfig.libraryPath || '',  // Preserve existing libraryPath
                 mode: currentConfig.mode || 'scrape',  // Preserve current mode
                 language: currentConfig.language || 'en',  // Preserve language
+                videoPlayerPath: videoPlayerPath || '',  // New video player path
                 scrapers: {
                     video: scrapers,
                     actors: {
@@ -283,9 +295,13 @@
                 const actorsPath = (config.scrapers && config.scrapers.actors) ? config.scrapers.actors.externalPath || '' : '';
                 const actorsScrapersArray = (config.scrapers && config.scrapers.actors) ? config.scrapers.actors.scrapers : ['javdb'];
 
+                // Load video player path
+                const videoPlayerPath = config.videoPlayerPath || '';
+
                 document.getElementById('actorsEnabled').checked = actorsEnabled;
                 document.getElementById('actorsPath').value = actorsPath;
                 document.getElementById('actorsScrapers').value = actorsScrapersArray.join(', ');
+                document.getElementById('videoPlayerPath').value = videoPlayerPath;
 
                 // Render field priorities
                 renderFieldPriorities();

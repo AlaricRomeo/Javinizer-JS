@@ -42,7 +42,8 @@
     "search": "🔍 Search Actor",
     "upload": "Upload",
     "deleteLocalPhoto": "Delete Local Photo",
-    "copyActorsToFolder": "Copy actors in movie folder"
+    "copyActorsToFolder": "Copy actors in movie folder",
+    "play": "▶ Play"
   },
   "fields": {
     "id": "ID",
@@ -68,29 +69,6 @@
     "bust": "Bust (cm)",
     "waist": "Waist (cm)",
     "hips": "Hips (cm)"
-  },
-  "buttons": {
-    "save": "💾 Save Changes",
-    "addActor": "+ Add Actor",
-    "cancel": "Cancel",
-    "select": "Select",
-    "remove": "Remove",
-    "browse": "📁",
-    "scrapeNow": "🔍 Scrape Now!",
-    "clearCache": "🗑️ Clear Scrapers Cache",
-    "deleteItem": "🗑️ Delete Item",
-    "deleteAllItems": "🗑️ Delete All Items",
-    "manageActors": "👥 Manage Actors",
-    "edit": "EDIT",
-    "scrape": "SCRAPE",
-    "close": "Close",
-    "interrupt": "Interrupt",
-    "continue": "Continue",
-    "stop": "Stop",
-    "search": "🔍 Search Actor",
-    "upload": "Upload",
-    "deleteLocalPhoto": "Delete Local Photo",
-    "copyActorsToFolder": "Copy actors in movie folder"
   },
   "placeholders": {
     "noImage": "No image",
@@ -229,6 +207,8 @@
     "saveConfig": "💾 Save Configuration",
     "saveSuccess": "Configuration saved successfully!",
     "saveFailed": "Failed to save configuration",
-    "loadFailed": "Failed to load configuration"
+    "loadFailed": "Failed to load configuration",
+    "videoPlayerPath": "Video Player Path",
+    "videoPlayerPathHelp": "Path to your video player executable. Leave empty to disable video playback feature."
   }
 }

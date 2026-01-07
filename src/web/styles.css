@@ -458,6 +458,29 @@ button:disabled {
 .actor-item .remove-actor:hover {
   background-color: #c82333;
 }
+/* Play button */
+.play-button {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+.play-button:hover {
+  background: #218838;
+}
+.play-button-container {
+  margin-top: 10px;
+}
 #addActor {
   background-color: #17a2b8;
   margin-top: 10px;
