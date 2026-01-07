@@ -48,7 +48,7 @@ function openActorModal(actorOrIndex = null) {
 
     const actor = unifiedIsNewActor ? {} : currentItem.actor[actorOrIndex];
 
-    // Imposta titolo
+    // Set title
     modalTitle.textContent = window.i18n
       ? window.i18n.t(unifiedIsNewActor ? "actorModal.titleAdd" : "actorModal.title")
       : (unifiedIsNewActor ? "Aggiungi Attore" : "Modifica Attore");
@@ -56,7 +56,7 @@ function openActorModal(actorOrIndex = null) {
     // Update preview first
     updateActorPreview(actor.thumb || "");
 
-    // Popola campi base
+    // Populate basic fields
     const nameEl = document.getElementById("actorEditName");
     const altNameEl = document.getElementById("actorEditAltName");
     const roleEl = document.getElementById("actorEditRole");
@@ -67,7 +67,7 @@ function openActorModal(actorOrIndex = null) {
     if (roleEl) roleEl.value = actor.role || "Actress";
     if (thumbEl) thumbEl.value = actor.thumb || "";
 
-    // Popola campi estesi
+    // Populate extended fields
     const birthdateEl = document.getElementById("actorEditBirthdate");
     const heightEl = document.getElementById("actorEditHeight");
     const bustEl = document.getElementById("actorEditBust");
@@ -80,7 +80,7 @@ function openActorModal(actorOrIndex = null) {
     if (waistEl) waistEl.value = actor.waist || "";
     if (hipsEl) hipsEl.value = actor.hips || "";
 
-    // Mostra fonte dati se disponibile
+    // Show data source if available
     if (!unifiedIsNewActor && actor.meta && actor.meta.sources) {
       const sourceSpan = document.getElementById("actorEditSource");
       if (sourceSpan) {
@@ -210,7 +210,7 @@ function updateActorPreview(url) {
   const previewImg = document.getElementById("actorEditPreviewImg");
   const placeholder = document.getElementById("actorEditPreviewPlaceholder");
 
-  // Protezione: verifica che gli elementi esistano
+  // Protection: verify that elements exist
   if (!previewImg || !placeholder) {
     console.warn("Preview elements not found in DOM");
     return;
@@ -251,7 +251,7 @@ function updateActorPreview(url) {
       previewImg.style.display = "block";
       placeholder.style.display = "none";
 
-      // Gestisci errore caricamento immagine
+      // Handle image loading error
       previewImg.onerror = () => {
         previewImg.style.display = "none";
         placeholder.style.display = "block";
@@ -616,7 +616,7 @@ function setupActorModalEventListeners() {
 
   document.getElementById("actorEditRemove").onclick = deleteActor;
 
-  // Chiudi modal cliccando sullo sfondo
+  // Close modal by clicking on the background
   const modal = document.getElementById("actorEditModal");
   if (modal) {
     modal.onclick = (e) => {
@@ -626,7 +626,7 @@ function setupActorModalEventListeners() {
     };
   }
 
-  // Update preview quando cambia thumb URL
+  // Update preview when thumb URL changes
   document.getElementById("actorEditThumb").oninput = (e) => {
     updateActorPreview(e.target.value);
   };
