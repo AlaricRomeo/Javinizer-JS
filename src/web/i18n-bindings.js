@@ -1,15 +1,15 @@
 // ─────────────────────────────
-// Bindings i18n per elementi HTML
+// i18n bindings for HTML elements
 // ─────────────────────────────
 
 /**
- * Applica i bindings i18n a tutti gli elementi dell'interfaccia
- * Viene chiamato dopo il caricamento delle traduzioni
+ * Applies i18n bindings to all interface elements
+ * Called after translations are loaded
  */
 function applyI18nBindings() {
   const t = window.i18n.t;
 
-  // Sezioni
+  // Sections
   setText("#fanart-container h3", t("sections.fanart"));
   setText(".config-panel h3", t("sections.libraryPath"));
   setText(".scraper-panel h3", t("sections.scraperPanel"));
@@ -56,7 +56,7 @@ function applyI18nBindings() {
   setModalLabel("#actorEditRole", t("actorModal.role"));
   setModalLabel("#actorEditThumb", t("actorModal.thumbUrl"));
   setText("#actorEditPreview label", t("actorModal.preview"));
-  setText("#actorEditContent > div:nth-child(6)", `<strong>Nota:</strong> ${t("actorModal.note")}`);
+  setText("#actorEditContent > div:nth-child(6)", `<strong>${t("actorModal.note")}:</strong> ${t("actorModal.noteHelp")}`);
   setText("#actorEditCancel", t("buttons.cancel"));
   setText("#actorEditRemove", t("buttons.remove"));
   setText("#actorEditSave", t("buttons.save"));
@@ -67,7 +67,7 @@ function applyI18nBindings() {
   setText("#dirBrowserCancel", t("buttons.cancel"));
   setText("#dirBrowserSelect", t("messages.selectThisFolder"));
 
-  // Placeholders dinamici
+  // Dynamic placeholders
   setPlaceholder("#actorEditName", t("placeholders.actorName"));
   setPlaceholder("#actorEditAltName", t("placeholders.altName"));
   setPlaceholder("#actorEditRole", t("placeholders.role"));
@@ -109,5 +109,5 @@ function setPlaceholder(selector, text) {
   if (el) el.placeholder = text;
 }
 
-// Esporta globalmente
+// Export globally
 window.applyI18nBindings = applyI18nBindings;

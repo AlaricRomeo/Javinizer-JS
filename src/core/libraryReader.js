@@ -220,7 +220,7 @@ class LibraryReader {
       if (fs.existsSync(item.nfo)) {
         validItems.push(item);
       } else {
-        console.warn(`[LibraryReader] File mancante: ${item.nfo}. Rimosso dalla libreria.`);
+        console.warn(`[LibraryReader] File missing: ${item.nfo}. Removed from library.`);
       }
     }
     this.items = validItems;

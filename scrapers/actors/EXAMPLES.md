@@ -328,7 +328,7 @@ Se manca, aggiungi manualmente o rigenera l'index.
 npm install puppeteer
 ```
 
-(Nota: Puppeteer dovrebbe già essere installato per javlibrary scraper)
+(Note: Puppeteer should already be installed for javlibrary scraper)
 
 ### Problema: Photo path non corretto nel NFO
 

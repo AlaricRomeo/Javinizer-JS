@@ -336,7 +336,7 @@ async function deleteActor() {
     // Delete in library context (actors.html)
     if (!unifiedCurrentActor || !unifiedCurrentActor.id) return;
 
-    if (!confirm(`Are you sure you want to delete ${unifiedCurrentActor.name}?`)) {
+    if (!confirm(window.i18n ? window.i18n.t("messages.confirmDeleteActor", { name: unifiedCurrentActor.name }) : `Are you sure you want to delete ${unifiedCurrentActor.name}?`)) {
       return;
     }
 
@@ -372,7 +372,7 @@ async function searchActor() {
   const actorName = document.getElementById("actorEditName").value.trim();
 
   if (!actorName) {
-    alert("Inserisci il nome dell'attore prima di cercare");
+    alert(window.i18n ? window.i18n.t("messages.enterActorNameFirstAlert") : "Inserisci il nome dell'attore prima di cercare");
     return;
   }
 
@@ -382,10 +382,10 @@ async function searchActor() {
 
   // Disable button and show loading
   searchBtn.disabled = true;
-  searchText.textContent = "Ricerca in corso...";
+  searchText.textContent = window.i18n ? window.i18n.t("messages.searchingActor") : "Ricerca in corso...";
   searchStatus.style.display = "block";
   searchStatus.style.color = "#666";
-  searchStatus.textContent = "Cercando dati dell'attore...";
+  searchStatus.textContent = window.i18n ? window.i18n.t("messages.searchingActorData") : "Cercando dati dell'attore...";
 
   try {
     const response = await fetch("/item/actors/search", {
@@ -442,7 +442,7 @@ async function searchActor() {
     } else {
       // Not found
       searchStatus.style.color = "#dc3545";
-      searchStatus.textContent = result.error || "Attore non trovato";
+      searchStatus.textContent = result.error || (window.i18n ? window.i18n.t("messages.actorNotFound") : "Attore non trovato");
 
       setTimeout(() => {
         searchStatus.style.display = "none";
@@ -451,7 +451,7 @@ async function searchActor() {
   } catch (error) {
     console.error("Error searching actor:", error);
     searchStatus.style.color = "#dc3545";
-    searchStatus.textContent = "Errore durante la ricerca";
+    searchStatus.textContent = window.i18n ? window.i18n.t("messages.errorSearchingActor") : "Errore durante la ricerca";
 
     setTimeout(() => {
       searchStatus.style.display = "none";

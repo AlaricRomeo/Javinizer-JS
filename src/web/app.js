@@ -182,7 +182,7 @@ async function saveConfigField(field, value) {
 async function saveLibraryPath(libraryPath) {
   const success = await saveConfigField('libraryPath', libraryPath);
   if (!success) {
-    alert("Errore durante il salvataggio del percorso libreria");
+    alert(window.i18n ? window.i18n.t("messages.libraryPathSaveErrorAlert") : "Errore durante il salvataggio del percorso libreria");
   }
   return success;
 }
@@ -795,7 +795,7 @@ function renderActors() {
     // Aggiungi nome e ruolo
     const nameDiv = document.createElement('div');
     nameDiv.className = 'name';
-    nameDiv.textContent = actor.name || 'Nome mancante';
+    nameDiv.textContent = actor.name || (window.i18n ? window.i18n.t("messages.missingName") : 'Nome mancante');
 
     const roleDiv = document.createElement('div');
     roleDiv.className = 'role';
@@ -1028,7 +1028,7 @@ function setupEventHandlers() {
       const data = await res.json();
 
       if (!data.ok) {
-        showNotification(window.i18n ? window.i18n.t("messages.errorDeleting") : "Errore durante l'eliminazione", "error");
+        showNotification(window.i18n ? window.i18n.t("messages.errorDuringDeletion") : "Errore durante l'eliminazione", "error");
         return;
       }
 
@@ -1044,7 +1044,7 @@ function setupEventHandlers() {
       updateDeleteButtons(loaded);
 
     } catch (err) {
-      showNotification(window.i18n ? window.i18n.t("messages.errorDeleting") : "Errore durante l'eliminazione", "error");
+      showNotification(window.i18n ? window.i18n.t("messages.errorDuringDeletion") : "Errore durante l'eliminazione", "error");
     }
   };
 
@@ -1070,7 +1070,7 @@ function setupEventHandlers() {
       const data = await res.json();
 
       if (!data.ok) {
-        showNotification(window.i18n ? window.i18n.t("messages.errorDeleting") : "Errore durante l'eliminazione", "error");
+        showNotification(window.i18n ? window.i18n.t("messages.errorDuringDeletion") : "Errore durante l'eliminazione", "error");
         return;
       }
 
@@ -1089,7 +1089,7 @@ function setupEventHandlers() {
       updateDeleteButtons(false);
 
     } catch (err) {
-      showNotification(window.i18n ? window.i18n.t("messages.errorDeleting") : "Errore durante l'eliminazione", "error");
+      showNotification(window.i18n ? window.i18n.t("messages.errorDuringDeletion") : "Errore durante l'eliminazione", "error");
     }
   };
 
@@ -1194,7 +1194,7 @@ function setupEventHandlers() {
         }
 
         // Successo
-        showNotification(window.i18n ? window.i18n.t("messages.saved") : "✓ Modifiche salvate", "success");
+        showNotification(window.i18n ? window.i18n.t("messages.changesSaved") : "✓ Modifiche salvate", "success");
 
         // Clear dirty fields
         clearDirtyFields();
@@ -1306,7 +1306,7 @@ function setupActorModalEventListeners() {
   document.getElementById("actorEditRemove").onclick = () => {
     if (editingActorIndex !== null) {
       const actorName = currentItem.actor[editingActorIndex].name || "questo attore";
-      if (confirm(`Rimuovere ${actorName}?`)) {
+      if (confirm(window.i18n ? window.i18n.t("messages.confirmRemoveActorPrompt", { name: actorName }) : `Rimuovere ${actorName}?`)) {
         currentItem.actor.splice(editingActorIndex, 1);
 
         // Marca actors come modificato
@@ -1339,7 +1339,7 @@ function setupActorModalEventListeners() {
     const actorName = document.getElementById("actorEditName").value.trim();
 
     if (!actorName) {
-      alert("Inserisci il nome dell'attore prima di cercare");
+      alert(window.i18n ? window.i18n.t("messages.enterActorNameFirstAlert") : "Inserisci il nome dell'attore prima di cercare");
       return;
     }
 
@@ -1349,10 +1349,10 @@ function setupActorModalEventListeners() {
 
     // Disable button and show loading
     searchBtn.disabled = true;
-    searchText.textContent = "Ricerca in corso...";
+    searchText.textContent = window.i18n ? window.i18n.t("messages.searchingActor") : "Ricerca in corso...";
     searchStatus.style.display = "block";
     searchStatus.style.color = "#666";
-    searchStatus.textContent = "Cercando dati dell'attore...";
+    searchStatus.textContent = window.i18n ? window.i18n.t("messages.searchingActorData") : "Cercando dati dell'attore...";
 
     try {
       const response = await fetch("/item/actors/search", {
@@ -1409,7 +1409,7 @@ function setupActorModalEventListeners() {
       } else {
         // Not found
         searchStatus.style.color = "#dc3545";
-        searchStatus.textContent = result.error || "Attore non trovato";
+        searchStatus.textContent = result.error || (window.i18n ? window.i18n.t("messages.actorNotFound") : "Attore non trovato");
 
         setTimeout(() => {
           searchStatus.style.display = "none";
@@ -1418,7 +1418,7 @@ function setupActorModalEventListeners() {
     } catch (error) {
       console.error("Error searching actor:", error);
       searchStatus.style.color = "#dc3545";
-      searchStatus.textContent = "Errore durante la ricerca";
+      searchStatus.textContent = window.i18n ? window.i18n.t("messages.errorSearchingActor") : "Errore durante la ricerca";
 
       setTimeout(() => {
         searchStatus.style.display = "none";
