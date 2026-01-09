@@ -691,12 +691,12 @@ async function batchScrapeActors(emitter = null) {
     }
 
     try {
-      // Check if already in cache
+      // Check if already in cache and complete
       const actorId = resolveActorId(actorName);
       if (actorId) {
         const existing = loadActorLocal(actorId);
-        if (existing) {
-          console.log(`[Actor Scrape] Actor already cached: ${actorName}`);
+        if (existing && isActorComplete(existing)) {
+          console.log(`[Actor Scrape] Actor already cached and complete: ${actorName}`);
           cached++;
 
           if (emitter) {
@@ -708,31 +708,37 @@ async function batchScrapeActors(emitter = null) {
         }
       }
 
-      // Scrape actor (don't pass emitter to avoid duplicate logs)
-      const actorData = await scrapeActor(actorName, null);
+      // Use getActor which checks cache first, then scrapes if needed
+      const actorData = await getActor(actorName);
 
       if (actorData) {
-        scraped++;
-        console.log(`[Actor Scrape] Successfully scraped: ${actorName}`);
+        // Check if it was from cache or scraped
+        if (actorId && loadActorLocal(actorId)) {
+          scraped++;
+          console.log(`[Actor Scrape] Successfully processed: ${actorName}`);
+        } else {
+          scraped++;
+          console.log(`[Actor Scrape] Successfully scraped: ${actorName}`);
+        }
 
         if (emitter) {
           emitter.emit('progress', {
-            message: `[Actor Scrape] ${actorName} - scraped successfully`
+            message: `[Actor Scrape] ${actorName} - processed successfully`
           });
         }
       } else {
         failed++;
-        console.log(`[Actor Scrape] Failed to scrape: ${actorName}`);
+        console.log(`[Actor Scrape] Failed to process: ${actorName}`);
 
         if (emitter) {
           emitter.emit('progress', {
-            message: `[Actor Scrape] ${actorName} - scraping failed`
+            message: `[Actor Scrape] ${actorName} - processing failed`
           });
         }
       }
     } catch (error) {
       failed++;
-      console.error(`[Actor Scrape] Error scraping ${actorName}:`, error.message);
+      console.error(`[Actor Scrape] Error processing ${actorName}:`, error.message);
 
       if (emitter) {
         emitter.emit('progress', {
