@@ -176,52 +176,10 @@ function resolveActorId(name) {
     if (index[invertedName]) {
       return index[invertedName];
     }
-
-    // Try partial matches: search for entries that start with both name parts
-    // This handles cases like "miori mai" matching "miori maijima"
-    let bestMatch = null;
-    let bestScore = 0;
-
-    for (const [indexName, actorId] of Object.entries(index)) {
-      const indexParts = indexName.split(/\s+/);
-
-      // Check if both parts of the search name match the start of index name parts
-      if (indexParts.length >= 2) {
-        // Calculate match score based on how well parts match
-        let score = 0;
-
-        // First part matching
-        if (indexParts[0] === parts[0]) {
-          score += 100; // Exact match
-        } else if (indexParts[0].startsWith(parts[0])) {
-          score += 50 + parts[0].length; // Prefix match, prefer longer
-        } else if (parts[0].startsWith(indexParts[0])) {
-          score += 30 + indexParts[0].length;
-        }
-
-        // Second part matching
-        if (indexParts[1] === parts[1]) {
-          score += 100; // Exact match
-        } else if (indexParts[1].startsWith(parts[1])) {
-          score += 50 + parts[1].length; // Prefix match, prefer longer
-        } else if (parts[1].startsWith(indexParts[1])) {
-          score += 30 + indexParts[1].length;
-        }
-
-        // If we have a good match and it's better than current best
-        if (score > bestScore && score >= 100) { // Require at least some good matching
-          bestScore = score;
-          bestMatch = { indexName, actorId };
-        }
-      }
-    }
-
-    if (bestMatch) {
-      console.log(`[ActorIndexManager] Fuzzy match (score ${bestScore}): "${name}" → "${bestMatch.indexName}" (${bestMatch.actorId})`);
-      return bestMatch.actorId;
-    }
   }
 
+  // No fuzzy matching - names must match exactly or be inverted
+  // This prevents false matches like "miori mai" matching "miori maijima"
   return null;
 }
 
