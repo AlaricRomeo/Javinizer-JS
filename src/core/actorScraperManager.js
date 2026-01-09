@@ -510,13 +510,24 @@ async function scrapeActor(actorName, emitter = null) {
 
 /**
  * Get actor data (from cache or scrape if needed)
+ * Tries exact name first, then inverted name in cache
  *
  * @param {string} actorName - Actor name (any variant)
  * @returns {Promise<object|null>} - Actor data or null
  */
 async function getActor(actorName) {
-  // Try to resolve actor ID from index
-  const actorId = resolveActorId(actorName);
+  // Try to resolve actor ID from index with exact name
+  let actorId = resolveActorId(actorName);
+
+  // If not found, try inverted name
+  if (!actorId) {
+    const parts = actorName.trim().split(/\s+/);
+    if (parts.length === 2) {
+      const invertedName = `${parts[1]} ${parts[0]}`;
+      console.log(`[ActorScraperManager] Trying inverted name in cache: ${invertedName}`);
+      actorId = resolveActorId(invertedName);
+    }
+  }
 
   if (actorId) {
     // Try to load from local storage
@@ -524,7 +535,6 @@ async function getActor(actorName) {
 
     if (localActor) {
       console.log(`[ActorScraperManager] Loaded actor from cache: ${actorId}`);
-      console.log(`[ActorScraperManager] Actor data:`, JSON.stringify(localActor, null, 2));
 
       // Check if local data is complete
       if (isActorComplete(localActor)) {

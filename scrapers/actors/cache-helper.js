@@ -137,14 +137,24 @@ function resolveActorId(name) {
 /**
  * Load actor from cache (.nfo format)
  * Returns actor object or null if not found
+ * Tries exact name first, then inverted name
  */
 function loadFromCache(actorName) {
   const actorsPath = getActorsCachePath();
 
-  // Try to resolve ID from index first
+  // Try to resolve ID from index with exact name first
   let actorId = resolveActorId(actorName);
 
-  // If not in index, try normalized name
+  // If not found, try inverted name in index
+  if (!actorId) {
+    const parts = actorName.trim().split(/\s+/);
+    if (parts.length === 2) {
+      const invertedName = `${parts[1]} ${parts[0]}`;
+      actorId = resolveActorId(invertedName);
+    }
+  }
+
+  // If still not in index, try normalized name as fallback
   if (!actorId) {
     actorId = normalizeActorName(actorName);
   }

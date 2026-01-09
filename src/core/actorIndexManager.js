@@ -83,17 +83,10 @@ function addNameVariant(name, actorId, autoSave = true) {
   if (!name || !actorId) return;
 
   const index = loadIndex();
-  const nameLower = name.toLowerCase();
+  const nameLower = name.toLowerCase().trim();
 
-  // Add main variant
+  // Add only the exact name - no automatic inversion
   index[nameLower] = actorId;
-
-  // Add inverted variant (for Japanese/Western name order)
-  const parts = nameLower.trim().split(/\s+/);
-  if (parts.length === 2) {
-    const invertedName = `${parts[1]} ${parts[0]}`;
-    index[invertedName] = actorId;
-  }
 
   if (autoSave) {
     saveIndex(index);
@@ -120,10 +113,16 @@ function updateActorInIndex(actor) {
     addNameVariant(name, actorId, false);
   }
 
-  // Add all name variants
+  // Add main name
   addVariants(actor.name);
-  addVariants(actor.altName);
 
+  // Split altName by comma and add each part
+  if (actor.altName) {
+    const altNames = actor.altName.split(',').map(n => n.trim()).filter(n => n);
+    altNames.forEach(addVariants);
+  }
+
+  // Add other names array
   if (actor.otherNames && Array.isArray(actor.otherNames)) {
     actor.otherNames.forEach(addVariants);
   }
@@ -164,23 +163,9 @@ function resolveActorId(name) {
   const index = loadIndex();
   const nameLower = name.toLowerCase().trim();
 
-  // Try exact match first
-  if (index[nameLower]) {
-    return index[nameLower];
-  }
-
-  // Try inverted name (e.g., "Kawakami Yuu" → "yuu kawakami")
-  const parts = nameLower.split(/\s+/);
-  if (parts.length === 2) {
-    const invertedName = `${parts[1]} ${parts[0]}`;
-    if (index[invertedName]) {
-      return index[invertedName];
-    }
-  }
-
-  // No fuzzy matching - names must match exactly or be inverted
-  // This prevents false matches like "miori mai" matching "miori maijima"
-  return null;
+  // Only exact match - no inversion, no fuzzy matching
+  // Name inversion logic should be handled by the scraper
+  return index[nameLower] || null;
 }
 
 /**
@@ -222,22 +207,23 @@ function rebuildIndex() {
         const actor = nfoToActor(nfoContent);
         actor.id = actorId;
 
-        // Add all name variants to new index
+        // Add all name variants to new index (exact names only)
         const addToIndex = (name) => {
           if (!name) return;
-          const nameLower = name.toLowerCase();
+          const nameLower = name.toLowerCase().trim();
           newIndex[nameLower] = actorId;
-
-          // Add inverted variant
-          const parts = nameLower.trim().split(/\s+/);
-          if (parts.length === 2) {
-            const invertedName = `${parts[1]} ${parts[0]}`;
-            newIndex[invertedName] = actorId;
-          }
         };
 
+        // Add main name
         addToIndex(actor.name);
-        addToIndex(actor.altName);
+
+        // Split altName by comma and add each part
+        if (actor.altName) {
+          const altNames = actor.altName.split(',').map(n => n.trim()).filter(n => n);
+          altNames.forEach(addToIndex);
+        }
+
+        // Add other names array
         if (actor.otherNames && Array.isArray(actor.otherNames)) {
           actor.otherNames.forEach(addToIndex);
         }
