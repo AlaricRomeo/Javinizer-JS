@@ -8,12 +8,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const userDataDir = path.join(__dirname, '.browser-data');
+const userDataDir = path.join(__dirname, 'browser-data');
 
 if (fs.existsSync(userDataDir)) {
-  console.log('Cleaning browser cache...');
+  console.log('Cleaning JavLibrary browser cache...');
   fs.rmSync(userDataDir, { recursive: true, force: true });
-  console.log('Cache cleaned successfully!');
+  console.log('JavLibrary cache cleaned successfully!');
 } else {
-  console.log('No cache to clean.');
+  console.log('No JavLibrary cache to clean.');
 }

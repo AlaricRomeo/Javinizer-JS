@@ -896,7 +896,7 @@ router.post("/scrape/start", async (req, res) => {
             // Start batch actor processing
             const { batchProcessActors } = require('../core/actorScraperManager');
 
-            batchProcessActors()
+            batchProcessActors(emitter)
               .then((summary) => {
                 console.error('[Routes] Actor scraping completed successfully');
 

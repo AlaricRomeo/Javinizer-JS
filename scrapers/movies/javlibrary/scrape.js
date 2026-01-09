@@ -29,33 +29,33 @@ function buildUrl(code) {
  * @returns {Promise<object>} Partial canonical object
  */
 async function scrapeSingle(code) {
-  console.error(`[Scrape] Starting scrape for: ${code}`);
+  console.error(`[JavLibrary Scrape] Starting scrape for: ${code}`);
 
   try {
     const url = buildUrl(code);
     let html = await fetchPage(url);
 
-    console.error('[Scrape] Parsing HTML...');
+    console.error('[JavLibrary Scrape] Parsing HTML...');
     let result = parseHTML(html, code);
 
     // If we got a redirect (multiple results, taking first one)
     if (result.needsRedirect) {
-      console.error(`[Scrape] Multiple results found, following first result: ${result.needsRedirect}`);
+      console.error(`[JavLibrary Scrape] Multiple results found, following first result: ${result.needsRedirect}`);
       html = await fetchPage(result.needsRedirect);
       result = parseHTML(html, code);
 
       // If still redirecting, something is wrong
       if (result.needsRedirect) {
-        console.error('[Scrape] Redirect loop detected, aborting');
+        console.error('[JavLibrary Scrape] Redirect loop detected, aborting');
         return { code };
       }
     }
 
-    console.error('[Scrape] Scrape completed successfully');
+    console.error('[JavLibrary Scrape] Scrape completed successfully');
     return result;
 
   } catch (error) {
-    console.error(`[Scrape] Failed: ${error.message}`);
+    console.error(`[JavLibrary Scrape] Failed: ${error.message}`);
     // On failure, return minimal object with just code
     return { code };
   }
@@ -74,18 +74,18 @@ async function scrape(codes) {
 
   // Limit to 100 codes
   if (codes.length > 100) {
-    console.error(`[Scrape] Warning: Limiting to first 100 codes (provided: ${codes.length})`);
+    console.error(`[JavLibrary Scrape] Warning: Limiting to first 100 codes (provided: ${codes.length})`);
     codes = codes.slice(0, 100);
   }
 
-  console.error(`[Scrape] Starting batch scrape for ${codes.length} code(s)`);
+  console.error(`[JavLibrary Scrape] Starting batch scrape for ${codes.length} code(s)`);
 
   const results = [];
 
   try {
     // Initialize session once if not already done
     if (!sessionInitialized) {
-      console.error('[Scrape] Initializing session (solve Cloudflare challenge once)...');
+      console.error('[JavLibrary Scrape] Initializing session (solve Cloudflare challenge once)...');
       await initSession();
       sessionInitialized = true;
     }
@@ -93,14 +93,14 @@ async function scrape(codes) {
     // Now scrape all codes using the saved session
     for (let i = 0; i < codes.length; i++) {
       const code = codes[i];
-      console.error(`[Scrape] Processing ${i + 1}/${codes.length}: ${code}`);
+      console.error(`[JavLibrary Scrape] Processing ${i + 1}/${codes.length}: ${code}`);
 
       try {
         const result = await scrapeSingle(code);
         results.push(result);
       } catch (error) {
         if (error.code === 'SESSION_LIMIT') {
-          console.error('[Scrape] Session limit reached. Please restart to continue.');
+          console.error('[JavLibrary Scrape] Session limit reached. Please restart to continue.');
           // Add remaining codes as failed
           for (let j = i; j < codes.length; j++) {
             results.push({ code: codes[j], error: 'Session limit reached' });
@@ -108,7 +108,7 @@ async function scrape(codes) {
           break;
         }
         // Don't throw - add error result and continue
-        console.error(`[Scrape] Failed: ${error.message}`);
+        console.error(`[JavLibrary Scrape] Failed: ${error.message}`);
         results.push({ code, error: error.message });
       }
 
@@ -118,7 +118,7 @@ async function scrape(codes) {
       }
     }
 
-    console.error(`[Scrape] Batch scrape completed: ${results.length} results`);
+    console.error(`[JavLibrary Scrape] Batch scrape completed: ${results.length} results`);
     return results;
 
   } finally {

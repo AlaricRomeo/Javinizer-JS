@@ -644,11 +644,11 @@ async function batchScrapeActors(emitter = null) {
     };
   }
 
-  console.log('[ActorScraperManager] Starting batch actor scraping...');
+  console.log('[Actor Scrape] Starting batch actor scraping...');
 
   if (emitter) {
     emitter.emit('progress', {
-      message: '🔍 Extracting actor names from movies...'
+      message: '[Actor Scrape] Extracting actor names from movies...'
     });
   }
 
@@ -656,7 +656,7 @@ async function batchScrapeActors(emitter = null) {
   const actorNames = extractActorNamesFromMovies();
 
   if (actorNames.length === 0) {
-    console.error('[ActorScraperManager] No actors found in movie files');
+    console.error('[Actor Scrape] No actors found in movie files');
     return {
       success: true,
       message: 'No actors to scrape',
@@ -667,11 +667,11 @@ async function batchScrapeActors(emitter = null) {
     };
   }
 
-  console.log(`[ActorScraperManager] Found ${actorNames.length} unique actors in movies`);
+  console.log(`[Actor Scrape] Found ${actorNames.length} unique actors in movies`);
 
   if (emitter) {
     emitter.emit('progress', {
-      message: `📋 Found ${actorNames.length} unique actor(s) to process`
+      message: `[Actor Scrape] Found ${actorNames.length} unique actor(s) to process`
     });
   }
 
@@ -682,11 +682,11 @@ async function batchScrapeActors(emitter = null) {
   // Process each actor
   for (let i = 0; i < actorNames.length; i++) {
     const actorName = actorNames[i];
-    console.log(`[ActorScraperManager] Processing actor ${i + 1}/${actorNames.length}: ${actorName}`);
+    console.log(`[Actor Scrape] Processing ${i + 1}/${actorNames.length}: ${actorName}`);
 
     if (emitter) {
       emitter.emit('progress', {
-        message: `👤 Processing ${i + 1}/${actorNames.length}: ${actorName}`
+        message: `[Actor Scrape] Processing ${i + 1}/${actorNames.length}: ${actorName}`
       });
     }
 
@@ -696,47 +696,47 @@ async function batchScrapeActors(emitter = null) {
       if (actorId) {
         const existing = loadActorLocal(actorId);
         if (existing) {
-          console.log(`[ActorScraperManager] Actor already cached: ${actorName}`);
+          console.log(`[Actor Scrape] Actor already cached: ${actorName}`);
           cached++;
 
           if (emitter) {
             emitter.emit('progress', {
-              message: `✓ ${actorName} - found in cache`
+              message: `[Actor Scrape] ${actorName} - found in cache`
             });
           }
           continue;
         }
       }
 
-      // Scrape actor (pass emitter for detailed scraper logs)
-      const actorData = await scrapeActor(actorName, emitter);
+      // Scrape actor (don't pass emitter to avoid duplicate logs)
+      const actorData = await scrapeActor(actorName, null);
 
       if (actorData) {
         scraped++;
-        console.log(`[ActorScraperManager] Successfully scraped: ${actorName}`);
+        console.log(`[Actor Scrape] Successfully scraped: ${actorName}`);
 
         if (emitter) {
           emitter.emit('progress', {
-            message: `✓ ${actorName} - scraped successfully`
+            message: `[Actor Scrape] ${actorName} - scraped successfully`
           });
         }
       } else {
         failed++;
-        console.log(`[ActorScraperManager] Failed to scrape: ${actorName}`);
+        console.log(`[Actor Scrape] Failed to scrape: ${actorName}`);
 
         if (emitter) {
           emitter.emit('progress', {
-            message: `✗ ${actorName} - scraping failed`
+            message: `[Actor Scrape] ${actorName} - scraping failed`
           });
         }
       }
     } catch (error) {
       failed++;
-      console.error(`[ActorScraperManager] Error scraping ${actorName}:`, error.message);
+      console.error(`[Actor Scrape] Error scraping ${actorName}:`, error.message);
 
       if (emitter) {
         emitter.emit('progress', {
-          message: `✗ ${actorName} - error: ${error.message}`
+          message: `[Actor Scrape] ${actorName} - error: ${error.message}`
         });
       }
     }
@@ -885,7 +885,7 @@ async function batchProcessActors(emitter = null) {
   // Step 2: Update movie JSON files
   if (emitter) {
     emitter.emit('progress', {
-      message: '📝 Updating movie files with actor data...'
+      message: '[Actor Scrape] Updating movie files with actor data...'
     });
   }
 
@@ -893,7 +893,7 @@ async function batchProcessActors(emitter = null) {
 
   if (emitter) {
     emitter.emit('progress', {
-      message: `✅ Updated ${updateSummary.updated} movie file(s)`
+      message: `[Actor Scrape] Updated ${updateSummary.updated} movie file(s)`
     });
   }
 
