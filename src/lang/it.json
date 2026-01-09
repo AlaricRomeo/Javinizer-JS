@@ -210,6 +210,9 @@
     "saveFailed": "Errore nel salvataggio della configurazione",
     "loadFailed": "Errore nel caricamento della configurazione",
     "videoPlayerPath": "Percorso Player Video",
-    "videoPlayerPathHelp": "Percorso all'eseguibile del lettore video. Lasciare vuoto per disabilitare la funzione di riproduzione video."
+    "videoPlayerPathHelp": "Percorso all'eseguibile del lettore video. Lasciare vuoto per disabilitare la funzione di riproduzione video.",
+    "scrapeFolderPattern": "Pattern Cartella Modalità Scrape",
+    "scrapeFolderPatternHelp": "Personalizza il pattern del nome cartella per i video scaricati. Usa placeholder: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Esempio: {id} - {title} ({maker} - {year})",
+    "scrapeFolderPatternPlaceholder": "{id} - {title}"
   }
 }

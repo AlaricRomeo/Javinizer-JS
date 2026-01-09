@@ -102,6 +102,71 @@ router.get("/prev", async (req, res) => {
 });
 
 // ─────────────────────────────
+// GET /item/by-id/:id
+// Load item by ID and set as current
+// ─────────────────────────────
+router.get("/by-id/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Ensure library is loaded
+    if (libraryReader.items.length === 0) {
+      libraryReader.loadLibrary();
+    }
+
+    // Wait a bit for library to load if needed
+    if (libraryReader.items.length === 0) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // Find item by ID - try exact match first, then partial match
+    let itemIndex = libraryReader.items.findIndex(item => item.id === id);
+
+    // If exact match fails, try to find item where ID is contained in the folder name
+    if (itemIndex === -1) {
+      itemIndex = libraryReader.items.findIndex(item => item.id.includes(id));
+    }
+
+    // If still not found, try case-insensitive search
+    if (itemIndex === -1) {
+      itemIndex = libraryReader.items.findIndex(item =>
+        item.id.toLowerCase().includes(id.toLowerCase())
+      );
+    }
+
+    if (itemIndex === -1) {
+      // Item not found, return current item instead
+      let item = libraryReader.getCurrent();
+      if (!item && libraryReader.items.length > 0) {
+        libraryReader.currentIndex = 0;
+        item = libraryReader.getCurrent();
+      }
+
+      if (!item) {
+        return res.json(ok(null));
+      }
+
+      const model = await buildItem(item);
+      return res.json(ok(model));
+    }
+
+    // Set current index to found item
+    libraryReader.currentIndex = itemIndex;
+    const item = libraryReader.getCurrent();
+
+    if (!item) {
+      return res.json(ok(null));
+    }
+
+    const model = await buildItem(item);
+    res.json(ok(model));
+  } catch (err) {
+    console.error('[/item/by-id] Error:', err);
+    res.json(fail(err.message));
+  }
+});
+
+// ─────────────────────────────
 // POST /reload
 // Reload the library (initial batch load)
 // ─────────────────────────────
@@ -391,7 +456,9 @@ router.get("/scrape/current", (req, res) => {
     if (!item) {
       return res.json(ok(null));
     }
-    res.json(ok(item.data)); // Returns only the data, not the scrape metadata
+    // Return data with fileId for session tracking
+    const result = { ...item.data, fileId: item.id };
+    res.json(ok(result));
   } catch (err) {
     res.json(fail(err.message));
   }
@@ -404,7 +471,9 @@ router.get("/scrape/next", (req, res) => {
     if (!item) {
       return res.json(ok(null));
     }
-    res.json(ok(item.data));
+    // Return data with fileId for session tracking
+    const result = { ...item.data, fileId: item.id };
+    res.json(ok(result));
   } catch (err) {
     res.json(fail(err.message));
   }
@@ -417,7 +486,69 @@ router.get("/scrape/prev", (req, res) => {
     if (!item) {
       return res.json(ok(null));
     }
-    res.json(ok(item.data));
+    // Return data with fileId for session tracking
+    const result = { ...item.data, fileId: item.id };
+    res.json(ok(result));
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// ─────────────────────────────
+// GET /scrape/by-id/:id
+// Load scrape item by ID and set as current
+// ─────────────────────────────
+router.get("/scrape/by-id/:id", (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Find item by ID - try exact match first, then partial match
+    let itemIndex = scrapeReader.items.findIndex(item => item.id === id);
+
+    // If exact match fails, try to find item where ID is contained in the filename
+    if (itemIndex === -1) {
+      itemIndex = scrapeReader.items.findIndex(item => item.id.includes(id));
+    }
+
+    // If still not found, try case-insensitive search
+    if (itemIndex === -1) {
+      itemIndex = scrapeReader.items.findIndex(item =>
+        item.id.toLowerCase().includes(id.toLowerCase())
+      );
+    }
+
+    if (itemIndex === -1) {
+      // Item not found, return current item instead
+      const item = scrapeReader.getCurrent();
+      if (!item) {
+        return res.json(ok(null));
+      }
+      const result = { ...item.data, fileId: item.id };
+      return res.json(ok(result));
+    }
+
+    // Set current index to found item
+    scrapeReader.currentIndex = itemIndex;
+    const item = scrapeReader.getCurrent();
+
+    if (!item) {
+      return res.json(ok(null));
+    }
+
+    const result = { ...item.data, fileId: item.id };
+    res.json(ok(result));
+  } catch (err) {
+    console.error('[/scrape/by-id] Error:', err);
+    res.json(fail(err.message));
+  }
+});
+
+// GET /scrape/list
+// Returns list of all scrape item IDs for navigation
+router.get("/scrape/list", (req, res) => {
+  try {
+    const items = scrapeReader.items.map(item => item.id);
+    res.json({ ok: true, items });
   } catch (err) {
     res.json(fail(err.message));
   }

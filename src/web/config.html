@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-i18n="config.pageTitle">Configuration</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+    <link rel="manifest" href="favicon/site.webmanifest">
     <link rel="stylesheet" href="navbar.css">
     <link rel="stylesheet" href="config.css">
     <script src="i18n.js"></script>
@@ -34,6 +38,14 @@
                         <input type="text" id="videoPlayerPath" name="videoPlayerPath" placeholder="e.g. mpv, vlc, or full path to executable">
                         <div class="info-text" data-i18n="config.videoPlayerPathHelp">
                             Path to your video player executable. Leave empty to disable video playback feature.
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scrapeFolderPattern" data-i18n="config.scrapeFolderPattern">Scrape Mode Folder Pattern</label>
+                        <input type="text" id="scrapeFolderPattern" name="scrapeFolderPattern" data-i18n-placeholder="config.scrapeFolderPatternPlaceholder">
+                        <div class="info-text" data-i18n="config.scrapeFolderPatternHelp">
+                            Customize the folder name pattern for scraped videos. Use placeholders: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Example: {id} - {title} ({maker} - {year})
                         </div>
                     </div>
                 </div>
@@ -208,11 +220,15 @@
             // Collect video player path
             const videoPlayerPath = document.getElementById('videoPlayerPath').value.trim();
 
+            // Collect scrape folder pattern
+            const scrapeFolderPattern = document.getElementById('scrapeFolderPattern').value.trim();
+
             const newConfig = {
                 libraryPath: currentConfig.libraryPath || '',  // Preserve existing libraryPath
                 mode: currentConfig.mode || 'scrape',  // Preserve current mode
                 language: currentConfig.language || 'en',  // Preserve language
                 videoPlayerPath: videoPlayerPath || '',  // New video player path
+                scrapeFolderPattern: scrapeFolderPattern || '{id}',  // Folder pattern for scrape mode
                 scrapers: {
                     video: scrapers,
                     actors: {
@@ -298,10 +314,14 @@
                 // Load video player path
                 const videoPlayerPath = config.videoPlayerPath || '';
 
+                // Load scrape folder pattern
+                const scrapeFolderPattern = config.scrapeFolderPattern || '{id}';
+
                 document.getElementById('actorsEnabled').checked = actorsEnabled;
                 document.getElementById('actorsPath').value = actorsPath;
                 document.getElementById('actorsScrapers').value = actorsScrapersArray.join(', ');
                 document.getElementById('videoPlayerPath').value = videoPlayerPath;
+                document.getElementById('scrapeFolderPattern').value = scrapeFolderPattern;
 
                 // Render field priorities
                 renderFieldPriorities();

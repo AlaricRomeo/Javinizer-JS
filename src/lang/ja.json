@@ -210,6 +210,9 @@
     "saveFailed": "設定の保存に失敗しました",
     "loadFailed": "設定の読み込みに失敗しました",
     "videoPlayerPath": "ビデオプレーヤーパス",
-    "videoPlayerPathHelp": "ビデオプレーヤーの実行ファイルパス。ビデオ再生機能を無効にするには空のままにしてください。"
+    "videoPlayerPathHelp": "ビデオプレーヤーの実行ファイルパス。ビデオ再生機能を無効にするには空のままにしてください。",
+    "scrapeFolderPattern": "スクレイプモードフォルダーパターン",
+    "scrapeFolderPatternHelp": "スクレイプされた動画のフォルダー名パターンをカスタマイズします。プレースホルダーを使用: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}。例: {id} - {title} ({maker} - {year})",
+    "scrapeFolderPatternPlaceholder": "{id} - {title}"
   }
 }
