@@ -44,12 +44,8 @@ function clearDirtyFields() {
   });
   dirtyFields.clear();
 
-  // In scrape mode il bottone rimane sempre abilitato ma aggiorna anche il badge
-  if (currentMode === "scrape") {
-    updateSaveButton();
-  } else {
-    updateSaveButton();
-  }
+  // Update save button for both modes
+  updateSaveButton();
 }
 
 function updateSaveButton() {
@@ -391,21 +387,12 @@ async function checkLibraryCount() {
   }
 }
 
-async function checkScrapeAvailability(retryCount = 0) {
+async function checkScrapeAvailability() {
   try {
-    // Prima ricarica i file JSON (with retry on failure)
-    try {
-      await fetch("/item/scrape/reload", { method: "POST" });
-    } catch (reloadErr) {
-      // If reload fails and we haven't retried yet, wait and retry
-      if (retryCount < 2) {
-        await new Promise(resolve => setTimeout(resolve, 200 * (retryCount + 1)));
-        return checkScrapeAvailability(retryCount + 1);
-      }
-      throw reloadErr;
-    }
+    // Reload JSON files with retry logic
+    await retryFetch(() => fetch("/item/scrape/reload", { method: "POST" }), 2, 200);
 
-    // Poi conta
+    // Get count
     const res = await fetch("/item/scrape/count");
     const data = await res.json();
     const count = data.ok ? data.count : 0;
@@ -471,7 +458,16 @@ async function switchMode(newMode) {
     // Force refresh library count before loading item
     await checkLibraryCount();
 
-    await loadItem("/item/current");
+    // Try to load saved item from session, fallback to current
+    const savedItemId = getSavedItemId("edit");
+    let loaded = false;
+    if (savedItemId) {
+      loaded = await loadItem(`/item/by-id/${encodeURIComponent(savedItemId)}`);
+    }
+    if (!loaded) {
+      await loadItem("/item/current");
+    }
+
     // In edit mode the save button is enabled only with dirty fields
     updateSaveButton();
   } else {
@@ -493,7 +489,17 @@ async function switchMode(newMode) {
     // Check scrape availability first to ensure counter is updated
     await checkScrapeAvailability();
 
-    let loaded = await loadItem("/item/scrape/current");
+    // Try to load saved item from session, fallback to current
+    const savedItemId = getSavedItemId("scrape");
+    let loaded = false;
+    if (savedItemId) {
+      loaded = await loadItem(`/item/scrape/by-id/${encodeURIComponent(savedItemId)}`);
+    }
+
+    // If saved item failed, try current
+    if (!loaded) {
+      loaded = await loadItem("/item/scrape/current");
+    }
 
     // If first load failed, retry after short delay (for initial page load timing issues)
     if (!loaded) {
@@ -601,9 +607,91 @@ function clearUI() {
 }
 
 // ─────────────────────────────
+// Retry Helper for Frontend
+// ─────────────────────────────
+async function retryFetch(fn, maxRetries = 2, baseDelay = 200) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxRetries) throw error;
+      await new Promise(resolve => setTimeout(resolve, baseDelay * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
+// ─────────────────────────────
+// Helper functions for scrape navigation
+// ─────────────────────────────
+async function getNextScrapeIndex(currentFileId) {
+  try {
+    const res = await fetch('/item/scrape/list');
+    const data = await res.json();
+    if (!data.ok || !data.items) return null;
+
+    const currentIdx = data.items.findIndex(item => item === currentFileId);
+    if (currentIdx === -1) return null;
+
+    const nextIdx = (currentIdx + 1) % data.items.length;
+    return data.items[nextIdx];
+  } catch (err) {
+    console.error('Error getting next scrape index:', err);
+    return null;
+  }
+}
+
+async function getPrevScrapeIndex(currentFileId) {
+  try {
+    const res = await fetch('/item/scrape/list');
+    const data = await res.json();
+    if (!data.ok || !data.items) return null;
+
+    const currentIdx = data.items.findIndex(item => item === currentFileId);
+    if (currentIdx === -1) return null;
+
+    const prevIdx = (currentIdx - 1 + data.items.length) % data.items.length;
+    return data.items[prevIdx];
+  } catch (err) {
+    console.error('Error getting prev scrape index:', err);
+    return null;
+  }
+}
+
+// ─────────────────────────────
+// Session Storage for Current Index
+// ─────────────────────────────
+function saveCurrentIndex(mode, itemId) {
+  try {
+    if (mode === "edit") {
+      sessionStorage.setItem('javinizer_editModeItemId', itemId);
+    } else if (mode === "scrape") {
+      sessionStorage.setItem('javinizer_scrapeModeItemId', itemId);
+    }
+  } catch (err) {
+    console.error('Error saving current index to sessionStorage:', err);
+  }
+}
+
+function getSavedItemId(mode) {
+  try {
+    if (mode === "edit") {
+      return sessionStorage.getItem('javinizer_editModeItemId');
+    } else if (mode === "scrape") {
+      return sessionStorage.getItem('javinizer_scrapeModeItemId');
+    }
+  } catch (err) {
+    console.error('Error reading saved index from sessionStorage:', err);
+  }
+  return null;
+}
+
+// ─────────────────────────────
 // Load Item
 // ─────────────────────────────
-async function loadItem(url, retryCount = 0) {
+async function loadItem(url) {
   try {
     // IMPORTANT: Check for unsaved changes before loading a new item
     if (dirtyFields.size > 0) {
@@ -615,7 +703,8 @@ async function loadItem(url, retryCount = 0) {
       }
     }
 
-    const res = await fetch(url);
+    // Use retry logic for fetching
+    const res = await retryFetch(() => fetch(url), 2, 200);
 
     // Check if response is ok
     if (!res.ok) {
@@ -656,21 +745,18 @@ async function loadItem(url, retryCount = 0) {
     // snapshot originale
     originalItem = JSON.parse(JSON.stringify(currentItem));
 
+    // Save current item ID in session storage
+    // Use folderId for edit mode (folder name), fileId for scrape mode (JSON filename)
+    const itemIdToSave = currentMode === "edit" ? currentItem.folderId : currentItem.fileId;
+    if (currentItem && itemIdToSave) {
+      saveCurrentIndex(currentMode, itemIdToSave);
+    }
+
     renderItem(currentItem);
     return true;
   } catch (err) {
-    // Network errors - retry up to 2 times with increasing delays
-    if (err.name === 'TypeError' && err.message.includes('fetch') && retryCount < 2) {
-      const delay = (retryCount + 1) * 200; // 200ms, 400ms
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return loadItem(url, retryCount + 1);
-    } else if (retryCount >= 2) {
-      // Silent failure after retries - normal if no items exist
-      return false;
-    } else {
-      console.error("Error loading item:", err);
-      console.error("URL was:", url);
-    }
+    // Silent failure after retries - normal if no items exist
+    console.error("Error loading item:", err);
     return false;
   }
 }
@@ -751,6 +837,32 @@ function updateDebugJson() {
 }
 
 // ─────────────────────────────
+// Intersection Observer for Lazy Loading
+// ─────────────────────────────
+let lazyLoadObserver = null;
+
+function initLazyLoadObserver() {
+  if (lazyLoadObserver) return;
+
+  lazyLoadObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        const src = img.dataset.src;
+
+        if (src) {
+          img.src = src;
+          img.removeAttribute('data-src');
+          lazyLoadObserver.unobserve(img);
+        }
+      }
+    });
+  }, {
+    rootMargin: '50px' // Start loading 50px before element is visible
+  });
+}
+
+// ─────────────────────────────
 // Gestione Actors (Grid Layout)
 // ─────────────────────────────
 function createActorThumbnail(thumbUrl, actorName) {
@@ -772,20 +884,32 @@ function createActorThumbnail(thumbUrl, actorName) {
       // If local image fails, try the original thumb URL
       if (thumbUrl && thumbUrl !== localImageUrl) {
         img.src = thumbUrl;
+        img.removeAttribute('data-src');
       } else {
         thumbnailDiv.innerHTML = '👤';
       }
     };
 
-    // Try to load the local image first
-    img.src = localImageUrl;
+    // Use lazy loading with Intersection Observer
+    img.dataset.src = localImageUrl;
+    img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3C/svg%3E'; // Transparent placeholder
+
+    // Initialize observer if needed
+    initLazyLoadObserver();
+    lazyLoadObserver.observe(img);
+
     thumbnailDiv.appendChild(img);
   } else if (thumbUrl) {
-    // If no actor name but thumb URL exists, use the thumb URL
+    // If no actor name but thumb URL exists, use the thumb URL with lazy loading
     const img = document.createElement('img');
-    img.src = thumbUrl;
     img.alt = actorName || 'Actor';
+    img.dataset.src = thumbUrl;
+    img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3C/svg%3E';
     img.onerror = () => { thumbnailDiv.innerHTML = '👤'; };
+
+    initLazyLoadObserver();
+    lazyLoadObserver.observe(img);
+
     thumbnailDiv.appendChild(img);
   } else {
     // No actor name and no thumb URL
@@ -807,39 +931,84 @@ function normalizeActorNameForFile(name) {
     .replace(/\s+/g, '-');         // Replace spaces with hyphens
 }
 
+function createActorCard(actor, index) {
+  const actorCard = document.createElement("div");
+  actorCard.className = "actor-card";
+  actorCard.dataset.actorIndex = index;
+
+  // Crea thumbnail
+  const thumbnail = createActorThumbnail(actor.thumb, actor.name);
+  actorCard.appendChild(thumbnail);
+
+  // Aggiungi nome e ruolo
+  const nameDiv = document.createElement('div');
+  nameDiv.className = 'name';
+  nameDiv.textContent = actor.name || (window.i18n ? window.i18n.t("messages.missingName") : 'Nome mancante');
+
+  const roleDiv = document.createElement('div');
+  roleDiv.className = 'role';
+  roleDiv.textContent = actor.role || 'Actress';
+
+  actorCard.appendChild(nameDiv);
+  actorCard.appendChild(roleDiv);
+
+  // Click per aprire modal di editing
+  actorCard.onclick = () => editActor(index);
+
+  return actorCard;
+}
+
+function updateActorCard(card, actor, index) {
+  card.dataset.actorIndex = index;
+
+  // Update thumbnail
+  const thumbnail = card.querySelector('.thumbnail');
+  if (thumbnail) {
+    const newThumbnail = createActorThumbnail(actor.thumb, actor.name);
+    thumbnail.replaceWith(newThumbnail);
+  }
+
+  // Update name
+  const nameDiv = card.querySelector('.name');
+  if (nameDiv) {
+    nameDiv.textContent = actor.name || (window.i18n ? window.i18n.t("messages.missingName") : 'Nome mancante');
+  }
+
+  // Update role
+  const roleDiv = card.querySelector('.role');
+  if (roleDiv) {
+    roleDiv.textContent = actor.role || 'Actress';
+  }
+
+  // Update click handler
+  card.onclick = () => editActor(index);
+}
+
 function renderActors() {
   const actorsGrid = document.getElementById("actors-grid");
-  actorsGrid.innerHTML = "";
 
   if (!currentItem.actor) {
     currentItem.actor = [];
   }
 
+  const existingCards = Array.from(actorsGrid.children);
+
+  // Update existing cards and create new ones
   currentItem.actor.forEach((actor, index) => {
-    const actorCard = document.createElement("div");
-    actorCard.className = "actor-card";
-
-    // Crea thumbnail
-    const thumbnail = createActorThumbnail(actor.thumb, actor.name);
-    actorCard.appendChild(thumbnail);
-
-    // Aggiungi nome e ruolo
-    const nameDiv = document.createElement('div');
-    nameDiv.className = 'name';
-    nameDiv.textContent = actor.name || (window.i18n ? window.i18n.t("messages.missingName") : 'Nome mancante');
-
-    const roleDiv = document.createElement('div');
-    roleDiv.className = 'role';
-    roleDiv.textContent = actor.role || 'Actress';
-
-    actorCard.appendChild(nameDiv);
-    actorCard.appendChild(roleDiv);
-
-    // Click per aprire modal di editing
-    actorCard.onclick = () => editActor(index);
-
-    actorsGrid.appendChild(actorCard);
+    if (existingCards[index]) {
+      // Update existing card
+      updateActorCard(existingCards[index], actor, index);
+    } else {
+      // Create and append new card
+      const newCard = createActorCard(actor, index);
+      actorsGrid.appendChild(newCard);
+    }
   });
+
+  // Remove excess cards
+  while (actorsGrid.children.length > currentItem.actor.length) {
+    actorsGrid.removeChild(actorsGrid.lastChild);
+  }
 }
 
 // ─────────────────────────────
@@ -999,14 +1168,36 @@ function setupEventHandlers() {
   document.getElementById("modeScrape").onclick = () => switchMode("scrape");
 
   // Navigation buttons - use different routes based on the mode
-  document.getElementById("next").onclick = () => {
-    const url = currentMode === "edit" ? "/item/next" : "/item/scrape/next";
-    loadItem(url);
+  document.getElementById("next").onclick = async () => {
+    if (currentMode === "edit") {
+      await loadItem("/item/next");
+    } else {
+      // For scrape mode, pass current ID to ensure correct navigation
+      if (currentItem && currentItem.fileId) {
+        const nextIndex = await getNextScrapeIndex(currentItem.fileId);
+        if (nextIndex !== null) {
+          await loadItem(`/item/scrape/by-id/${encodeURIComponent(nextIndex)}`);
+        }
+      } else {
+        await loadItem("/item/scrape/next");
+      }
+    }
   };
 
-  document.getElementById("prev").onclick = () => {
-    const url = currentMode === "edit" ? "/item/prev" : "/item/scrape/prev";
-    loadItem(url);
+  document.getElementById("prev").onclick = async () => {
+    if (currentMode === "edit") {
+      await loadItem("/item/prev");
+    } else {
+      // For scrape mode, pass current ID to ensure correct navigation
+      if (currentItem && currentItem.fileId) {
+        const prevIndex = await getPrevScrapeIndex(currentItem.fileId);
+        if (prevIndex !== null) {
+          await loadItem(`/item/scrape/by-id/${encodeURIComponent(prevIndex)}`);
+        }
+      } else {
+        await loadItem("/item/scrape/prev");
+      }
+    }
   };
 
   // Event listener per cambio lingua (gestito tramite evento custom dal navbar)

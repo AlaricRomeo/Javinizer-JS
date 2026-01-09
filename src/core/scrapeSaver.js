@@ -19,35 +19,60 @@ class ScrapeSaver {
   }
 
   /**
-   * Formats the folder name using configured tags
+   * Formats the folder name using configured pattern
    */
   formatFolderName(item) {
-    let format = this.config.folderFormat || "<ID>";
+    // Get pattern from config, default to {id}
+    let pattern = this.config.scrapeFolderPattern || "{id}";
 
     // Extract year from release date
     const year = item.releaseDate ? item.releaseDate.split("-")[0] : "";
 
-    // Replace tags
-    format = format
-      .replace(/<ID>/g, item.id || "")
-      .replace(/<TITLE>/g, item.title || "")
-      .replace(/<YEAR>/g, year)
-      .replace(/<STUDIO>/g, item.studio || "")
-      .replace(/<ORIGINALTITLE>/g, item.originalTitle || "");
+    // Prepare values for placeholders
+    const values = {
+      id: item.id || "",
+      contentid: item.contentId || "",
+      title: item.title || "",
+      alternatetitle: item.alternateTitle || "",
+      label: item.label || "",
+      maker: item.studio || "",
+      year: year
+    };
 
+    // Replace placeholders with values
+    let folderName = pattern.replace(/\{(\w+)\}/g, (match, key) => {
+      const lowerKey = key.toLowerCase();
+      return values.hasOwnProperty(lowerKey) ? values[lowerKey] : match;
+    });
+
+    // Sanitize folder name
+    folderName = this.sanitizeFolderName(folderName);
+
+    return folderName;
+  }
+
+  /**
+   * Sanitizes folder name removing invalid characters
+   */
+  sanitizeFolderName(name) {
     // Remove invalid characters for file names (Windows and Unix)
-    format = format.replace(/[<>:"/\\|?*\x00-\x1f]/g, "");
+    let sanitized = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "");
 
     // Remove trailing spaces and periods (invalid on Windows)
-    format = format.replace(/[\s.]+$/, "");
+    sanitized = sanitized.replace(/[\s.]+$/, "").trim();
 
     // Check for Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
     const reservedNames = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
-    if (reservedNames.test(format)) {
-      format = `_${format}`;
+    if (reservedNames.test(sanitized)) {
+      sanitized = `_${sanitized}`;
     }
 
-    return format.trim();
+    // If empty after sanitization, use fallback
+    if (!sanitized) {
+      sanitized = "unknown";
+    }
+
+    return sanitized;
   }
 
   /**

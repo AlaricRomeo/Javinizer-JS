@@ -30,6 +30,7 @@ function loadConfig() {
       libraryPath: process.env.LIBRARY_PATH || getDefaultLibraryPath(),
       mode: "scrape",
       language: "en",
+      scrapeFolderPattern: "{id}",
       scrapers: {
         video: ["javlibrary", "r18dev"],
         actors: {

@@ -16,6 +16,7 @@ const path = require('path');
 const { normalizeActorName, actorToNFO, nfoToActor } = require('../../scrapers/actors/schema');
 const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
 const { loadConfig, getScrapePath } = require('./config');
+const { updateActorInIndex, resolveActorId: resolveActorIdFromIndex } = require('./actorIndexManager');
 
 // ─────────────────────────────
 // Configuration Loading
@@ -23,130 +24,16 @@ const { loadConfig, getScrapePath } = require('./config');
 // Using centralized config from config.js
 // Removed getActorsPath() - now using cache-helper's getActorsCachePath()
 
-// ─────────────────────────────
-// Index Management
-// ─────────────────────────────
+// Note: Index management is now handled by actorIndexManager.js
+// Keeping resolveActorId as a wrapper for backward compatibility
 
 /**
- * Load actor index from actors-index.json
- * Maps name variants to normalized slug IDs
- * Auto-migrates from old .index.json if found
- *
- * @returns {object} - Index mapping
- */
-function loadIndex() {
-  const actorsPath = getActorsCachePath();
-  const indexPath = path.join(actorsPath, 'actors-index.json');
-  const oldIndexPath = path.join(actorsPath, '.index.json');
-
-  // Auto-migrate from old .index.json to actors-index.json (Windows compatibility)
-  if (!fs.existsSync(indexPath) && fs.existsSync(oldIndexPath)) {
-    try {
-      fs.renameSync(oldIndexPath, indexPath);
-    } catch (error) {
-      console.error('[ActorScraperManager] Failed to migrate index:', error.message);
-    }
-  }
-
-  if (!fs.existsSync(indexPath)) {
-    return {};
-  }
-
-  try {
-    const data = fs.readFileSync(indexPath, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('[ActorScraperManager] Failed to load index:', error.message);
-    return {};
-  }
-}
-
-/**
- * Save actor index to actors-index.json
- *
- * @param {object} index - Index mapping
- */
-function saveIndex(index) {
-  const actorsPath = getActorsCachePath();
-  const indexPath = path.join(actorsPath, 'actors-index.json');
-
-  // Ensure actors directory exists
-  if (!fs.existsSync(actorsPath)) {
-    fs.mkdirSync(actorsPath, { recursive: true });
-  }
-
-  try {
-    fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('[ActorScraperManager] Failed to save index:', error.message);
-  }
-}
-
-/**
- * Update index with actor name variants
- * Also adds inverted name variants to handle Japanese/Western name order differences
- *
- * @param {object} actor - Actor data
- */
-function updateIndex(actor) {
-  const index = loadIndex();
-  const id = actor.id;
-
-  // Helper function to add name and its inverted variant
-  function addNameVariants(name) {
-    if (!name) return;
-
-    const nameLower = name.toLowerCase();
-    index[nameLower] = id;
-
-    // Also add inverted name (e.g., "Yuu Kawakami" → "kawakami yuu")
-    const parts = nameLower.trim().split(/\s+/);
-    if (parts.length === 2) {
-      const invertedName = `${parts[1]} ${parts[0]}`;
-      index[invertedName] = id;
-    }
-  }
-
-  // Add main name and its variants
-  addNameVariants(actor.name);
-
-  // Add alternative name and its variants
-  addNameVariants(actor.altName);
-
-  // Add other names and their variants
-  if (actor.otherNames && Array.isArray(actor.otherNames)) {
-    actor.otherNames.forEach(name => addNameVariants(name));
-  }
-
-  saveIndex(index);
-}
-
-/**
- * Resolve actor name to ID using index
- * Tries exact match first, then inverted name (for Japanese/Western name order differences)
- *
+ * Resolve actor name to ID using centralized index manager
  * @param {string} name - Actor name (any variant)
  * @returns {string|null} - Actor ID or null if not found
  */
 function resolveActorId(name) {
-  const index = loadIndex();
-  const nameLower = name.toLowerCase();
-
-  // Try exact match first
-  if (index[nameLower]) {
-    return index[nameLower];
-  }
-
-  // Try inverted name (e.g., "Kawakami Yuu" → "yuu kawakami")
-  const parts = nameLower.trim().split(/\s+/);
-  if (parts.length === 2) {
-    const invertedName = `${parts[1]} ${parts[0]}`;
-    if (index[invertedName]) {
-      return index[invertedName];
-    }
-  }
-
-  return null;
+  return resolveActorIdFromIndex(name);
 }
 
 // ─────────────────────────────
@@ -206,8 +93,8 @@ function saveActorLocal(actor) {
     fs.writeFileSync(actorNfoPath, nfoContent, 'utf-8');
     console.log(`[ActorScraperManager] Saved actor NFO: ${actor.id}.nfo`);
 
-    // Update index
-    updateIndex(actor);
+    // Update index using centralized index manager
+    updateActorInIndex(actor);
   } catch (error) {
     console.error(`[ActorScraperManager] Failed to save actor ${actor.id}:`, error.message);
   }
@@ -274,72 +161,9 @@ function executeActorScraper(scraperName, actorName) {
         return;
       }
     } catch (error) {
-      console.error(`[ActorScraperManager] In-process require failed for ${scraperName}:`, error.message);
-      // fall back to spawn below
-    }
-
-    // Fallback: spawn child process (kept for compatibility)
-    console.log(`[ActorScraperManager] Falling back to spawn for scraper: ${scraperName}`);
-    const child = spawn('node', [scraperPath, actorName], {
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    let stdout = '';
-    let hasResolved = false;
-
-    const timeout = setTimeout(() => {
-      if (!hasResolved) {
-        console.error(`[ActorScraperManager] Scraper ${scraperName} timed out after 30s`);
-        hasResolved = true;
-        child.kill('SIGTERM');
-
-        setTimeout(() => {
-          if (!child.killed) {
-            console.error(`[ActorScraperManager] Force killing scraper ${scraperName}`);
-            child.kill('SIGKILL');
-          }
-        }, 2000);
-
-        resolve(null);
-      }
-    }, 30000);
-
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-      console.log(data.toString());
-    });
-
-    child.on('close', (code) => {
-      if (hasResolved) return;
-      clearTimeout(timeout);
-      hasResolved = true;
-
-      if (code !== 0) {
-        console.error(`[ActorScraperManager] Scraper ${scraperName} exited with code ${code}`);
-        resolve(null);
-        return;
-      }
-
-      try {
-        const result = JSON.parse(stdout);
-        console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
-        resolve(result);
-      } catch (err) {
-        console.error(`[ActorScraperManager] Failed to parse JSON from ${scraperName}:`, err.message);
-        resolve(null);
-      }
-    });
-
-    child.on('error', (error) => {
-      if (hasResolved) return;
-      clearTimeout(timeout);
-      hasResolved = true;
-      console.error(`[ActorScraperManager] Failed to execute ${scraperName}:`, error.message);
+      console.error(`[ActorScraperManager] Failed to execute scraper ${scraperName}:`, error.message);
       resolve(null);
-    });
+    }
   });
 }
 
@@ -1086,7 +910,6 @@ module.exports = {
   loadActorLocal,
   saveActorLocal,
   resolveActorId,
-  updateIndex,
   batchScrapeActors,
   updateMovieActorData,
   batchProcessActors

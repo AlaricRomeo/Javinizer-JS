@@ -209,6 +209,9 @@
     "saveFailed": "Failed to save configuration",
     "loadFailed": "Failed to load configuration",
     "videoPlayerPath": "Video Player Path",
-    "videoPlayerPathHelp": "Path to your video player executable. Leave empty to disable video playback feature."
+    "videoPlayerPathHelp": "Path to your video player executable. Leave empty to disable video playback feature.",
+    "scrapeFolderPattern": "Scrape Mode Folder Pattern",
+    "scrapeFolderPatternHelp": "Customize the folder name pattern for scraped videos. Use placeholders: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Example: {id} - {title} ({maker} - {year})",
+    "scrapeFolderPatternPlaceholder": "{id} - {title}"
   }
 }
