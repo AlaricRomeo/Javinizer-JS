@@ -56,3 +56,6 @@ coverage/
 .dockerignore
 docker-compose.override.yml
 .claude/
+
+# Scrapers development directory
+scrapers-dev/
