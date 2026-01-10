@@ -38,8 +38,8 @@ if not exist "node_modules\" (
         echo.
     ) else (
         REM Compare timestamps using PowerShell
-        for /f %%i in ('powershell -command "if ((Get-Item package.json).LastWriteTime -gt (Get-Item package-lock.json).LastWriteTime) { exit 1 } else { exit 0 }" 2^>nul') do set TIMESTAMP_CHECK=%%i
-        if %TIMESTAMP_CHECK% EQU 1 (
+        powershell -command "if ((Get-Item package.json).LastWriteTime -gt (Get-Item package-lock.json).LastWriteTime) { exit 1 } else { exit 0 }" 2>nul
+        if %ERRORLEVEL% EQU 1 (
             echo [INFO] Installing or updating dependencies...
             call npm install
             if %ERRORLEVEL% NEQ 0 (
