@@ -19,7 +19,8 @@
     "rating": "評価と分類",
     "categories": "カテゴリー",
     "mediaUrls": "メディアURL",
-    "actors": "女優"
+    "actors": "女優",
+    "rescrapeCurrentMovie": "現在の動画を再スクレイプ:"
   },
   "fields": {
     "id": "ID",
@@ -68,7 +69,8 @@
     "upload": "アップロード",
     "deleteLocalPhoto": "ローカル写真を削除",
     "copyActorsToFolder": "動画フォルダに女優をコピー",
-    "play": "▶ 再生"
+    "play": "▶ 再生",
+    "selectScraper": "-- スクレイパーを選択 --"
   },
   "placeholders": {
     "noImage": "画像なし",
@@ -158,7 +160,8 @@
     "preview": "プレビュー",
     "searchActor": "女優を検索",
     "note": "注意",
-    "noteHelp": "女優に関する追加情報"
+    "noteHelp": "女優に関する追加情報",
+    "overwriteLocalData": "ローカルデータを上書き（写真を含む）"
   },
   "actors": {
     "pageTitle": "女優 - Javinizer",

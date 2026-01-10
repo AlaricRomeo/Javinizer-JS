@@ -513,9 +513,23 @@ async function scrapeActor(actorName, emitter = null) {
  * Tries exact name first, then inverted name in cache
  *
  * @param {string} actorName - Actor name (any variant)
+ * @param {boolean} forceOverwrite - If true, always scrape from remote and overwrite local data
  * @returns {Promise<object|null>} - Actor data or null
  */
-async function getActor(actorName) {
+async function getActor(actorName, forceOverwrite = false) {
+  // If forceOverwrite is true, skip cache and scrape directly
+  // BUT do NOT save yet - just return the scraped data
+  // The frontend will handle the overwrite when user actually saves
+  if (forceOverwrite) {
+    console.log(`[ActorScraperManager] Force overwrite enabled, scraping from remote (not saving): ${actorName}`);
+    const scrapedActor = await scrapeActor(actorName);
+
+    // Just return the scraped data without saving
+    // The thumb will be a remote URL, which is fine for preview
+    return scrapedActor;
+  }
+
+  // Normal flow: try cache first
   // Try to resolve actor ID from index with exact name
   let actorId = resolveActorId(actorName);
 
