@@ -12,7 +12,7 @@ let sessionPage = null; // Keep the same page/tab alive
 let _s = 0; // Session usage counter
 
 const COOKIES_FILE = path.join(__dirname, 'cookies.json');
-const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
 const _m = 80; // Max operations per session
 
 /**
@@ -27,12 +27,12 @@ function cleanOldCache(userDataDir) {
     const ageMs = Date.now() - stats.mtimeMs;
 
     if (ageMs > CACHE_MAX_AGE_MS) {
-      console.error('[Browser] Cache is older than 24h, cleaning...');
+      console.error('[JavLibrary Scrape] Cache is older than 6h, cleaning...');
       fs.rmSync(userDataDir, { recursive: true, force: true });
-      console.error('[Browser] Cache cleaned');
+      console.error('[JavLibrary Scrape] Cache cleaned');
     }
   } catch (error) {
-    console.error(`[Browser] Error checking cache: ${error.message}`);
+    console.error(`[JavLibrary Scrape] Error checking cache: ${error.message}`);
   }
 }
 
@@ -180,17 +180,17 @@ async function fetchPage(url) {
   }
 
   try {
-    console.error(`[Browser] Fetching ${url}...`);
-    await sessionPage.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+    console.error(`[JavLibrary Scrape] Fetching ${url}...`);
+    await sessionPage.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
 
     const html = await sessionPage.content();
     _s++; // Increment counter
 
-    console.error('[Browser] Page fetched successfully');
+    console.error('[JavLibrary Scrape] Page fetched successfully');
     return html;
 
   } catch (error) {
-    console.error(`[Browser] Error: ${error.message}`);
+    console.error(`[JavLibrary Scrape] Error: ${error.message}`);
     throw error;
   }
 }

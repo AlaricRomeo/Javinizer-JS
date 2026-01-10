@@ -510,13 +510,24 @@ async function scrapeActor(actorName, emitter = null) {
 
 /**
  * Get actor data (from cache or scrape if needed)
+ * Tries exact name first, then inverted name in cache
  *
  * @param {string} actorName - Actor name (any variant)
  * @returns {Promise<object|null>} - Actor data or null
  */
 async function getActor(actorName) {
-  // Try to resolve actor ID from index
-  const actorId = resolveActorId(actorName);
+  // Try to resolve actor ID from index with exact name
+  let actorId = resolveActorId(actorName);
+
+  // If not found, try inverted name
+  if (!actorId) {
+    const parts = actorName.trim().split(/\s+/);
+    if (parts.length === 2) {
+      const invertedName = `${parts[1]} ${parts[0]}`;
+      console.log(`[ActorScraperManager] Trying inverted name in cache: ${invertedName}`);
+      actorId = resolveActorId(invertedName);
+    }
+  }
 
   if (actorId) {
     // Try to load from local storage
@@ -524,7 +535,6 @@ async function getActor(actorName) {
 
     if (localActor) {
       console.log(`[ActorScraperManager] Loaded actor from cache: ${actorId}`);
-      console.log(`[ActorScraperManager] Actor data:`, JSON.stringify(localActor, null, 2));
 
       // Check if local data is complete
       if (isActorComplete(localActor)) {
@@ -644,11 +654,11 @@ async function batchScrapeActors(emitter = null) {
     };
   }
 
-  console.log('[ActorScraperManager] Starting batch actor scraping...');
+  console.log('[Actor Scrape] Starting batch actor scraping...');
 
   if (emitter) {
     emitter.emit('progress', {
-      message: '🔍 Extracting actor names from movies...'
+      message: '[Actor Scrape] Extracting actor names from movies...'
     });
   }
 
@@ -656,7 +666,7 @@ async function batchScrapeActors(emitter = null) {
   const actorNames = extractActorNamesFromMovies();
 
   if (actorNames.length === 0) {
-    console.error('[ActorScraperManager] No actors found in movie files');
+    console.error('[Actor Scrape] No actors found in movie files');
     return {
       success: true,
       message: 'No actors to scrape',
@@ -667,11 +677,11 @@ async function batchScrapeActors(emitter = null) {
     };
   }
 
-  console.log(`[ActorScraperManager] Found ${actorNames.length} unique actors in movies`);
+  console.log(`[Actor Scrape] Found ${actorNames.length} unique actors in movies`);
 
   if (emitter) {
     emitter.emit('progress', {
-      message: `📋 Found ${actorNames.length} unique actor(s) to process`
+      message: `[Actor Scrape] Found ${actorNames.length} unique actor(s) to process`
     });
   }
 
@@ -682,61 +692,67 @@ async function batchScrapeActors(emitter = null) {
   // Process each actor
   for (let i = 0; i < actorNames.length; i++) {
     const actorName = actorNames[i];
-    console.log(`[ActorScraperManager] Processing actor ${i + 1}/${actorNames.length}: ${actorName}`);
+    console.log(`[Actor Scrape] Processing ${i + 1}/${actorNames.length}: ${actorName}`);
 
     if (emitter) {
       emitter.emit('progress', {
-        message: `👤 Processing ${i + 1}/${actorNames.length}: ${actorName}`
+        message: `[Actor Scrape] Processing ${i + 1}/${actorNames.length}: ${actorName}`
       });
     }
 
     try {
-      // Check if already in cache
+      // Check if already in cache and complete
       const actorId = resolveActorId(actorName);
       if (actorId) {
         const existing = loadActorLocal(actorId);
-        if (existing) {
-          console.log(`[ActorScraperManager] Actor already cached: ${actorName}`);
+        if (existing && isActorComplete(existing)) {
+          console.log(`[Actor Scrape] Actor already cached and complete: ${actorName}`);
           cached++;
 
           if (emitter) {
             emitter.emit('progress', {
-              message: `✓ ${actorName} - found in cache`
+              message: `[Actor Scrape] ${actorName} - found in cache`
             });
           }
           continue;
         }
       }
 
-      // Scrape actor (pass emitter for detailed scraper logs)
-      const actorData = await scrapeActor(actorName, emitter);
+      // Use getActor which checks cache first, then scrapes if needed
+      const actorData = await getActor(actorName);
 
       if (actorData) {
-        scraped++;
-        console.log(`[ActorScraperManager] Successfully scraped: ${actorName}`);
+        // Check if it was from cache or scraped
+        if (actorId && loadActorLocal(actorId)) {
+          scraped++;
+          console.log(`[Actor Scrape] Successfully processed: ${actorName}`);
+        } else {
+          scraped++;
+          console.log(`[Actor Scrape] Successfully scraped: ${actorName}`);
+        }
 
         if (emitter) {
           emitter.emit('progress', {
-            message: `✓ ${actorName} - scraped successfully`
+            message: `[Actor Scrape] ${actorName} - processed successfully`
           });
         }
       } else {
         failed++;
-        console.log(`[ActorScraperManager] Failed to scrape: ${actorName}`);
+        console.log(`[Actor Scrape] Failed to process: ${actorName}`);
 
         if (emitter) {
           emitter.emit('progress', {
-            message: `✗ ${actorName} - scraping failed`
+            message: `[Actor Scrape] ${actorName} - processing failed`
           });
         }
       }
     } catch (error) {
       failed++;
-      console.error(`[ActorScraperManager] Error scraping ${actorName}:`, error.message);
+      console.error(`[Actor Scrape] Error processing ${actorName}:`, error.message);
 
       if (emitter) {
         emitter.emit('progress', {
-          message: `✗ ${actorName} - error: ${error.message}`
+          message: `[Actor Scrape] ${actorName} - error: ${error.message}`
         });
       }
     }
@@ -885,7 +901,7 @@ async function batchProcessActors(emitter = null) {
   // Step 2: Update movie JSON files
   if (emitter) {
     emitter.emit('progress', {
-      message: '📝 Updating movie files with actor data...'
+      message: '[Actor Scrape] Updating movie files with actor data...'
     });
   }
 
@@ -893,7 +909,7 @@ async function batchProcessActors(emitter = null) {
 
   if (emitter) {
     emitter.emit('progress', {
-      message: `✅ Updated ${updateSummary.updated} movie file(s)`
+      message: `[Actor Scrape] Updated ${updateSummary.updated} movie file(s)`
     });
   }
 
