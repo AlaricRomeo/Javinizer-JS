@@ -94,6 +94,10 @@ function openActorModal(actorOrIndex = null) {
     // Manage remove button visibility
     if (removeBtn) removeBtn.style.display = unifiedIsNewActor ? "none" : "block";
 
+    // Reset checkbox to unchecked
+    const overwriteCheckbox = document.getElementById("actorEditOverwriteLocal");
+    if (overwriteCheckbox) overwriteCheckbox.checked = false;
+
     // Show modal using CSS class
     modal.classList.add("active");
   } else {
@@ -178,6 +182,10 @@ function openActorModal(actorOrIndex = null) {
       updateActorPreview('');
     }
 
+    // Reset checkbox to unchecked
+    const overwriteCheckbox = document.getElementById("actorEditOverwriteLocal");
+    if (overwriteCheckbox) overwriteCheckbox.checked = false;
+
     // Show modal
     modal.classList.add('active');
   }
@@ -206,7 +214,7 @@ function closeActorModal() {
 }
 
 // Update actor preview image
-function updateActorPreview(url) {
+function updateActorPreview(url, forceRemote = false) {
   const previewImg = document.getElementById("actorEditPreviewImg");
   const placeholder = document.getElementById("actorEditPreviewPlaceholder");
 
@@ -217,9 +225,25 @@ function updateActorPreview(url) {
   }
 
   if (url && url.trim() !== "") {
+    // If forceRemote is true, skip local cache and use the provided URL directly
+    if (forceRemote) {
+      previewImg.src = url;
+      previewImg.style.display = "block";
+      placeholder.style.display = "none";
+
+      previewImg.onerror = () => {
+        previewImg.style.display = "none";
+        placeholder.style.display = "block";
+      };
+
+      previewImg.onload = () => {
+        previewImg.style.display = "block";
+        placeholder.style.display = "none";
+      };
+    }
     // In both modes, prioritize local file lookup if we have an actor name
     // This applies to both movie and library contexts
-    if (unifiedCurrentActor && unifiedCurrentActor.name) {
+    else if (unifiedCurrentActor && unifiedCurrentActor.name) {
       // Try to load from local actors cache first
       const normalizedActorName = normalizeActorNameForFile(unifiedCurrentActor.name);
       const localImageUrl = `/actors/${normalizedActorName}.jpg`;
@@ -379,6 +403,10 @@ async function searchActor() {
   const searchBtn = document.getElementById("actorEditSearch");
   const searchText = document.getElementById("actorEditSearchText");
   const searchStatus = document.getElementById("actorEditSearchStatus");
+  const overwriteCheckbox = document.getElementById("actorEditOverwriteLocal");
+
+  // Check if overwrite is enabled
+  const forceOverwrite = overwriteCheckbox ? overwriteCheckbox.checked : false;
 
   // Disable button and show loading
   searchBtn.disabled = true;
@@ -391,37 +419,52 @@ async function searchActor() {
     const response = await fetch("/item/actors/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: actorName })
+      body: JSON.stringify({
+        name: actorName,
+        forceOverwrite: forceOverwrite
+      })
     });
 
     const result = await response.json();
 
     if (result.ok && result.actor) {
       // Fill form with actor data
-      if (result.actor.name) {
+      // If forceOverwrite is true, always overwrite fields
+      // Otherwise, only fill empty fields
+      const shouldOverwrite = (currentValue, newValue) => {
+        if (forceOverwrite) return newValue !== undefined && newValue !== null;
+        return (!currentValue || currentValue === '') && (newValue !== undefined && newValue !== null);
+      };
+
+      if (shouldOverwrite(document.getElementById("actorEditName").value, result.actor.name)) {
         document.getElementById("actorEditName").value = result.actor.name;
       }
-      if (result.actor.altName) {
+      if (shouldOverwrite(document.getElementById("actorEditAltName").value, result.actor.altName)) {
         document.getElementById("actorEditAltName").value = result.actor.altName;
       }
-      if (result.actor.birthdate) {
+      if (shouldOverwrite(document.getElementById("actorEditBirthdate").value, result.actor.birthdate)) {
         document.getElementById("actorEditBirthdate").value = result.actor.birthdate;
       }
-      if (result.actor.height && result.actor.height > 0) {
+      if (shouldOverwrite(document.getElementById("actorEditHeight").value, result.actor.height) && result.actor.height > 0) {
         document.getElementById("actorEditHeight").value = result.actor.height;
       }
-      if (result.actor.bust && result.actor.bust > 0) {
+      if (shouldOverwrite(document.getElementById("actorEditBust").value, result.actor.bust) && result.actor.bust > 0) {
         document.getElementById("actorEditBust").value = result.actor.bust;
       }
-      if (result.actor.waist && result.actor.waist > 0) {
+      if (shouldOverwrite(document.getElementById("actorEditWaist").value, result.actor.waist) && result.actor.waist > 0) {
         document.getElementById("actorEditWaist").value = result.actor.waist;
       }
-      if (result.actor.hips && result.actor.hips > 0) {
+      if (shouldOverwrite(document.getElementById("actorEditHips").value, result.actor.hips) && result.actor.hips > 0) {
         document.getElementById("actorEditHips").value = result.actor.hips;
       }
-      if (result.actor.thumb) {
+      if (shouldOverwrite(document.getElementById("actorEditThumb").value, result.actor.thumb)) {
         document.getElementById("actorEditThumb").value = result.actor.thumb;
-        updateActorPreview(result.actor.thumb);
+      }
+
+      // Always update preview if we have a thumb (even if URL didn't change, to refresh the image)
+      // Pass forceRemote flag to skip local cache when overwrite is enabled
+      if (result.actor.thumb) {
+        updateActorPreview(result.actor.thumb, forceOverwrite);
       }
 
       // Show source info

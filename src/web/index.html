@@ -72,6 +72,12 @@
       <h3 data-i18n="sections.scraperPanel">Scraper Panel</h3>
       <p id="scrapeStatus" style="margin-top: 10px; font-size: 12px; color: #666;">No items available</p>
       <button id="scrapeNow" class="scrape-now-btn" style="margin-top: 10px; width: 100%;" data-i18n="buttons.scrapeNow">🔍 Scrape Now!</button>
+      <div style="margin-top: 10px; width: 100%;">
+        <label for="rescrapeDropdown" style="display: block; margin-bottom: 5px; font-size: 12px; color: #666;" data-i18n="sections.rescrapeCurrentMovie">Re-scrape Current Movie:</label>
+        <select id="rescrapeDropdown" class="rescrape-dropdown" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; background: white; cursor: pointer;">
+          <option value="" data-i18n="buttons.selectScraper">-- Select Scraper --</option>
+        </select>
+      </div>
       <button id="clearCache" class="clear-cache-btn" style="margin-top: 10px; width: 100%; background: #6c757d;" data-i18n="buttons.clearCache">🗑️ Clear Scrapers Cache</button>
       <div class="delete-buttons-row">
         <button id="deleteItem" class="delete-item-btn" data-i18n="buttons.deleteItem">🗑️ Delete Item</button>

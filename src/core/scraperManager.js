@@ -617,4 +617,4 @@ if (require.main === module) {
 }
 
 // Export for use as module
-module.exports = { scrapeAll, extractCodesFromLibrary };
+module.exports = { scrapeAll, extractCodesFromLibrary, executeScraper, mergeResults };

@@ -19,7 +19,8 @@
     "rating": "Rating & Classification",
     "categories": "Categories",
     "mediaUrls": "Media URLs",
-    "actors": "Actors"
+    "actors": "Actors",
+    "rescrapeCurrentMovie": "Re-scrape Current Movie:"
   },
   "buttons": {
     "save": "💾 Save Changes",
@@ -43,7 +44,8 @@
     "upload": "Upload",
     "deleteLocalPhoto": "Delete Local Photo",
     "copyActorsToFolder": "Copy actors in movie folder",
-    "play": "▶ Play"
+    "play": "▶ Play",
+    "selectScraper": "-- Select Scraper --"
   },
   "fields": {
     "id": "ID",
@@ -157,7 +159,8 @@
     "preview": "Preview",
     "searchActor": "Search Actor",
     "note": "Note",
-    "noteHelp": "Additional information about the actor"
+    "noteHelp": "Additional information about the actor",
+    "overwriteLocalData": "Overwrite local data (including photo)"
   },
   "actors": {
     "pageTitle": "Actors - Javinizer",

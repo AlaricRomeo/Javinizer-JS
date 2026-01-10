@@ -1242,6 +1242,41 @@ function setupEventHandlers() {
     }
   };
 
+  // Dropdown "Re-scrape Current Movie" - permette di ri-scrapare il movie corrente con uno scraper specifico
+  document.getElementById("rescrapeDropdown").onchange = async (e) => {
+    const selectedScraper = e.target.value;
+    if (!selectedScraper) return;
+
+    if (currentMode !== "scrape") {
+      showNotification("Re-scraping is only available in scrape mode", "error");
+      e.target.value = ""; // Reset dropdown
+      return;
+    }
+
+    // In scrape mode, currentItem has structure: { id, jsonPath, scrapedAt, sources, videoFile, data: {...} }
+    // We can use either currentItem.id or currentItem.data.id
+    const movieId = currentItem?.id || currentItem?.data?.id;
+
+    if (!currentItem || !movieId) {
+      console.error('[Re-scrape] No movie loaded. currentItem:', currentItem);
+      showNotification("No movie loaded", "error");
+      e.target.value = ""; // Reset dropdown
+      return;
+    }
+
+    // Conferma azione
+    if (!confirm(`Re-scrape "${movieId}" with ${selectedScraper}?\n\nNew data will be merged with existing data, giving priority to new values.`)) {
+      e.target.value = ""; // Reset dropdown
+      return;
+    }
+
+    // Reset dropdown immediatamente
+    e.target.value = "";
+
+    // Avvia re-scraping
+    await rescrapeCurrentMovie(selectedScraper, movieId);
+  };
+
   // Bottone "Delete Item" - elimina il JSON corrente in scrape mode
   document.getElementById("deleteItem").onclick = async () => {
     if (currentMode !== "scrape") return;
@@ -1887,6 +1922,11 @@ async function initializeApp() {
     const libraryPath = configData.config.libraryPath || "";
     document.getElementById("libraryPath").value = libraryPath;
 
+    // Popola dropdown scraper per re-scraping
+    if (configData.availableScrapers && configData.availableScrapers.movies) {
+      populateScraperDropdown(configData.availableScrapers.movies);
+    }
+
     // Check scrape mode availability and library BEFORE switchMode
     await checkLibraryCount();
     await checkScrapeAvailability();
@@ -2015,6 +2055,109 @@ async function playVideo() {
 // ─────────────────────────────
 // Scraping Functions
 // ─────────────────────────────
+
+/**
+ * Popola il dropdown con gli scraper disponibili
+ */
+function populateScraperDropdown(scrapers) {
+  const dropdown = document.getElementById("rescrapeDropdown");
+  if (!dropdown) return;
+
+  // Clear existing options except the first one (placeholder)
+  while (dropdown.options.length > 1) {
+    dropdown.remove(1);
+  }
+
+  // Add scrapers as options
+  scrapers.forEach(scraper => {
+    const option = document.createElement("option");
+    option.value = scraper;
+    option.textContent = scraper;
+    dropdown.appendChild(option);
+  });
+}
+
+/**
+ * Re-scrape current movie with selected scraper
+ */
+async function rescrapeCurrentMovie(scraperName, movieId) {
+  const modal = document.getElementById('scrapingModal');
+  const progressDiv = document.getElementById('scrapingProgress');
+  const closeBtn = document.getElementById('scrapingClose');
+
+  // Show modal
+  modal.style.display = 'block';
+  progressDiv.innerHTML = `<div style="color: #667eea;">🔍 Re-scraping with ${scraperName}...</div>`;
+  closeBtn.style.display = 'none';
+
+  try {
+    // Connect to WebSocket if not already connected
+    if (!scrapingWebSocket || scrapingWebSocket.readyState !== WebSocket.OPEN) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}`;
+      scrapingWebSocket = new WebSocket(wsUrl);
+
+      // Wait for connection
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('WebSocket connection timeout')), 5000);
+        scrapingWebSocket.onopen = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        scrapingWebSocket.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('WebSocket connection failed'));
+        };
+      });
+    }
+
+    // Set up message handler
+    scrapingWebSocket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        const { event: eventType, data } = message;
+
+        handleScrapingEvent(progressDiv, closeBtn, eventType, data);
+      } catch (error) {
+        console.error('[WebSocket] Error parsing message:', error);
+      }
+    };
+
+    // Start re-scraping via HTTP POST
+    const response = await fetch('/item/scrape/rescrape', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        movieId: movieId,
+        scraper: scraperName
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    if (!result.ok) {
+      throw new Error(result.error || 'Failed to start re-scraping');
+    }
+
+    appendProgress(progressDiv, `✅ Re-scraping started with ${scraperName}`, 'success');
+
+  } catch (error) {
+    console.error('[Re-scraping] Error:', error);
+    appendProgress(progressDiv, `❌ Error: ${error.message}`, 'error');
+    closeBtn.style.display = 'block';
+  }
+
+  // Close button handler
+  closeBtn.onclick = () => {
+    modal.style.display = 'none';
+  };
+}
 
 /**
  * WebSocket connection for scraping
@@ -2178,19 +2321,26 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       // Show Close button - complete is only sent when ALL scraping is done
       closeBtn.style.display = 'block';
 
-      // Auto-reload scrape items dopo completamento
-      checkScrapeAvailability().then(async () => {
-        // Se ci sono items, carica il primo
-        const scrapeStatusEl = document.getElementById("scrapeStatus");
-        const statusText = scrapeStatusEl ? scrapeStatusEl.textContent : "";
-        const match = statusText.match(/(\d+)\s+item/);
-        const scrapeCount = match ? parseInt(match[1]) : 0;
+      // If this was a re-scrape of a specific movie, reload it
+      if (data.movieId) {
+        // Reload the same movie to show updated data
+        await loadItem("/item/scrape/current");
+        appendProgress(progressDiv, `🔄 Reloaded ${data.movieId} with updated data`, 'info');
+      } else {
+        // Auto-reload scrape items dopo completamento batch scraping
+        checkScrapeAvailability().then(async () => {
+          // Se ci sono items, carica il primo
+          const scrapeStatusEl = document.getElementById("scrapeStatus");
+          const statusText = scrapeStatusEl ? scrapeStatusEl.textContent : "";
+          const match = statusText.match(/(\d+)\s+item/);
+          const scrapeCount = match ? parseInt(match[1]) : 0;
 
-        if (scrapeCount > 0) {
-          const loaded = await loadItem("/item/scrape/current");
-          updateDeleteButtons(loaded);
-        }
-      });
+          if (scrapeCount > 0) {
+            const loaded = await loadItem("/item/scrape/current");
+            updateDeleteButtons(loaded);
+          }
+        });
+      }
       break;
 
     case 'error':

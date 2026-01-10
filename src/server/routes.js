@@ -991,16 +991,16 @@ router.post("/actors/search", async (req, res) => {
   const { getActor } = require('../core/actorScraperManager');
 
   try {
-    const { name } = req.body;
+    const { name, forceOverwrite } = req.body;
 
     if (!name) {
       return res.json({ ok: false, error: 'Actor name is required' });
     }
 
-    console.error(`[Routes] Searching for actor: ${name}`);
+    console.error(`[Routes] Searching for actor: ${name}${forceOverwrite ? ' (force overwrite)' : ''}`);
 
     // Search/scrape actor
-    const actorData = await getActor(name);
+    const actorData = await getActor(name, forceOverwrite || false);
 
     if (actorData) {
       res.json({
@@ -1017,6 +1017,281 @@ router.post("/actors/search", async (req, res) => {
   } catch (error) {
     console.error('[Routes] Error searching actor:', error);
     res.json({ ok: false, error: error.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /item/scrape/rescrape
+// Re-scrape a specific movie with a selected scraper and merge with existing data
+// ─────────────────────────────
+router.post("/scrape/rescrape", async (req, res) => {
+  const { EventEmitter } = require('events');
+  const { executeScraper, mergeResults } = require('../core/scraperManager');
+
+  try {
+    const { movieId, scraper } = req.body;
+
+    if (!movieId || !scraper) {
+      return res.json({ ok: false, error: 'Missing movieId or scraper parameter' });
+    }
+
+    // Check if JSON file exists
+    const outputDir = getScrapePath();
+    const jsonPath = path.join(outputDir, `${movieId}.json`);
+
+    if (!fs.existsSync(jsonPath)) {
+      return res.json({ ok: false, error: `Movie ${movieId} not found in scrape data` });
+    }
+
+    // Load existing data
+    let existingWrapper;
+    try {
+      const jsonContent = fs.readFileSync(jsonPath, 'utf-8');
+      existingWrapper = JSON.parse(jsonContent);
+    } catch (err) {
+      return res.json({ ok: false, error: `Failed to read existing data: ${err.message}` });
+    }
+
+    console.error(`[Routes] Re-scraping ${movieId} with ${scraper}`);
+
+    // Return immediate response with WebSocket ID
+    const scrapeId = Date.now().toString();
+    res.json({ ok: true, scrapeId, message: `Re-scraping started with ${scraper}` });
+
+    // Start re-scraping in background with WebSocket communication
+    const emitter = new EventEmitter();
+
+    // Broadcast events to all WebSocket clients
+    emitter.on('start', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'start', data, scrapeId }));
+        }
+      });
+    });
+
+    emitter.on('progress', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'progress', data, scrapeId }));
+        }
+      });
+    });
+
+    emitter.on('scraperError', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'scraperError', data, scrapeId }));
+          if (data.callback) {
+            client.pendingScraperError = data.callback;
+          }
+        }
+      });
+    });
+
+    emitter.on('error', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'error', data, scrapeId }));
+        }
+      });
+    });
+
+    emitter.on('prompt', (data) => {
+      const promptId = Date.now().toString();
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({
+            event: 'prompt',
+            data: {
+              promptId,
+              scraperName: data.scraperName,
+              promptType: data.promptType,
+              message: data.message
+            },
+            scrapeId
+          }));
+          client.pendingPrompts = client.pendingPrompts || {};
+          client.pendingPrompts[promptId] = data.callback;
+        }
+      });
+    });
+
+    // Count total tasks (video + actors if enabled)
+    const config = loadConfig();
+    let totalTasks = 1; // Always have video re-scraping
+    if (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled) {
+      totalTasks++; // Add actor scraping
+    }
+    let completedTasks = 0;
+    console.error(`[Routes] Total tasks to run: ${totalTasks}`);
+
+    // Helper function to check if all tasks are complete
+    const checkAllTasksComplete = () => {
+      completedTasks++;
+      console.error(`[Routes] Task completed: ${completedTasks}/${totalTasks}`);
+
+      if (completedTasks >= totalTasks) {
+        console.error('[Routes] All re-scraping tasks completed, sending complete event');
+        req.wss.clients.forEach(client => {
+          if (client.readyState === 1) {
+            client.send(JSON.stringify({
+              event: 'complete',
+              data: {
+                message: `Re-scraping completed. Data merged with priority to ${scraper}.`,
+                movieId: movieId
+              },
+              scrapeId
+            }));
+          }
+        });
+
+        // Reload scrape reader to reflect changes
+        scrapeReader.loadScrapeItems();
+      }
+    };
+
+    // Execute scraper for single movie
+    executeScraper(scraper, [movieId], emitter)
+      .then((results) => {
+        console.error(`[Routes] Re-scraping with ${scraper} completed`);
+
+        // Results is an array of scraped data
+        if (!results || results.length === 0) {
+          throw new Error(`No results from scraper ${scraper}`);
+        }
+
+        const newData = results[0];
+
+        // Manual merge with priority to new data
+        // Start with existing data as base
+        const mergedData = JSON.parse(JSON.stringify(existingWrapper.data));
+
+        // Override with new data where available (non-empty values)
+        Object.keys(newData).forEach(field => {
+          const value = newData[field];
+
+          // Check if value is non-empty
+          const isEmpty = value === null ||
+                         value === undefined ||
+                         value === '' ||
+                         (Array.isArray(value) && value.length === 0) ||
+                         (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
+
+          // If new value is not empty, use it (override existing)
+          if (!isEmpty) {
+            mergedData[field] = value;
+          }
+          // If new value is empty but field doesn't exist in merged, add it anyway
+          else if (!(field in mergedData)) {
+            mergedData[field] = value;
+          }
+        });
+
+        // Ensure 'id' matches movieId
+        mergedData.id = movieId;
+
+        // Update wrapper with new data and metadata
+        const updatedWrapper = {
+          scrapedAt: new Date().toISOString(),
+          sources: [...new Set([scraper, ...(existingWrapper.sources || [])])], // Add new scraper to sources
+          videoFile: existingWrapper.videoFile,
+          data: mergedData
+        };
+
+        // Save updated JSON
+        fs.writeFileSync(jsonPath, JSON.stringify(updatedWrapper, null, 2), 'utf-8');
+        console.error(`[Routes] Saved merged data to ${jsonPath}`);
+
+        // Video scraping done - increment counter
+        checkAllTasksComplete();
+
+        // Auto-start actor scraping if enabled
+        if (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled) {
+          console.error('[Routes] Auto-starting actor scraping after video re-scraping completed');
+
+          // Wait 1 second before starting actor scraping
+          setTimeout(() => {
+            // Send notification to client
+            req.wss.clients.forEach(client => {
+              if (client.readyState === 1) {
+                client.send(JSON.stringify({
+                  event: 'progress',
+                  data: { message: '🎭 Starting automatic actor scraping...' },
+                  scrapeId
+                }));
+              }
+            });
+
+            // Start batch actor processing
+            const { batchProcessActors } = require('../core/actorScraperManager');
+
+            batchProcessActors(emitter)
+              .then((summary) => {
+                console.error('[Routes] Actor scraping completed successfully');
+
+                // Send completion message
+                req.wss.clients.forEach(client => {
+                  if (client.readyState === 1) {
+                    client.send(JSON.stringify({
+                      event: 'progress',
+                      data: {
+                        message: `✅ Actor scraping completed: ${summary.scraping.total} actors processed (${summary.scraping.scraped} new, ${summary.scraping.cached} cached, ${summary.scraping.failed} failed). ${summary.updating.updated} movie files updated.`
+                      },
+                      scrapeId
+                    }));
+
+                    // Send actorsUpdated event to trigger client reload
+                    client.send(JSON.stringify({
+                      event: 'actorsUpdated',
+                      data: {
+                        updated: summary.updating.updated
+                      },
+                      scrapeId
+                    }));
+                  }
+                });
+
+                // Actor scraping done - increment counter
+                checkAllTasksComplete();
+              })
+              .catch((error) => {
+                console.error('[Routes] Error in auto actor scraping:', error);
+                req.wss.clients.forEach(client => {
+                  if (client.readyState === 1) {
+                    client.send(JSON.stringify({
+                      event: 'progress',
+                      data: { message: `❌ Actor scraping failed: ${error.message}` },
+                      scrapeId
+                    }));
+                  }
+                });
+
+                // Actor scraping failed but still increment counter
+                checkAllTasksComplete();
+              });
+          }, 1000);
+        }
+      })
+      .catch((err) => {
+        console.error(`[Routes] Re-scraping error:`, err);
+        req.wss.clients.forEach(client => {
+          if (client.readyState === 1) {
+            client.send(JSON.stringify({
+              event: 'error',
+              data: { message: err.message },
+              scrapeId
+            }));
+          }
+        });
+
+        // Even on error, increment counter to allow completion
+        checkAllTasksComplete();
+      });
+
+  } catch (err) {
+    console.error('[Routes] Re-scraping error:', err);
+    return res.json({ ok: false, error: err.message });
   }
 });
 

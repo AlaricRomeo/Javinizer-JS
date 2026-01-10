@@ -19,7 +19,8 @@
     "rating": "Rating e Classificazione",
     "categories": "Categorie",
     "mediaUrls": "Media URLs",
-    "actors": "Attori"
+    "actors": "Attori",
+    "rescrapeCurrentMovie": "Re-scrape Film Corrente:"
   },
   "fields": {
     "id": "ID",
@@ -68,7 +69,8 @@
     "upload": "Carica",
     "deleteLocalPhoto": "Elimina Foto Locale",
     "copyActorsToFolder": "Copia attori nella cartella del film",
-    "play": "▶ Riproduci"
+    "play": "▶ Riproduci",
+    "selectScraper": "-- Seleziona Scraper --"
   },
   "placeholders": {
     "noImage": "Nessuna immagine",
@@ -158,7 +160,8 @@
     "preview": "Anteprima",
     "searchActor": "Cerca Attore",
     "note": "Nota",
-    "noteHelp": "Informazioni aggiuntive sull'attore"
+    "noteHelp": "Informazioni aggiuntive sull'attore",
+    "overwriteLocalData": "Sovrascrivi dati locali (foto compresa)"
   },
   "actors": {
     "pageTitle": "Attori - Javinizer",
