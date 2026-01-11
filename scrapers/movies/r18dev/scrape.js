@@ -7,6 +7,23 @@ const { searchCode, fetchJson, closeBrowser } = require('./browser');
 const { createEmptyMovie, removeEmptyFields } = require('../schema');
 
 /**
+ * Convert low-res cover URL (ps.jpg) to hi-res (pl.jpg) if available
+ * @param {string} url - Cover URL
+ * @returns {string} Hi-res cover URL
+ */
+function convertToHiResCover(url) {
+  if (!url) return url;
+
+  // Check if URL ends with ps.jpg (small poster)
+  if (url.endsWith('ps.jpg')) {
+    // Replace with pl.jpg (large poster)
+    return url.replace(/ps\.jpg$/, 'pl.jpg');
+  }
+
+  return url;
+}
+
+/**
  * Convert r18.dev JSON format to standard movie format
  * @param {object} data - R18.dev raw JSON data
  * @param {string} code - Movie code
@@ -156,7 +173,9 @@ function convertToStandardFormat(data, code) {
   }
 
   // Images - r18.dev uses specific field names
-  movie.coverUrl = data.jacket_full_url || data.coverUrl || data.poster || data.thumbnail || '';
+  // Convert ps.jpg (small) to pl.jpg (large) for hi-res covers
+  const rawCoverUrl = data.jacket_full_url || data.coverUrl || data.poster || data.thumbnail || '';
+  movie.coverUrl = convertToHiResCover(rawCoverUrl);
   movie.screenshotUrl = data.screenshotUrl || '';
   movie.trailerUrl = data.sample_url || data.trailerUrl || data.sampleUrl || '';
 
