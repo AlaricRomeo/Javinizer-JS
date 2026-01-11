@@ -66,6 +66,14 @@ if not exist "node_modules\" (
     )
 )
 
+REM Kill any existing processes on port 4004
+echo [INFO] Checking for existing processes on port 4004...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :4004 ^| findstr LISTENING') do (
+    echo [INFO] Found existing process on port 4004. Terminating PID: %%a
+    taskkill /f /pid %%a 2>nul
+    timeout /t 2 /nobreak >nul
+)
+
 REM Start the server and open browser
 echo [INFO] Starting Javinizer-JS server...
 echo [INFO] Opening browser at http://localhost:4004

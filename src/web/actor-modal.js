@@ -8,6 +8,7 @@
 let unifiedCurrentActor = null;
 let unifiedIsNewActor = false;
 let modalMode = 'movie'; // 'movie' for index.html, 'library' for actors.html
+let lastSearchForceOverwrite = false; // Track if last search used forceOverwrite
 
 // Note: editingActorIndex is managed by app.js in movie context
 // and is not part of the unified system since it's specific to movie context
@@ -94,9 +95,10 @@ function openActorModal(actorOrIndex = null) {
     // Manage remove button visibility
     if (removeBtn) removeBtn.style.display = unifiedIsNewActor ? "none" : "block";
 
-    // Reset checkbox to unchecked
+    // Reset checkbox to unchecked and clear forceOverwrite flag
     const overwriteCheckbox = document.getElementById("actorEditOverwriteLocal");
     if (overwriteCheckbox) overwriteCheckbox.checked = false;
+    lastSearchForceOverwrite = false;
 
     // Show modal using CSS class
     modal.classList.add("active");
@@ -182,9 +184,10 @@ function openActorModal(actorOrIndex = null) {
       updateActorPreview('');
     }
 
-    // Reset checkbox to unchecked
+    // Reset checkbox to unchecked and clear forceOverwrite flag
     const overwriteCheckbox = document.getElementById("actorEditOverwriteLocal");
     if (overwriteCheckbox) overwriteCheckbox.checked = false;
+    lastSearchForceOverwrite = false;
 
     // Show modal
     modal.classList.add('active');
@@ -224,67 +227,77 @@ function updateActorPreview(url, forceRemote = false) {
     return;
   }
 
-  if (url && url.trim() !== "") {
-    // If forceRemote is true, skip local cache and use the provided URL directly
-    if (forceRemote) {
-      previewImg.src = url;
+  // If forceRemote is true, skip local cache and use the provided URL directly
+  if (forceRemote && url && url.trim() !== "") {
+    previewImg.src = url;
+    previewImg.style.display = "block";
+    placeholder.style.display = "none";
+
+    previewImg.onerror = () => {
+      previewImg.style.display = "none";
+      placeholder.style.display = "block";
+    };
+
+    previewImg.onload = () => {
       previewImg.style.display = "block";
       placeholder.style.display = "none";
+    };
+    return;
+  }
 
-      previewImg.onerror = () => {
-        previewImg.style.display = "none";
-        placeholder.style.display = "block";
-      };
+  // If we have an actor, prioritize local file lookup
+  // This works even when url is empty (after uploading a local image)
+  if (unifiedCurrentActor && (unifiedCurrentActor.id || unifiedCurrentActor.name)) {
+    // Use actor ID if available (most reliable), otherwise normalize the name
+    const actorId = unifiedCurrentActor.id || normalizeActorNameForFile(unifiedCurrentActor.name);
+    // Add cache-busting timestamp to force reload after image changes
+    const localImageUrl = `/actors/${actorId}.jpg?t=${Date.now()}`;
 
-      previewImg.onload = () => {
-        previewImg.style.display = "block";
-        placeholder.style.display = "none";
-      };
-    }
-    // In both modes, prioritize local file lookup if we have an actor name
-    // This applies to both movie and library contexts
-    else if (unifiedCurrentActor && unifiedCurrentActor.name) {
-      // Try to load from local actors cache first
-      const normalizedActorName = normalizeActorNameForFile(unifiedCurrentActor.name);
-      const localImageUrl = `/actors/${normalizedActorName}.jpg`;
+    previewImg.src = localImageUrl;
 
-      previewImg.src = localImageUrl;
-
-      // Set up error handler for when local image doesn't exist
-      previewImg.onerror = () => {
-        // If local image fails, try the original thumb URL
-        if (url && url !== localImageUrl) {
-          previewImg.src = url;
-          previewImg.onerror = () => {
-            previewImg.style.display = "none";
-            placeholder.style.display = "block";
-          };
-        } else {
+    // Set up error handler for when local image doesn't exist
+    previewImg.onerror = () => {
+      // If local image fails, try the original thumb URL
+      if (url && url.trim() !== "" && url !== localImageUrl) {
+        previewImg.src = url;
+        previewImg.onerror = () => {
           previewImg.style.display = "none";
           placeholder.style.display = "block";
-        }
-      };
-
-      previewImg.onload = () => {
-        previewImg.style.display = "block";
-        placeholder.style.display = "none";
-      };
-    } else {
-      // When no actor name is available, use the provided URL
-      previewImg.src = url;
-      previewImg.style.display = "block";
-      placeholder.style.display = "none";
-
-      // Handle image loading error
-      previewImg.onerror = () => {
+        };
+        previewImg.onload = () => {
+          previewImg.style.display = "block";
+          placeholder.style.display = "none";
+        };
+      } else {
         previewImg.style.display = "none";
         placeholder.style.display = "block";
-      };
-    }
-  } else {
-    previewImg.style.display = "none";
-    placeholder.style.display = "block";
+      }
+    };
+
+    previewImg.onload = () => {
+      previewImg.style.display = "block";
+      placeholder.style.display = "none";
+    };
+    return;
   }
+
+  // If we have a URL but no actor name, use the provided URL
+  if (url && url.trim() !== "") {
+    previewImg.src = url;
+    previewImg.style.display = "block";
+    placeholder.style.display = "none";
+
+    // Handle image loading error
+    previewImg.onerror = () => {
+      previewImg.style.display = "none";
+      placeholder.style.display = "block";
+    };
+    return;
+  }
+
+  // No URL and no actor name - show placeholder
+  previewImg.style.display = "none";
+  placeholder.style.display = "block";
 }
 
 // Save actor based on current mode
@@ -316,7 +329,8 @@ async function saveActor() {
       height: parseInt(document.getElementById('actorEditHeight').value) || 0,
       bust: parseInt(document.getElementById('actorEditBust').value) || 0,
       waist: parseInt(document.getElementById('actorEditWaist').value) || 0,
-      hips: parseInt(document.getElementById('actorEditHips').value) || 0
+      hips: parseInt(document.getElementById('actorEditHips').value) || 0,
+      forceOverwrite: lastSearchForceOverwrite // Pass the forceOverwrite flag to backend
     };
 
     try {
@@ -407,6 +421,9 @@ async function searchActor() {
 
   // Check if overwrite is enabled
   const forceOverwrite = overwriteCheckbox ? overwriteCheckbox.checked : false;
+
+  // Save this state for the Save button to use later
+  lastSearchForceOverwrite = forceOverwrite;
 
   // Disable button and show loading
   searchBtn.disabled = true;

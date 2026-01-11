@@ -6,6 +6,8 @@ const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 const crypto = require("crypto");
+const https = require("https");
+const http = require("http");
 
 // Core
 const LibraryReader = require("../core/libraryReader");
@@ -1414,6 +1416,67 @@ router.post("/actors/save", async (req, res) => {
     // Update thumbUrl if thumb is a remote URL
     if (actorData.thumb && actorData.thumb.startsWith('http')) {
       actorData.thumbUrl = actorData.thumb;
+    }
+
+    // If forceOverwrite is true and we have a remote thumb URL, download it
+    if (actorData.forceOverwrite && actorData.thumb && actorData.thumb.startsWith('http')) {
+      try {
+        console.log(`[ActorSave] Force overwrite enabled, downloading image: ${actorData.thumb}`);
+
+        // Download image using native https/http
+        const imageUrl = new URL(actorData.thumb);
+        const protocol = imageUrl.protocol === 'https:' ? https : http;
+
+        const imageBuffer = await new Promise((resolve, reject) => {
+          const chunks = [];
+          const request = protocol.get(actorData.thumb, { timeout: 15000 }, (response) => {
+            // Follow redirects
+            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+              const redirectUrl = response.headers.location;
+              const redirectProtocol = redirectUrl.startsWith('https') ? https : http;
+              redirectProtocol.get(redirectUrl, { timeout: 15000 }, (redirectResponse) => {
+                redirectResponse.on('data', chunk => chunks.push(chunk));
+                redirectResponse.on('end', () => resolve(Buffer.concat(chunks)));
+                redirectResponse.on('error', reject);
+              }).on('error', reject);
+              return;
+            }
+
+            response.on('data', chunk => chunks.push(chunk));
+            response.on('end', () => resolve(Buffer.concat(chunks)));
+            response.on('error', reject);
+          });
+
+          request.on('error', reject);
+          request.on('timeout', () => {
+            request.destroy();
+            reject(new Error('Request timeout'));
+          });
+        });
+
+        // Save to temp directory
+        const tempPath = path.join(__dirname, '../../data/temp');
+        if (!fs.existsSync(tempPath)) {
+          fs.mkdirSync(tempPath, { recursive: true });
+        }
+
+        // Generate unique temp filename
+        const hash = crypto.createHash('md5').update(imageBuffer).digest('hex').substring(0, 8);
+        const timestamp = Date.now();
+        const ext = path.extname(imageUrl.pathname) || '.jpg';
+        const tempFilename = `temp_overwrite_${timestamp}_${hash}${ext}`;
+        const tempFilePath = path.join(tempPath, tempFilename);
+
+        fs.writeFileSync(tempFilePath, imageBuffer);
+        console.log(`[ActorSave] Downloaded image to temp: ${tempFilename}`);
+
+        // Set uploadedFile to the temp path so it will be moved to actors folder
+        actorData.uploadedFile = `/media/${tempFilename}`;
+
+      } catch (downloadErr) {
+        console.error(`[ActorSave] Failed to download remote image: ${downloadErr.message}`);
+        // Continue without downloading - will keep the remote URL
+      }
     }
 
     // Priority 1: Check for uploadedFile field (new clean approach)
