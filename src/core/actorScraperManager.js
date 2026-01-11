@@ -128,9 +128,9 @@ function executeActorScraper(scraperName, actorName) {
     try {
       const scraperModule = require(scraperPath);
 
-      // Prefer exported function `scrapeJavDB` or `scrapeActor` if available
-      const fn = (scraperModule && (scraperModule.scrapeJavDB || scraperModule.scrapeActor || scraperModule.scrape))
-        ? (scraperModule.scrapeJavDB || scraperModule.scrapeActor || scraperModule.scrape)
+      // Prefer exported function based on scraper type
+      const fn = (scraperModule && (scraperModule.scrapeLocal || scraperModule.scrapeJavDB || scraperModule.scrapeActor || scraperModule.scrape))
+        ? (scraperModule.scrapeLocal || scraperModule.scrapeJavDB || scraperModule.scrapeActor || scraperModule.scrape)
         : null;
 
       if (typeof fn === 'function') {
@@ -403,6 +403,101 @@ function mergeActorData(actorName, scraperResults, scraperPriority) {
 // ─────────────────────────────
 
 /**
+ * Scrape actor data from enabled scrapers, excluding 'local'
+ * @param {string} actorName - Actor name
+ * @param {EventEmitter} emitter - Optional event emitter
+ * @returns {Promise<object|null>} - Merged actor data or null
+ */
+async function scrapeActorExcludingLocal(actorName, emitter = null) {
+  const config = loadConfig();
+  const actorsEnabled = (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false);
+
+  if (!actorsEnabled) {
+    console.error('[ActorScraperManager] Actor scraping is disabled in config');
+    return null;
+  }
+
+  const originalScrapers = (config.scrapers && config.scrapers.actors && config.scrapers.actors.scrapers)
+    ? config.scrapers.actors.scrapers
+    : ['javdb'];
+
+  // Filter out 'local' scraper
+  const enabledScrapers = originalScrapers.filter(s => s !== 'local');
+
+  console.log(`[ActorScraperManager] Scraping actor (excluding local): ${actorName}`);
+  console.log(`[ActorScraperManager] Enabled scrapers: ${enabledScrapers.join(', ')}`);
+
+  if (emitter) {
+    emitter.emit('progress', {
+      message: `  📂 Scrapers: ${enabledScrapers.join(', ')}`
+    });
+  }
+
+  let actorId = resolveActorId(actorName);
+  if (!actorId) {
+    actorId = normalizeActorName(actorName);
+    console.log(`[ActorScraperManager] New actor, generated ID: ${actorId}`);
+  } else {
+    console.log(`[ActorScraperManager] Found existing actor ID: ${actorId}`);
+  }
+
+  const scraperResults = [];
+
+  for (const scraperName of enabledScrapers) {
+    if (emitter) {
+      emitter.emit('progress', {
+        message: `[${scraperName}] Searching for: ${actorName}`
+      });
+    }
+
+    const result = await executeActorScraper(scraperName, actorName);
+
+    if (result) {
+      scraperResults.push({
+        scraperName,
+        data: result
+      });
+
+      console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
+
+      if (emitter) {
+        emitter.emit('progress', {
+          message: `[${scraperName}] ✓ Data found`
+        });
+      }
+
+      const tempMerged = mergeActorData(actorName, scraperResults, enabledScrapers);
+      if (isActorComplete(tempMerged)) {
+        console.log('[ActorScraperManager] All fields populated, stopping scraping');
+
+        if (emitter) {
+          emitter.emit('progress', {
+            message: `  ✓ All fields complete, stopping`
+          });
+        }
+        break;
+      }
+    } else {
+      if (emitter) {
+        emitter.emit('progress', {
+          message: `[${scraperName}] ✗ Not found`
+        });
+      }
+    }
+  }
+
+  if (scraperResults.length === 0) {
+    console.error('[ActorScraperManager] No data found for actor');
+    return null;
+  }
+
+  const merged = mergeActorData(actorName, scraperResults, enabledScrapers);
+  saveActorLocal(merged);
+
+  return merged;
+}
+
+/**
  * Scrape actor data from enabled scrapers
  * Uses intelligent merging and stops when all fields are populated
  *
@@ -452,7 +547,7 @@ async function scrapeActor(actorName, emitter = null) {
   for (const scraperName of enabledScrapers) {
     if (emitter) {
       emitter.emit('progress', {
-        message: `  🔍 Trying scraper: ${scraperName}`
+        message: `[${scraperName}] Searching for: ${actorName}`
       });
     }
 
@@ -468,7 +563,7 @@ async function scrapeActor(actorName, emitter = null) {
 
       if (emitter) {
         emitter.emit('progress', {
-          message: `  ✓ Scraper ${scraperName} - data found`
+          message: `[${scraperName}] ✓ Data found`
         });
       }
 
@@ -487,7 +582,7 @@ async function scrapeActor(actorName, emitter = null) {
     } else {
       if (emitter) {
         emitter.emit('progress', {
-          message: `  ✗ Scraper ${scraperName} - no data`
+          message: `[${scraperName}] ✗ Not found`
         });
       }
     }
@@ -513,20 +608,14 @@ async function scrapeActor(actorName, emitter = null) {
  * Tries exact name first, then inverted name in cache
  *
  * @param {string} actorName - Actor name (any variant)
- * @param {boolean} forceOverwrite - If true, always scrape from remote and overwrite local data
+ * @param {boolean} forceOverwrite - If true, exclude 'local' scraper to force remote scraping
  * @returns {Promise<object|null>} - Actor data or null
  */
 async function getActor(actorName, forceOverwrite = false) {
-  // If forceOverwrite is true, skip cache and scrape directly
-  // BUT do NOT save yet - just return the scraped data
-  // The frontend will handle the overwrite when user actually saves
+  // If forceOverwrite is true, skip local scraper and force remote scraping
   if (forceOverwrite) {
-    console.log(`[ActorScraperManager] Force overwrite enabled, scraping from remote (not saving): ${actorName}`);
-    const scrapedActor = await scrapeActor(actorName);
-
-    // Just return the scraped data without saving
-    // The thumb will be a remote URL, which is fine for preview
-    return scrapedActor;
+    console.log(`[ActorScraperManager] Force overwrite enabled, excluding 'local' scraper: ${actorName}`);
+    return await scrapeActorExcludingLocal(actorName);
   }
 
   // Normal flow: try cache first
@@ -725,40 +814,22 @@ async function batchScrapeActors(emitter = null) {
 
           if (emitter) {
             emitter.emit('progress', {
-              message: `[Actor Scrape] ${actorName} - found in cache`
+              message: `[local] ✓ ${actorName} - complete in cache`
             });
           }
           continue;
         }
       }
 
-      // Use getActor which checks cache first, then scrapes if needed
-      const actorData = await getActor(actorName);
+      // Use scrapeActor with emitter to get detailed progress messages
+      const actorData = await scrapeActor(actorName, emitter);
 
       if (actorData) {
-        // Check if it was from cache or scraped
-        if (actorId && loadActorLocal(actorId)) {
-          scraped++;
-          console.log(`[Actor Scrape] Successfully processed: ${actorName}`);
-        } else {
-          scraped++;
-          console.log(`[Actor Scrape] Successfully scraped: ${actorName}`);
-        }
-
-        if (emitter) {
-          emitter.emit('progress', {
-            message: `[Actor Scrape] ${actorName} - processed successfully`
-          });
-        }
+        scraped++;
+        console.log(`[Actor Scrape] Successfully processed: ${actorName}`);
       } else {
         failed++;
         console.log(`[Actor Scrape] Failed to process: ${actorName}`);
-
-        if (emitter) {
-          emitter.emit('progress', {
-            message: `[Actor Scrape] ${actorName} - processing failed`
-          });
-        }
       }
     } catch (error) {
       failed++;
@@ -839,30 +910,43 @@ async function updateMovieActorData() {
         for (const actor of movieData.actor) {
           if (!actor.name) continue;
 
-          // Resolve actor ID
-          const actorId = resolveActorId(actor.name);
+          // Try to resolve actor ID
+          let actorId = resolveActorId(actor.name);
+
+          // If not found, try inverted name
           if (!actorId) {
-            console.error(`[ActorScraperManager] No actor ID found for: ${actor.name}`);
-            continue;
+            const parts = actor.name.trim().split(/\s+/);
+            if (parts.length === 2) {
+              const invertedName = `${parts[1]} ${parts[0]}`;
+              actorId = resolveActorId(invertedName);
+            }
+          }
+
+          // If still not found, try normalized name as fallback
+          if (!actorId) {
+            actorId = normalizeActorName(actor.name);
           }
 
           // Load actor data from cache
           const actorData = loadActorLocal(actorId);
           if (!actorData) {
-            console.error(`[ActorScraperManager] Actor not in cache: ${actor.name}`);
+            console.error(`[ActorScraperManager] Actor not in cache: ${actor.name} (tried ID: ${actorId})`);
             continue;
           }
 
-          // Update actor fields in movie JSON
-          actor.altName = actorData.altName || actor.altName;
-          actor.birthdate = actorData.birthdate || actor.birthdate;
-          actor.height = actorData.height || actor.height;
-          actor.bust = actorData.bust || actor.bust;
-          actor.waist = actorData.waist || actor.waist;
-          actor.hips = actorData.hips || actor.hips;
-          actor.thumb = resolveActorThumb(actorData);
+          // Update actor fields in movie JSON (only if not empty)
+          if (actorData.altName) actor.altName = actorData.altName;
+          if (actorData.birthdate) actor.birthdate = actorData.birthdate;
+          if (actorData.height) actor.height = actorData.height;
+          if (actorData.bust) actor.bust = actorData.bust;
+          if (actorData.waist) actor.waist = actorData.waist;
+          if (actorData.hips) actor.hips = actorData.hips;
+
+          const thumbUrl = resolveActorThumb(actorData);
+          if (thumbUrl) actor.thumb = thumbUrl;
 
           movieUpdated = true;
+          console.log(`[ActorScraperManager] Updated actor in ${filename}: ${actor.name} -> ${actorId}`);
         }
 
         // Save updated movie JSON (preserve wrapper if it exists)

@@ -63,18 +63,34 @@ Ogni attore ha i seguenti campi:
 
 ## Scrapers
 
+### Regola di Name Inversion (IMPORTANTE)
+
+**Ogni scraper DEVE implementare la logica di inversione del nome:**
+
+1. Prova a cercare l'attore con il nome originale
+2. Se NON trovato, inverte il nome (es. "Mao Hamasaki" → "Hamasaki Mao")
+3. Prova a cercare con il nome invertito
+4. Se NON trovato, passa al prossimo scraper
+
+**Razionale:**
+- L'index NON deve contenere varianti invertite
+- Ogni scraper è responsabile di provare l'inversione
+- Questo evita duplicati nell'index e mantiene la logica centralizzata
+
 ### Local Scraper
 
 Legge dati da `data/actors/{id}/actor.json`
 - Cache layer per lookup veloci
-- Usa `.index.json` per risolvere varianti del nome
+- Usa `actors-index.json` per risolvere varianti del nome
+- **Implementa name inversion**: prova prima con nome originale, poi con nome invertito
 
-### JAVDatabase Scraper
+### JAVDB Scraper (javdatabase.com)
 
 Scarica dati da `https://www.javdatabase.com/idols/{slug}/`
-- Estrae: name, birthdate, height, bust, waist, hips, blood type, photo
-- Usa Puppeteer per lo scraping (stessa dipendenza di javlibrary)
-- Scarica foto in `actorsPath/{slug}/photo.jpg`
+- Estrae: name, birthdate, height, bust, waist, hips, photo
+- Usa Puppeteer per lo scraping
+- Scarica foto in `actorsPath/{slug}/photo.{ext}`
+- **Implementa name inversion**: prova prima con nome originale, poi con nome invertito
 
 ## Merge Intelligente
 
@@ -103,17 +119,24 @@ Regole:
 
 ## Index Mapping
 
-Il file `.index.json` mappa tutte le varianti del nome all'ID normalizzato:
+Il file `actors-index.json` mappa le varianti del nome all'ID normalizzato:
 
 ```json
 {
   "hayami remu": "hayami-remu",
-  "早美れむ": "hayami-remu",
-  "remu hayami": "hayami-remu"
+  "早美れむ": "hayami-remu"
 }
 ```
 
-Questo permette di trovare l'attore usando qualsiasi variante del nome.
+**IMPORTANTE:** L'index NON contiene nomi invertiti. Gli scrapers gestiscono l'inversione autonomamente.
+
+Varianti incluse nell'index:
+- Nome principale (`name`)
+- Nome alternativo (`altName`)
+- Altri nomi (`otherNames[]`)
+
+Varianti NON incluse (gestite dagli scrapers):
+- Nomi invertiti (es. "Yura Kana" ↔ "Kana Yura")
 
 ## Integrazione in scrapeSaver.js
 

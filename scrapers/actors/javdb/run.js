@@ -3,14 +3,8 @@
 /**
  * JAVDB Actor Scraper (renamed from javdatabase)
  *
- * Scrapes actor data from javdatabase.com with intelligent caching.
+ * Scrapes actor data from javdatabase.com
  * URL pattern: https://www.javdatabase.com/idols/{slug}/
- *
- * Cache Strategy:
- * 1. Check cache first (external path or internal)
- * 2. If data is complete, return it
- * 3. If data is incomplete or missing, scrape online
- * 4. Save to cache (external path if set, otherwise internal)
  *
  * Extracts:
  * - Name (from h1.idol-name, removes " - JAV Profile" suffix)
@@ -29,29 +23,8 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { createEmptyActor, removeEmptyFields, normalizeActorName } = require('../schema');
-const {
-  loadFromCache,
-  saveToCache,
-  isActorComplete,
-  mergeActorData,
-  getActorsCachePath
-} = require('../cache-helper');
+const { getActorsCachePath } = require('../cache-helper');
 
-/**
- * Load config.json
- */
-function loadConfig() {
-  const configPath = path.join(__dirname, '../../../config.json');
-
-  if (!fs.existsSync(configPath)) {
-    throw new Error('config.json not found');
-  }
-
-  const configData = fs.readFileSync(configPath, 'utf-8');
-  return JSON.parse(configData);
-}
-
-// Removed getActorsPath - now using cache-helper's getActorsCachePath()
 
 /**
  * Download image from URL
@@ -100,7 +73,7 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
   const slug = normalizeActorName(searchName);
   const url = `https://www.javdatabase.com/idols/${slug}/`;
 
-  console.error(`[JAVDB] ${tryInvertedName ? 'Retry with inverted name' : 'Scraping'}: ${url}`);
+  console.error(`[javdb] ${tryInvertedName ? 'Retry with inverted name' : 'Scraping'}: ${url}`);
 
   const shouldCloseBrowser = !browser;
 
@@ -127,14 +100,14 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
 
     // Prefer HTTP status code for existence checks (more reliable)
     const status = response ? response.status() : null;
-    console.error(`[JAVDB] HTTP status: ${status}`);
+    console.error(`[javdb] HTTP status: ${status}`);
 
     if (!response || (status >= 400 && status !== 301 && status !== 302)) {
-      console.error('[JAVDB] Actor not found (HTTP)');
+      console.error('[javdb] Actor not found (HTTP)');
 
       // On first attempt, try inverted name
       if (!tryInvertedName) {
-        console.error('[JAVDB] Trying inverted name...');
+        console.error('[javdb] Trying inverted name...');
         const result = await scrapeJavDB(actorName, true, browser);
         if (shouldCloseBrowser) await browser.close();
         return result;
@@ -148,10 +121,10 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
     const pageContent = await page.content();
     const hasName = await page.$('h1.idol-name');
     if (!hasName && (pageContent.includes('404') || pageContent.includes('Not Found'))) {
-      console.error('[JAVDB] Actor not found (DOM)');
+      console.error('[javdb] Actor not found (DOM)');
 
       if (!tryInvertedName) {
-        console.error('[JAVDB] Trying inverted name...');
+        console.error('[javdb] Trying inverted name...');
         const result = await scrapeJavDB(actorName, true, browser);
         if (shouldCloseBrowser) await browser.close();
         return result;
@@ -221,7 +194,7 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
 
     // Download photo if available
     if (photoUrl) {
-      console.error(`[JAVDB] Downloading photo: ${photoUrl}`);
+      console.error(`[javdb] Downloading photo: ${photoUrl}`);
 
       const actorsPath = getActorsCachePath();
 
@@ -239,7 +212,7 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
 
       try {
         await downloadImage(photoUrl, photoPath);
-        console.error(`[JAVDB] Photo saved: ${photoPath}`);
+        console.error(`[javdb] Photo saved: ${photoPath}`);
 
         // Always preserve original URL
         actor.thumbUrl = photoUrl;
@@ -250,7 +223,7 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
         // Set thumb to use /actors/ endpoint (works with both local and external actorsPath)
         actor.thumb = `/actors/${photoFilename}`;
       } catch (error) {
-        console.error(`[JAVDB] Failed to download photo:`, error.message);
+        console.error(`[javdb] Failed to download photo:`, error.message);
         // Still preserve URL even if download fails
         actor.thumbUrl = photoUrl;
         actor.thumb = photoUrl;
@@ -261,7 +234,7 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
     return removeEmptyFields(actor);
 
   } catch (error) {
-    console.error('[JAVDB] Error:', error.message);
+    console.error('[javdb] Error:', error.message);
 
     if (shouldCloseBrowser && browser) {
       await browser.close();
@@ -272,64 +245,32 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
 }
 
 /**
- * Main entry point with caching
+ * Main entry point
  */
 async function main() {
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
-    console.error('[JAVDB] Usage: node run.js <actor_name>');
+    console.error('[javdb] Usage: node run.js <actor_name>');
     process.exit(1);
   }
 
   const actorName = args[0];
 
   try {
-    // Step 1: Check cache first
-    console.error(`[JAVDB] Checking cache for: ${actorName}`);
-    const cachedActor = loadFromCache(actorName);
-
-    if (cachedActor && isActorComplete(cachedActor)) {
-      console.error('[JAVDB] Found complete data in cache');
-      console.log(JSON.stringify(cachedActor, null, 2));
-      process.exit(0);
-      return;
-    }
-
-    if (cachedActor) {
-      console.error('[JAVDB] Found partial data in cache, will merge with scraped data');
-    } else {
-      console.error('[JAVDB] No data in cache, will scrape online');
-    }
-
-    // Step 2: Scrape online
     const scrapedActor = await scrapeJavDB(actorName);
 
-    if (!scrapedActor) {
-      console.error('[JAVDB] Scraping failed, no data found');
-      // If we have partial cached data, return it
-      if (cachedActor) {
-        console.log(JSON.stringify(cachedActor, null, 2));
-      } else {
-        console.log(JSON.stringify(null));
-      }
+    if (scrapedActor) {
+      console.log(JSON.stringify(scrapedActor, null, 2));
       process.exit(0);
-      return;
+    } else {
+      console.error('[javdb] Scraping failed, no data found');
+      console.log(JSON.stringify(null));
+      process.exit(0);
     }
 
-    // Step 3: Merge cached and scraped data
-    const finalActor = cachedActor ? mergeActorData(cachedActor, scrapedActor) : scrapedActor;
-
-    // Step 4: Save to cache
-    console.error('[JAVDB] Saving to cache');
-    saveToCache(finalActor);
-
-    // Step 5: Return result
-    console.log(JSON.stringify(finalActor, null, 2));
-    process.exit(0);
-
   } catch (error) {
-    console.error('[JAVDB] Error:', error.message);
+    console.error('[javdb] Error:', error.message);
     console.log(JSON.stringify(null));
     process.exit(1);
   }

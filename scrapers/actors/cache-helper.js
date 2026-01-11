@@ -137,24 +137,17 @@ function resolveActorId(name) {
 /**
  * Load actor from cache (.nfo format)
  * Returns actor object or null if not found
- * Tries exact name first, then inverted name
+ *
+ * IMPORTANT: Does NOT try inverted names - that's the scraper's responsibility
+ * Each scraper should try the inverted name if the first lookup fails
  */
 function loadFromCache(actorName) {
   const actorsPath = getActorsCachePath();
 
-  // Try to resolve ID from index with exact name first
+  // Try to resolve ID from index
   let actorId = resolveActorId(actorName);
 
-  // If not found, try inverted name in index
-  if (!actorId) {
-    const parts = actorName.trim().split(/\s+/);
-    if (parts.length === 2) {
-      const invertedName = `${parts[1]} ${parts[0]}`;
-      actorId = resolveActorId(invertedName);
-    }
-  }
-
-  // If still not in index, try normalized name as fallback
+  // If not in index, try normalized name as fallback
   if (!actorId) {
     actorId = normalizeActorName(actorName);
   }
@@ -203,14 +196,14 @@ function saveToCache(actor) {
     // Convert to NFO format and save
     const nfoContent = actorToNFO(actor);
     fs.writeFileSync(actorNfoPath, nfoContent, 'utf-8');
-    console.error(`[CacheHelper] Saved to cache: ${actor.id}.nfo`);
+    console.error(`[CacheHelper] Saved actor to cache: ${actor.id}.nfo`);
 
     // Update index
     updateIndex(actor);
 
     return true;
   } catch (error) {
-    console.error(`[CacheHelper] Failed to save to cache:`, error.message);
+    console.error(`[CacheHelper] Failed to save actor to cache:`, error.message);
     return false;
   }
 }
