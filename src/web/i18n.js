@@ -14,7 +14,7 @@ async function loadLanguage(langCode) {
     const data = await res.json();
 
     if (!data.ok) {
-      console.error("Error loading language:", data.error);
+      console.error(`[i18n] ${t("messages.errorLoadingLanguage")}:`, data.error);
       return false;
     }
 
@@ -22,15 +22,17 @@ async function loadLanguage(langCode) {
     currentLang = langCode;
     return true;
   } catch (err) {
-    console.error("Error loading language:", err);
+    console.error(`[i18n] ${t("messages.errorLoadingLanguage")}:`, err);
     return false;
   }
 }
 
 /**
  * Ottiene una traduzione dal path (es: "fields.title")
+ * @param {string} path - Il path della traduzione (es: "messages.itemsDeleted")
+ * @param {Object} vars - Variabili da sostituire nel template (es: {count: 3})
  */
-function t(path) {
+function t(path, vars = {}) {
   const keys = path.split(".");
   let value = translations;
 
@@ -38,9 +40,16 @@ function t(path) {
     if (value && typeof value === "object" && key in value) {
       value = value[key];
     } else {
-      console.warn(`Translation missing: ${path}`);
+      console.warn(`[i18n] ${translations.messages?.translationMissing || "Translation missing"}: ${path}`);
       return path; // Fallback al path stesso
     }
+  }
+
+  // Sostituisci le variabili nel template (es: {count} → 3)
+  if (typeof value === "string" && Object.keys(vars).length > 0) {
+    return value.replace(/\{(\w+)\}/g, (match, key) => {
+      return vars.hasOwnProperty(key) ? vars[key] : match;
+    });
   }
 
   return value;
@@ -117,7 +126,7 @@ async function saveLanguageToConfig(langCode) {
       body: JSON.stringify(updatedConfig)
     });
   } catch (err) {
-    console.error("Error saving language to config:", err);
+    console.error(`[i18n] ${t("messages.errorSavingLanguageToConfig")}:`, err);
   }
 }
 
