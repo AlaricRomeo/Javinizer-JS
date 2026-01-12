@@ -181,7 +181,7 @@
     "overwriteLocalData": "Sovrascrivi dati locali (foto compresa)"
   },
   "actors": {
-    "pageTitle": "Attori - Javinizer",
+    "pageTitle": "Attori - Javinizer-JS",
     "heading": "Libreria Attori",
     "addActor": "Aggiungi Attore",
     "noActorsTitle": "Nessun Attore Trovato",
@@ -219,7 +219,7 @@
     "actorScrapingHelp": "Quando abilitato, i dati degli attori verranno scaricati e salvati in cache durante il salvataggio del film.",
     "externalActorsPath": "Percorso Esterno Attori (opzionale)",
     "externalActorsPathPlaceholder": "/mnt/storage/actors",
-    "externalActorsPathHelp": "Lascia vuoto per usare **./data/actors** (predefinito). Quando impostato, le miniature degli attori verranno scaricate in questo percorso e referenziate tramite percorso assoluto. Utile per condividere dati attori tra più istanze di Javinizer o con altri media server (es. Jellyfin, Plex).",
+    "externalActorsPathHelp": "Lascia vuoto per usare **./data/actors** (predefinito). Quando impostato, le miniature degli attori verranno scaricate in questo percorso e referenziate tramite percorso assoluto. Utile per condividere dati attori tra più istanze di Javinizer-JS o con altri media server (es. Jellyfin, Plex).",
     "actorScraperNames": "Nomi Scraper Attori (separati da virgola)",
     "actorScraperPlaceholder": "local, javdatabase",
     "actorScraperHelp": "Lista degli scraper attori abilitati in ordine di priorità (primo = priorità massima). Scraper disponibili: **local** (dati in cache), **javdatabase** (ricerca online).",
@@ -234,5 +234,51 @@
     "scrapeFolderPattern": "Pattern Cartella Modalità Scrape",
     "scrapeFolderPatternHelp": "Personalizza il pattern del nome cartella per i video scaricati. Usa placeholder: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Esempio: {id} - {title} ({maker} - {year})",
     "scrapeFolderPatternPlaceholder": "{id} - {title}"
+  },
+  "about": {
+    "pageTitle": "Info - Javinizer-JS",
+    "heading": "Info su Javinizer-JS",
+    "usageInstructions": "Istruzioni per l'Uso",
+    "scrapers": {
+      "title": "Scrapers",
+      "description": "Javinizer-JS supporta diversi scrapers di metadati che recuperano informazioni da varie fonti.",
+      "manualInteraction": {
+        "title": "Scrapers con Interazione Manuale",
+        "description": "Alcuni scrapers richiedono l'interazione manuale dell'utente per superare misure di sicurezza:",
+        "javlibrary": "Richiede di superare la verifica di Cloudflare e accettare l'accordo per adulti nella finestra del browser che si apre. Non chiudere la finestra del browser."
+      },
+      "flaresolverr": {
+        "title": "Scrapers che Richiedono FlareSolverr",
+        "description": "Gli scrapers che terminano con -fs richiedono che FlareSolverr sia installato e in esecuzione:",
+        "installation": "Per usare questi scrapers, installa FlareSolverr in un Container Docker:",
+        "link": "https://github.com/FlareSolverr/FlareSolverr"
+      }
+    },
+    "modes": {
+      "title": "Modalità di Funzionamento",
+      "scrape": {
+        "title": "Modalità Scrape",
+        "description": "In modalità Scrape, Javinizer-JS scansiona la tua libreria per file video, estrae i codici e recupera i metadati dagli scrapers configurati. I risultati vengono salvati come file JSON nella directory data/scrape/. Puoi quindi rivederli, modificarli e salvarli nella tua libreria con la corretta struttura di cartelle e file NFO."
+      },
+      "edit": {
+        "title": "Modalità Edit",
+        "description": "In modalità Edit, Javinizer-JS carica i file NFO esistenti dalla tua libreria, permettendoti di rivedere e modificare i metadati. Le modifiche vengono salvate direttamente nei file NFO nelle cartelle della tua libreria."
+      }
+    },
+    "actors": {
+      "title": "Gestione Attori",
+      "description": "Javinizer-JS può automaticamente scaricare e salvare in cache i dati degli attori durante il salvataggio dei film. Le miniature e i metadati degli attori vengono archiviati in data/actors/ per impostazione predefinita, o in un percorso personalizzato se configurato. Questo permette di avere informazioni coerenti sugli attori in tutta la tua libreria."
+    },
+    "config": {
+      "title": "Configurazione",
+      "description": "Visita la pagina Configurazione per impostare il percorso della tua libreria, abilitare gli scrapers, configurare lo scraping degli attori e personalizzare altre impostazioni. Le modifiche vengono salvate automaticamente e hanno effetto immediato."
+    },
+    "links": {
+      "title": "Link",
+      "github": "Repository GitHub",
+      "githubUrl": "https://github.com/AlaricRomeo/Javinizer-JS",
+      "issues": "Segnala Problemi",
+      "issuesUrl": "https://github.com/AlaricRomeo/Javinizer-JS/issues"
+    }
   }
 }

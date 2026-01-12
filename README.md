@@ -187,7 +187,7 @@ Your library should follow this structure:
   └── ...
 ```
 
-**Note:** Video files are optional - Javinizer works with NFO files only if you prefer.
+**Note:** Video files are optional - Javinizer-JS works with NFO files only if you prefer.
 
 ## Configuration
 

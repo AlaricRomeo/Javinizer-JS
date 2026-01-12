@@ -28,8 +28,21 @@ function cleanOldCache(userDataDir) {
 
     if (ageMs > CACHE_MAX_AGE_MS) {
       console.error('[JavLibrary Scrape] Cache is older than 6h, cleaning...');
-      fs.rmSync(userDataDir, { recursive: true, force: true });
-      console.error('[JavLibrary Scrape] Cache cleaned');
+
+      // Try graceful cleanup with timeout
+      const cleanupTimeout = setTimeout(() => {
+        console.error('[JavLibrary Scrape] Cache cleanup timeout - skipping (manual cleanup needed)');
+      }, 5000);
+
+      try {
+        fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+        clearTimeout(cleanupTimeout);
+        console.error('[JavLibrary Scrape] Cache cleaned');
+      } catch (rmError) {
+        clearTimeout(cleanupTimeout);
+        console.error(`[JavLibrary Scrape] Could not remove cache automatically: ${rmError.message}`);
+        console.error('[JavLibrary Scrape] Please manually delete:', userDataDir);
+      }
     }
   } catch (error) {
     console.error(`[JavLibrary Scrape] Error checking cache: ${error.message}`);

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="about.pageTitle">About - Javinizer-JS</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+  <link rel="manifest" href="favicon/site.webmanifest">
+  <link rel="stylesheet" href="navbar.css">
+  <link rel="stylesheet" href="css/about.css">
+  <script src="i18n.js"></script>
+  <script src="navbar-loader.js"></script>
+</head>
+<body>
+  <!-- Navbar will be loaded here by navbar-loader.js -->
+
+  <main class="container">
+    <h1 data-i18n="about.heading">About Javinizer-js</h1>
+
+    <section class="info-section">
+      <h2 data-i18n="about.usageInstructions">Usage Instructions</h2>
+
+      <div class="instruction-block">
+        <h3 data-i18n="about.scrapers.title">Scrapers</h3>
+        <p data-i18n="about.scrapers.description">Javinizer-JS supports multiple metadata scrapers that fetch information from various sources.</p>
+
+        <div class="subsection">
+          <h4 data-i18n="about.scrapers.manualInteraction.title">Manual Interaction Scrapers</h4>
+          <p data-i18n="about.scrapers.manualInteraction.description">Some scrapers require manual user interaction to bypass security measures:</p>
+          <ul>
+            <li><strong>javlibrary</strong> - <span data-i18n="about.scrapers.manualInteraction.javlibrary">Requires solving Cloudflare challenge and accepting adult agreement in the browser window that opens. Do not close the browser window.</span></li>
+          </ul>
+        </div>
+
+        <div class="subsection">
+          <h4 data-i18n="about.scrapers.flaresolverr.title">FlareSolverr Required Scrapers</h4>
+          <p data-i18n="about.scrapers.flaresolverr.description">Scrapers ending with <code>-fs</code> require FlareSolverr to be installed and running:</p>
+          <ul>
+            <li><strong>javlibrary-fs</strong></li>
+          </ul>
+          <p>
+            <span data-i18n="about.scrapers.flaresolverr.installation">To use these scrapers, install FlareSolverr in a Docker Container:</span>
+            <br>
+            <a href="https://github.com/FlareSolverr/FlareSolverr" target="_blank" data-i18n="about.scrapers.flaresolverr.link">https://github.com/FlareSolverr/FlareSolverr</a>
+          </p>
+        </div>
+      </div>
+
+      <div class="instruction-block">
+        <h3 data-i18n="about.modes.title">Operation Modes</h3>
+
+        <div class="subsection">
+          <h4 data-i18n="about.modes.scrape.title">Scrape Mode</h4>
+          <p data-i18n="about.modes.scrape.description">In Scrape mode, Javinizer-JS scans your library for video files, extracts their codes, and fetches metadata from configured scrapers. Results are saved as JSON files in <code>data/scrape/</code> directory. You can then review, edit, and save them to your library with proper folder structure and NFO files.</p>
+        </div>
+
+        <div class="subsection">
+          <h4 data-i18n="about.modes.edit.title">Edit Mode</h4>
+          <p data-i18n="about.modes.edit.description">In Edit mode, Javinizer-JS loads existing NFO files from your library, allowing you to review and modify metadata. Changes are saved directly to the NFO files in your library folders.</p>
+        </div>
+      </div>
+
+      <div class="instruction-block">
+        <h3 data-i18n="about.actors.title">Actor Management</h3>
+        <p data-i18n="about.actors.description">Javinizer-JS can automatically scrape and cache actor data during movie save operations. Actor thumbnails and metadata are stored in <code>data/actors/</code> by default, or in a custom path if configured. This allows for consistent actor information across your library.</p>
+      </div>
+
+      <div class="instruction-block">
+        <h3 data-i18n="about.config.title">Configuration</h3>
+        <p data-i18n="about.config.description">Visit the Configuration page to set up your library path, enable scrapers, configure actor scraping, and customize other settings. Changes are saved automatically and take effect immediately.</p>
+      </div>
+    </section>
+
+    <section class="info-section">
+      <h2 data-i18n="about.links.title">Links</h2>
+      <ul>
+        <li><a href="https://github.com/AlaricRomeo/Javinizer-JS" target="_blank" data-i18n="about.links.github">GitHub Repository</a></li>
+        <li><a href="https://github.com/AlaricRomeo/Javinizer-JS/issues" target="_blank" data-i18n="about.links.issues">Report Issues</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    // Navbar is loaded automatically by navbar-loader.js
+    // i18n is initialized automatically by navbar-loader.js
+  </script>
+</body>
+</html>

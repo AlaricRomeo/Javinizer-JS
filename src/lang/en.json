@@ -180,7 +180,7 @@
     "overwriteLocalData": "Overwrite local data (including photo)"
   },
   "actors": {
-    "pageTitle": "Actors - Javinizer",
+    "pageTitle": "Actors - Javinizer-JS",
     "heading": "Actors Library",
     "addActor": "Add Actor",
     "noActorsTitle": "No Actors Found",
@@ -218,7 +218,7 @@
     "actorScrapingHelp": "When enabled, actor data will be scraped and cached during movie save.",
     "externalActorsPath": "External Actors Path (optional)",
     "externalActorsPathPlaceholder": "/mnt/storage/actors",
-    "externalActorsPathHelp": "Leave empty to use **./data/actors** (default). When set, actor thumbnails will be downloaded to this path and referenced by absolute path. Useful for sharing actor data across multiple Javinizer instances or with other media servers (e.g., Jellyfin, Plex).",
+    "externalActorsPathHelp": "Leave empty to use **./data/actors** (default). When set, actor thumbnails will be downloaded to this path and referenced by absolute path. Useful for sharing actor data across multiple Javinizer-JS instances or with other media servers (e.g., Jellyfin, Plex).",
     "actorScraperNames": "Actor Scraper Names (comma-separated)",
     "actorScraperPlaceholder": "local, javdatabase",
     "actorScraperHelp": "List of enabled actor scrapers in priority order (first = highest priority). Available scrapers: **local** (cached data), **javdatabase** (online lookup).",
@@ -233,5 +233,50 @@
     "scrapeFolderPattern": "Scrape Mode Folder Pattern",
     "scrapeFolderPatternHelp": "Customize the folder name pattern for scraped videos. Use placeholders: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Example: {id} - {title} ({maker} - {year})",
     "scrapeFolderPatternPlaceholder": "{id} - {title}"
+  },
+  "about": {
+    "pageTitle": "About - Javinizer-JS",
+    "heading": "About Javinizer-JS",
+    "usageInstructions": "Usage Instructions",
+    "scrapers": {
+      "title": "Scrapers",
+      "description": "Javinizer-JS supports multiple metadata scrapers that fetch information from various sources.",
+      "manualInteraction": {
+        "title": "Manual Interaction Scrapers",
+        "description": "Some scrapers require manual user interaction to bypass security measures:",
+        "javlibrary": "Requires solving Cloudflare challenge and accepting adult agreement in the browser window that opens. Do not close the browser window."
+      },
+      "flaresolverr": {
+        "title": "FlareSolverr Required Scrapers",
+        "description": "Scrapers ending with -fs require FlareSolverr to be installed and running:",
+        "installation": "To use these scrapers, install FlareSolverr in a Docker Container:"
+      }
+    },
+    "modes": {
+      "title": "Operation Modes",
+      "scrape": {
+        "title": "Scrape Mode",
+        "description": "In Scrape mode, Javinizer-JS scans your library for video files, extracts their codes, and fetches metadata from configured scrapers. Results are saved as JSON files in data/scrape/ directory. You can then review, edit, and save them to your library with proper folder structure and NFO files."
+      },
+      "edit": {
+        "title": "Edit Mode",
+        "description": "In Edit mode, Javinizer-JS loads existing NFO files from your library, allowing you to review and modify metadata. Changes are saved directly to the NFO files in your library folders."
+      }
+    },
+    "actors": {
+      "title": "Actor Management",
+      "description": "Javinizer-JS can automatically scrape and cache actor data during movie save operations. Actor thumbnails and metadata are stored in data/actors/ by default, or in a custom path if configured. This allows for consistent actor information across your library."
+    },
+    "config": {
+      "title": "Configuration",
+      "description": "Visit the Configuration page to set up your library path, enable scrapers, configure actor scraping, and customize other settings. Changes are saved automatically and take effect immediately."
+    },
+    "links": {
+      "title": "Links",
+      "github": "GitHub Repository",
+      "githubUrl": "https://github.com/AlaricRomeo/Javinizer-JS",
+      "issues": "Report Issues",
+      "issuesUrl": "https://github.com/AlaricRomeo/Javinizer-JS/issues"
+    }
   }
 }

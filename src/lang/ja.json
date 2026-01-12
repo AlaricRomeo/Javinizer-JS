@@ -164,7 +164,7 @@
     "overwriteLocalData": "ローカルデータを上書き（写真を含む）"
   },
   "actors": {
-    "pageTitle": "女優 - Javinizer",
+    "pageTitle": "女優 - Javinizer-JS",
     "heading": "女優ライブラリ",
     "addActor": "女優を追加",
     "noActorsTitle": "女優が見つかりません",
@@ -202,7 +202,7 @@
     "actorScrapingHelp": "有効にすると、映画保存時に女優データがスクレイプされキャッシュされます。",
     "externalActorsPath": "外部女優パス（オプション）",
     "externalActorsPathPlaceholder": "/mnt/storage/actors",
-    "externalActorsPathHelp": "空のままにすると**./data/actors**（デフォルト）を使用します。設定すると、女優のサムネイルがこのパスにダウンロードされ、絶対パスで参照されます。複数のJavinizerインスタンス間や他のメディアサーバー（例：Jellyfin、Plex）と女優データを共有するのに便利です。",
+    "externalActorsPathHelp": "空のままにすると**./data/actors**（デフォルト）を使用します。設定すると、女優のサムネイルがこのパスにダウンロードされ、絶対パスで参照されます。複数のJavinizer-JSインスタンス間や他のメディアサーバー（例：Jellyfin、Plex）と女優データを共有するのに便利です。",
     "actorScraperNames": "女優スクレイパー名（カンマ区切り）",
     "actorScraperPlaceholder": "local, javdatabase",
     "actorScraperHelp": "有効な女優スクレイパーのリストを優先順位順に指定（最初=最優先）。利用可能なスクレイパー: **local**（キャッシュデータ）、**javdatabase**（オンライン検索）。",
@@ -217,5 +217,51 @@
     "scrapeFolderPattern": "スクレイプモードフォルダーパターン",
     "scrapeFolderPatternHelp": "スクレイプされた動画のフォルダー名パターンをカスタマイズします。プレースホルダーを使用: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}。例: {id} - {title} ({maker} - {year})",
     "scrapeFolderPatternPlaceholder": "{id} - {title}"
+  },
+  "about": {
+    "pageTitle": "情報 - Javinizer-JS",
+    "heading": "Javinizer-JSについて",
+    "usageInstructions": "使用方法",
+    "scrapers": {
+      "title": "スクレイパー",
+      "description": "Javinizer-JSは、さまざまなソースから情報を取得する複数のメタデータスクレイパーをサポートしています。",
+      "manualInteraction": {
+        "title": "手動操作が必要なスクレイパー",
+        "description": "一部のスクレイパーは、セキュリティ対策を回避するために手動操作が必要です:",
+        "javlibrary": "開かれたブラウザウィンドウでCloudflareチャレンジを解決し、成人向け規約に同意する必要があります。ブラウザウィンドウを閉じないでください。"
+      },
+      "flaresolverr": {
+        "title": "FlareSolverrが必要なスクレイパー",
+        "description": "-fsで終わるスクレイパーは、FlareSolverrがインストールされ実行されている必要があります:",
+        "installation": "これらのスクレイパーを使用するには、DockerコンテナにFlareSolverrをインストールしてください:",
+        "link": "https://github.com/FlareSolverr/FlareSolverr"
+      }
+    },
+    "modes": {
+      "title": "操作モード",
+      "scrape": {
+        "title": "スクレイプモード",
+        "description": "スクレイプモードでは、Javinizer-JSがライブラリ内のビデオファイルをスキャンし、コードを抽出して、設定されたスクレイパーからメタデータを取得します。結果はdata/scrape/ディレクトリにJSONファイルとして保存されます。その後、レビュー、編集して、適切なフォルダー構造とNFOファイルでライブラリに保存できます。"
+      },
+      "edit": {
+        "title": "編集モード",
+        "description": "編集モードでは、Javinizer-JSはライブラリから既存のNFOファイルを読み込み、メタデータをレビューおよび変更できるようにします。変更は、ライブラリフォルダー内のNFOファイルに直接保存されます。"
+      }
+    },
+    "actors": {
+      "title": "女優管理",
+      "description": "Javinizer-JSは、映画の保存操作中に女優データを自動的にスクレイプしてキャッシュできます。女優のサムネイルとメタデータは、デフォルトではdata/actors/に、または設定されている場合はカスタムパスに保存されます。これにより、ライブラリ全体で一貫した女優情報を維持できます。"
+    },
+    "config": {
+      "title": "設定",
+      "description": "設定ページにアクセスして、ライブラリパスの設定、スクレイパーの有効化、女優スクレイプの設定、その他の設定をカスタマイズしてください。変更は自動的に保存され、すぐに有効になります。"
+    },
+    "links": {
+      "title": "リンク",
+      "github": "GitHubリポジトリ",
+      "githubUrl": "https://github.com/AlaricRomeo/Javinizer-JS",
+      "issues": "問題を報告",
+      "issuesUrl": "https://github.com/AlaricRomeo/Javinizer-JS/issues"
+    }
   }
 }

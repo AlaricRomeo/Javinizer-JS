@@ -1406,11 +1406,49 @@ router.get("/actors", async (req, res) => {
 router.post("/actors/save", async (req, res) => {
   try {
     const { normalizeActorName } = require('../../scrapers/actors/schema');
+    const { removeActorFromIndex } = require('../core/actorIndexManager');
     const actorData = req.body;
+
+    // Track original ID to handle renames
+    const originalId = actorData.id;
+    const newId = normalizeActorName(actorData.name);
 
     // Generate ID from name if not provided
     if (!actorData.id) {
-      actorData.id = normalizeActorName(actorData.name);
+      actorData.id = newId;
+    } else if (originalId !== newId) {
+      // Name changed - need to cleanup old files
+      actorData.id = newId;
+
+      // Remove old NFO file
+      const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+      const actorsPath = getActorsCachePath();
+      const oldNfoPath = path.join(actorsPath, `${originalId}.nfo`);
+      if (fs.existsSync(oldNfoPath)) {
+        try {
+          fs.unlinkSync(oldNfoPath);
+          console.log(`[ActorSave] Removed old NFO file: ${originalId}.nfo`);
+        } catch (err) {
+          console.error(`[ActorSave] Failed to remove old NFO: ${err.message}`);
+        }
+      }
+
+      // Remove old image files
+      const extensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+      extensions.forEach(ext => {
+        const oldImagePath = path.join(actorsPath, `${originalId}${ext}`);
+        if (fs.existsSync(oldImagePath)) {
+          try {
+            fs.unlinkSync(oldImagePath);
+            console.log(`[ActorSave] Removed old image: ${originalId}${ext}`);
+          } catch (err) {
+            console.error(`[ActorSave] Failed to remove old image: ${err.message}`);
+          }
+        }
+      });
+
+      // Remove old actor from index
+      removeActorFromIndex(originalId);
     }
 
     // Update thumbUrl if thumb is a remote URL
