@@ -168,6 +168,7 @@
     "pageTitle": "女優 - Javinizer-JS",
     "heading": "女優ライブラリ",
     "addActor": "女優を追加",
+    "searchPlaceholder": "女優を検索...",
     "noActorsTitle": "女優が見つかりません",
     "noActorsDesc": "女優を追加するか、女優データを有効にして映画をスクレイプしてください。",
     "addFirstActor": "最初の女優を追加",

@@ -77,33 +77,81 @@ async function scrapeLocal(actorName) {
 }
 
 /**
+ * Scrape multiple actors from local cache (batch processing)
+ */
+async function scrapeActors(names) {
+  const results = [];
+
+  console.error(`[local] Processing ${names.length} actor(s) from cache...`);
+
+  for (const name of names) {
+    try {
+      const actor = await scrapeLocal(name);
+
+      if (actor) {
+        results.push(actor);
+      } else {
+        // Actor not found in cache
+        results.push({
+          id: normalizeActorName(name),
+          name,
+          error: 'Not found'
+        });
+      }
+    } catch (error) {
+      console.error(`[local] Error processing ${name}:`, error.message);
+      results.push({
+        id: normalizeActorName(name),
+        name,
+        error: error.message
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
  * Main entry point
  */
 async function main() {
-  const args = process.argv.slice(2);
+  const names = process.argv.slice(2);
 
-  if (args.length === 0) {
-    console.error('[local] Usage: node run.js <actor_name>');
+  if (names.length === 0) {
+    console.error('[local] Usage: node run.js <NAME> [NAME2] [NAME3] ...');
+    console.error('[local] Example: node run.js "Hayami Remu"');
+    console.error('[local] Example: node run.js "Hayami Remu" "Sunohara Miki"');
     process.exit(1);
   }
 
-  const actorName = args[0];
-
   try {
-    const actor = await scrapeLocal(actorName);
+    const results = await scrapeActors(names);
 
-    if (actor) {
-      console.log(JSON.stringify(actor, null, 2));
-      process.exit(0);
-    } else {
-      console.log(JSON.stringify(null));
-      process.exit(0);
-    }
+    // Output ONLY valid JSON to stdout
+    console.log(JSON.stringify(results, null, 2));
+
+    // Check for errors
+    const hasErrors = results.some(r => r.error);
+
+    // Local scraper is fast, minimal timeout
+    setTimeout(() => {
+      process.exit(hasErrors ? 1 : 0);
+    }, 100);
 
   } catch (error) {
-    console.error('[local] Error:', error.message);
-    console.log(JSON.stringify(null));
-    process.exit(1);
+    console.error('[local] Critical error:', error.message);
+
+    // Return minimal array with error markers
+    const errorResults = names.map(name => ({
+      id: normalizeActorName(name),
+      name,
+      error: error.message
+    }));
+    console.log(JSON.stringify(errorResults, null, 2));
+
+    setTimeout(() => {
+      process.exit(1);
+    }, 100);
   }
 }
 
@@ -112,4 +160,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { scrapeLocal };
+module.exports = { scrapeLocal, scrapeActors };

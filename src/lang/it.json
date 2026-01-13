@@ -4,7 +4,7 @@
   },
   "nav": {
     "home": "Home",
-    "grid": "Griglia",
+    "grid": "Vista Griglia",
     "actors": "Attori",
     "config": "Configurazione",
     "about": "Info"
@@ -185,6 +185,7 @@
     "pageTitle": "Attori - Javinizer-JS",
     "heading": "Libreria Attori",
     "addActor": "Aggiungi Attore",
+    "searchPlaceholder": "Cerca attori...",
     "noActorsTitle": "Nessun Attore Trovato",
     "noActorsDesc": "Inizia aggiungendo attori o facendo lo scraping di film con i dati degli attori abilitati.",
     "addFirstActor": "Aggiungi il Tuo Primo Attore",

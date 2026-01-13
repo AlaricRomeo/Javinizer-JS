@@ -4,7 +4,7 @@
   },
   "nav": {
     "home": "Home",
-    "grid": "Grid",
+    "grid": "Grid View",
     "actors": "Actors",
     "config": "Config",
     "about": "About"
@@ -184,6 +184,7 @@
     "pageTitle": "Actors - Javinizer-JS",
     "heading": "Actors Library",
     "addActor": "Add Actor",
+    "searchPlaceholder": "Search actors...",
     "noActorsTitle": "No Actors Found",
     "noActorsDesc": "Start by adding actors or scraping movies with actor data enabled.",
     "addFirstActor": "Add Your First Actor",

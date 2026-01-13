@@ -4,6 +4,7 @@
 // ============================================
 
 let actors = [];
+let filteredActors = [];
 let currentActor = null;
 let isNewActor = false;
 
@@ -73,8 +74,35 @@ function setupEventListeners() {
     openActorModal(null);
   });
 
+  // Search input
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', handleSearch);
+  }
+
   // Event listeners are handled by the unified system
   // The unified system will handle all modal operations
+}
+
+function handleSearch(e) {
+  const query = e.target.value.toLowerCase().trim();
+
+  if (!query) {
+    filteredActors = actors;
+  } else {
+    filteredActors = actors.filter(actor => {
+      const searchText = [
+        actor.id,
+        actor.name,
+        actor.altName,
+        ...(actor.otherNames || [])
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      return searchText.includes(query);
+    });
+  }
+
+  renderActors();
 }
 
 // Helper function to normalize actor name for file lookup (similar to backend normalizeActorName)
@@ -105,6 +133,7 @@ async function loadActors() {
     }
 
     actors = data.actors || [];
+    filteredActors = actors;
     renderActors();
 
   } catch (error) {
@@ -131,7 +160,7 @@ function showEmptyState() {
 function renderActors() {
   const grid = document.getElementById('actorsGrid');
 
-  if (actors.length === 0) {
+  if (filteredActors.length === 0) {
     showEmptyState();
     return;
   }
@@ -140,7 +169,7 @@ function renderActors() {
   grid.style.display = 'grid';
   grid.innerHTML = '';
 
-  actors.forEach(actor => {
+  filteredActors.forEach(actor => {
     const card = createActorCard(actor);
     grid.appendChild(card);
   });

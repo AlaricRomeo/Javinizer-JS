@@ -434,6 +434,17 @@ async function scrapeActorExcludingLocal(actorName, emitter = null) {
   }
 
   let actorId = resolveActorId(actorName);
+
+  // If not found, try inverted name
+  if (!actorId) {
+    const parts = actorName.trim().split(/\s+/);
+    if (parts.length === 2) {
+      const invertedName = `${parts[1]} ${parts[0]}`;
+      console.log(`[ActorScraperManager] Trying inverted name: ${invertedName}`);
+      actorId = resolveActorId(invertedName);
+    }
+  }
+
   if (!actorId) {
     actorId = normalizeActorName(actorName);
     console.log(`[ActorScraperManager] New actor, generated ID: ${actorId}`);
@@ -492,6 +503,10 @@ async function scrapeActorExcludingLocal(actorName, emitter = null) {
   }
 
   const merged = mergeActorData(actorName, scraperResults, enabledScrapers);
+
+  // Ensure we use the resolved actor ID (not the one generated from actorName)
+  merged.id = actorId;
+
   saveActorLocal(merged);
 
   return merged;
@@ -532,6 +547,16 @@ async function scrapeActor(actorName, emitter = null) {
 
   // Try to resolve actor ID from index
   let actorId = resolveActorId(actorName);
+
+  // If not found, try inverted name
+  if (!actorId) {
+    const parts = actorName.trim().split(/\s+/);
+    if (parts.length === 2) {
+      const invertedName = `${parts[1]} ${parts[0]}`;
+      console.log(`[ActorScraperManager] Trying inverted name: ${invertedName}`);
+      actorId = resolveActorId(invertedName);
+    }
+  }
 
   if (!actorId) {
     // Generate new ID from name
@@ -596,6 +621,9 @@ async function scrapeActor(actorName, emitter = null) {
 
   // Merge results
   const merged = mergeActorData(actorName, scraperResults, enabledScrapers);
+
+  // Ensure we use the resolved actor ID (not the one generated from actorName)
+  merged.id = actorId;
 
   // Save to local storage
   saveActorLocal(merged);
@@ -985,6 +1013,488 @@ async function updateMovieActorData() {
 }
 
 /**
+ * Process actors for a single movie file
+ * Scrapes only the actors found in the specified movie JSON
+ *
+ * @param {string} movieId - Movie ID (filename without .json extension)
+ * @param {EventEmitter} emitter - Optional event emitter for progress updates
+ * @returns {Promise<object>} - Summary of processing results
+ */
+async function processSingleMovieActors(movieId, emitter = null) {
+  const config = loadConfig();
+
+  // Check if actors feature is enabled
+  const actorsEnabled = (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false);
+
+  if (!actorsEnabled) {
+    console.error('[ActorScraperManager] Actor scraping is disabled in config');
+    return {
+      success: false,
+      message: 'Actor scraping is disabled',
+      total: 0,
+      scraped: 0,
+      cached: 0,
+      failed: 0
+    };
+  }
+
+  console.log(`[ActorScraperManager] Processing actors for movie: ${movieId}`);
+
+  const scrapePath = getScrapePath();
+  const movieFile = path.join(scrapePath, `${movieId}.json`);
+
+  if (!fs.existsSync(movieFile)) {
+    console.error(`[ActorScraperManager] Movie file not found: ${movieFile}`);
+    return {
+      success: false,
+      message: 'Movie file not found',
+      total: 0,
+      scraped: 0,
+      cached: 0,
+      failed: 0
+    };
+  }
+
+  // Extract actors from this movie only
+  const actorNames = new Set();
+
+  try {
+    const content = fs.readFileSync(movieFile, 'utf-8');
+    let data = JSON.parse(content);
+
+    // Handle wrapped format (with 'data' property from scrapeReader)
+    if (data.data && typeof data.data === 'object') {
+      data = data.data;
+    }
+
+    // Extract actors from movie data
+    if (data.actor && Array.isArray(data.actor)) {
+      data.actor.forEach(actor => {
+        if (actor.name) {
+          actorNames.add(actor.name);
+        }
+      });
+    }
+  } catch (error) {
+    console.error(`[ActorScraperManager] Failed to read movie file: ${error.message}`);
+    return {
+      success: false,
+      message: error.message,
+      total: 0,
+      scraped: 0,
+      cached: 0,
+      failed: 0
+    };
+  }
+
+  if (actorNames.size === 0) {
+    console.log('[ActorScraperManager] No actors found in movie');
+    return {
+      success: true,
+      message: 'No actors to scrape',
+      total: 0,
+      scraped: 0,
+      cached: 0,
+      failed: 0
+    };
+  }
+
+  console.log(`[ActorScraperManager] Found ${actorNames.size} actor(s) in movie: ${Array.from(actorNames).join(', ')}`);
+
+  if (emitter) {
+    emitter.emit('progress', {
+      message: `[Actor Scrape] Found ${actorNames.size} actor(s) to process`
+    });
+  }
+
+  let scraped = 0;
+  let cached = 0;
+  let failed = 0;
+
+  // Process each actor
+  const actorNamesArray = Array.from(actorNames);
+  for (let i = 0; i < actorNamesArray.length; i++) {
+    const actorName = actorNamesArray[i];
+    console.log(`[ActorScraperManager] Processing ${i + 1}/${actorNamesArray.length}: ${actorName}`);
+
+    if (emitter) {
+      emitter.emit('progress', {
+        message: `[Actor Scrape] Processing ${i + 1}/${actorNamesArray.length}: ${actorName}`
+      });
+    }
+
+    try {
+      // Check if already in cache and complete
+      const actorId = resolveActorId(actorName);
+      if (actorId) {
+        const existing = loadActorLocal(actorId);
+        if (existing && isActorComplete(existing)) {
+          console.log(`[ActorScraperManager] Actor already cached and complete: ${actorName}`);
+          cached++;
+
+          if (emitter) {
+            emitter.emit('progress', {
+              message: `[local] ✓ ${actorName} - complete in cache`
+            });
+          }
+          continue;
+        }
+      }
+
+      // Use scrapeActor with emitter to get detailed progress messages
+      const actorData = await scrapeActor(actorName, emitter);
+
+      if (actorData) {
+        scraped++;
+        console.log(`[ActorScraperManager] Successfully processed: ${actorName}`);
+      } else {
+        failed++;
+        console.log(`[ActorScraperManager] Failed to process: ${actorName}`);
+      }
+    } catch (error) {
+      failed++;
+      console.error(`[ActorScraperManager] Error processing ${actorName}:`, error.message);
+
+      if (emitter) {
+        emitter.emit('progress', {
+          message: `[Actor Scrape] ${actorName} - error: ${error.message}`
+        });
+      }
+    }
+  }
+
+  // Update the single movie file with enriched actor data
+  if (emitter) {
+    emitter.emit('progress', {
+      message: '[Actor Scrape] Updating movie file with actor data...'
+    });
+  }
+
+  let movieUpdated = 0;
+  try {
+    const content = fs.readFileSync(movieFile, 'utf-8');
+    const fileData = JSON.parse(content);
+
+    // Handle wrapped format
+    const hasWrapper = fileData.data && typeof fileData.data === 'object';
+    const movieData = hasWrapper ? fileData.data : fileData;
+
+    if (movieData.actor && Array.isArray(movieData.actor)) {
+      let updated = false;
+
+      for (const actor of movieData.actor) {
+        if (!actor.name) continue;
+
+        // Try to resolve actor ID
+        let actorId = resolveActorId(actor.name);
+
+        // If not found, try inverted name
+        if (!actorId) {
+          const parts = actor.name.trim().split(/\s+/);
+          if (parts.length === 2) {
+            const invertedName = `${parts[1]} ${parts[0]}`;
+            actorId = resolveActorId(invertedName);
+          }
+        }
+
+        // If still not found, try normalized name as fallback
+        if (!actorId) {
+          actorId = normalizeActorName(actor.name);
+        }
+
+        // Load actor data from cache
+        const actorData = loadActorLocal(actorId);
+        if (!actorData) {
+          console.error(`[ActorScraperManager] Actor not in cache: ${actor.name} (tried ID: ${actorId})`);
+          continue;
+        }
+
+        // Update actor fields in movie JSON (only if not empty)
+        if (actorData.altName) actor.altName = actorData.altName;
+        if (actorData.birthdate) actor.birthdate = actorData.birthdate;
+        if (actorData.height) actor.height = actorData.height;
+        if (actorData.bust) actor.bust = actorData.bust;
+        if (actorData.waist) actor.waist = actorData.waist;
+        if (actorData.hips) actor.hips = actorData.hips;
+
+        const thumbUrl = resolveActorThumb(actorData);
+        if (thumbUrl) actor.thumb = thumbUrl;
+
+        updated = true;
+        console.log(`[ActorScraperManager] Updated actor in movie: ${actor.name} -> ${actorId}`);
+      }
+
+      // Save updated movie JSON (preserve wrapper if it exists)
+      if (updated) {
+        const dataToSave = hasWrapper ? fileData : movieData;
+        fs.writeFileSync(movieFile, JSON.stringify(dataToSave, null, 2), 'utf-8');
+        movieUpdated = 1;
+        console.log(`[ActorScraperManager] Updated movie: ${movieId}.json`);
+      }
+    }
+  } catch (error) {
+    console.error(`[ActorScraperManager] Failed to update movie file: ${error.message}`);
+  }
+
+  const summary = {
+    success: true,
+    message: 'Single movie actor processing completed',
+    total: actorNamesArray.length,
+    scraped: scraped,
+    cached: cached,
+    failed: failed,
+    movieUpdated: movieUpdated
+  };
+
+  console.log('[ActorScraperManager] Single movie processing summary:', summary);
+  return summary;
+}
+
+/**
+ * Process actors for multiple specified movie files
+ * Scrapes only the actors found in the specified movies
+ *
+ * @param {string[]} movieIds - Array of movie IDs (filenames without .json extension)
+ * @param {EventEmitter} emitter - Optional event emitter for progress updates
+ * @returns {Promise<object>} - Summary of processing results
+ */
+async function processMultipleMoviesActors(movieIds, emitter = null) {
+  const config = loadConfig();
+
+  // Check if actors feature is enabled
+  const actorsEnabled = (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false);
+
+  if (!actorsEnabled) {
+    console.error('[ActorScraperManager] Actor scraping is disabled in config');
+    return {
+      success: false,
+      message: 'Actor scraping is disabled',
+      scraping: { total: 0, scraped: 0, cached: 0, failed: 0 },
+      updating: { total: 0, updated: 0, failed: 0 }
+    };
+  }
+
+  console.log(`[ActorScraperManager] Processing actors for ${movieIds.length} movies: ${movieIds.join(', ')}`);
+
+  const scrapePath = getScrapePath();
+  const actorNames = new Set();
+
+  // Extract actors from specified movies only
+  for (const movieId of movieIds) {
+    const movieFile = path.join(scrapePath, `${movieId}.json`);
+
+    if (!fs.existsSync(movieFile)) {
+      console.error(`[ActorScraperManager] Movie file not found: ${movieFile}`);
+      continue;
+    }
+
+    try {
+      const content = fs.readFileSync(movieFile, 'utf-8');
+      let data = JSON.parse(content);
+
+      // Handle wrapped format (with 'data' property from scrapeReader)
+      if (data.data && typeof data.data === 'object') {
+        data = data.data;
+      }
+
+      // Extract actors from movie data
+      if (data.actor && Array.isArray(data.actor)) {
+        data.actor.forEach(actor => {
+          if (actor.name) {
+            actorNames.add(actor.name);
+          }
+        });
+      }
+    } catch (error) {
+      console.error(`[ActorScraperManager] Failed to read movie file ${movieId}: ${error.message}`);
+    }
+  }
+
+  if (actorNames.size === 0) {
+    console.log('[ActorScraperManager] No actors found in specified movies');
+    return {
+      success: true,
+      message: 'No actors to scrape',
+      scraping: { total: 0, scraped: 0, cached: 0, failed: 0 },
+      updating: { total: movieIds.length, updated: 0, failed: 0 }
+    };
+  }
+
+  console.log(`[ActorScraperManager] Found ${actorNames.size} unique actor(s) in ${movieIds.length} movies`);
+
+  if (emitter) {
+    emitter.emit('progress', {
+      message: `[Actor Scrape] Found ${actorNames.size} unique actor(s) to process`
+    });
+  }
+
+  let scraped = 0;
+  let cached = 0;
+  let failed = 0;
+
+  // Process each actor
+  const actorNamesArray = Array.from(actorNames);
+  for (let i = 0; i < actorNamesArray.length; i++) {
+    const actorName = actorNamesArray[i];
+    console.log(`[ActorScraperManager] Processing ${i + 1}/${actorNamesArray.length}: ${actorName}`);
+
+    if (emitter) {
+      emitter.emit('progress', {
+        message: `[Actor Scrape] Processing ${i + 1}/${actorNamesArray.length}: ${actorName}`
+      });
+    }
+
+    try {
+      // Check if already in cache and complete
+      const actorId = resolveActorId(actorName);
+      if (actorId) {
+        const existing = loadActorLocal(actorId);
+        if (existing && isActorComplete(existing)) {
+          console.log(`[ActorScraperManager] Actor already cached and complete: ${actorName}`);
+          cached++;
+
+          if (emitter) {
+            emitter.emit('progress', {
+              message: `[local] ✓ ${actorName} - complete in cache`
+            });
+          }
+          continue;
+        }
+      }
+
+      // Use scrapeActor with emitter to get detailed progress messages
+      const actorData = await scrapeActor(actorName, emitter);
+
+      if (actorData) {
+        scraped++;
+        console.log(`[ActorScraperManager] Successfully processed: ${actorName}`);
+      } else {
+        failed++;
+        console.log(`[ActorScraperManager] Failed to process: ${actorName}`);
+      }
+    } catch (error) {
+      failed++;
+      console.error(`[ActorScraperManager] Error processing ${actorName}:`, error.message);
+
+      if (emitter) {
+        emitter.emit('progress', {
+          message: `[Actor Scrape] ${actorName} - error: ${error.message}`
+        });
+      }
+    }
+  }
+
+  // Update the specified movie files with enriched actor data
+  if (emitter) {
+    emitter.emit('progress', {
+      message: '[Actor Scrape] Updating movie files with actor data...'
+    });
+  }
+
+  let moviesUpdated = 0;
+  let moviesFailed = 0;
+
+  for (const movieId of movieIds) {
+    const movieFile = path.join(scrapePath, `${movieId}.json`);
+
+    if (!fs.existsSync(movieFile)) {
+      moviesFailed++;
+      continue;
+    }
+
+    try {
+      const content = fs.readFileSync(movieFile, 'utf-8');
+      const fileData = JSON.parse(content);
+
+      // Handle wrapped format
+      const hasWrapper = fileData.data && typeof fileData.data === 'object';
+      const movieData = hasWrapper ? fileData.data : fileData;
+
+      if (movieData.actor && Array.isArray(movieData.actor)) {
+        let updated = false;
+
+        for (const actor of movieData.actor) {
+          if (!actor.name) continue;
+
+          // Try to resolve actor ID
+          let actorId = resolveActorId(actor.name);
+
+          // If not found, try inverted name
+          if (!actorId) {
+            const parts = actor.name.trim().split(/\s+/);
+            if (parts.length === 2) {
+              const invertedName = `${parts[1]} ${parts[0]}`;
+              actorId = resolveActorId(invertedName);
+            }
+          }
+
+          // If still not found, try normalized name as fallback
+          if (!actorId) {
+            actorId = normalizeActorName(actor.name);
+          }
+
+          // Load actor data from cache
+          const actorData = loadActorLocal(actorId);
+          if (!actorData) {
+            console.error(`[ActorScraperManager] Actor not in cache: ${actor.name} (tried ID: ${actorId})`);
+            continue;
+          }
+
+          // Update actor fields in movie JSON (only if not empty)
+          if (actorData.altName) actor.altName = actorData.altName;
+          if (actorData.birthdate) actor.birthdate = actorData.birthdate;
+          if (actorData.height) actor.height = actorData.height;
+          if (actorData.bust) actor.bust = actorData.bust;
+          if (actorData.waist) actor.waist = actorData.waist;
+          if (actorData.hips) actor.hips = actorData.hips;
+
+          const thumbUrl = resolveActorThumb(actorData);
+          if (thumbUrl) actor.thumb = thumbUrl;
+
+          updated = true;
+        }
+
+        // Save updated movie JSON (preserve wrapper if it exists)
+        if (updated) {
+          const dataToSave = hasWrapper ? fileData : movieData;
+          fs.writeFileSync(movieFile, JSON.stringify(dataToSave, null, 2), 'utf-8');
+          moviesUpdated++;
+          console.log(`[ActorScraperManager] Updated movie: ${movieId}.json`);
+        }
+      }
+    } catch (error) {
+      console.error(`[ActorScraperManager] Failed to update movie file ${movieId}: ${error.message}`);
+      moviesFailed++;
+    }
+  }
+
+  if (emitter) {
+    emitter.emit('progress', {
+      message: `[Actor Scrape] Updated ${moviesUpdated} movie file(s)`
+    });
+  }
+
+  const summary = {
+    success: true,
+    message: 'Multiple movies actor processing completed',
+    scraping: {
+      total: actorNamesArray.length,
+      scraped: scraped,
+      cached: cached,
+      failed: failed
+    },
+    updating: {
+      total: movieIds.length,
+      updated: moviesUpdated,
+      failed: moviesFailed
+    }
+  };
+
+  console.log('[ActorScraperManager] Multiple movies processing summary:', summary);
+  return summary;
+}
+
+/**
  * Complete batch workflow: scrape actors + update movie JSONs
  *
  * @param {EventEmitter} emitter - Optional event emitter for progress updates
@@ -1026,5 +1536,7 @@ module.exports = {
   resolveActorId,
   batchScrapeActors,
   updateMovieActorData,
-  batchProcessActors
+  batchProcessActors,
+  processSingleMovieActors,
+  processMultipleMoviesActors
 };

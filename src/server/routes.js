@@ -1132,10 +1132,10 @@ router.post("/scrape/start", async (req, res) => {
               }
             });
 
-            // Start batch actor processing
-            const { batchProcessActors } = require('../core/actorScraperManager');
+            // Start actor processing for scraped movies only
+            const { processMultipleMoviesActors } = require('../core/actorScraperManager');
 
-            batchProcessActors(emitter)
+            processMultipleMoviesActors(codesToScrape, emitter)
               .then((summary) => {
                 console.error('[Routes] Actor scraping completed successfully');
 
@@ -1462,10 +1462,10 @@ router.post("/scrape/rescrape", async (req, res) => {
               }
             });
 
-            // Start batch actor processing
-            const { batchProcessActors } = require('../core/actorScraperManager');
+            // Start single movie actor processing
+            const { processSingleMovieActors } = require('../core/actorScraperManager');
 
-            batchProcessActors(emitter)
+            processSingleMovieActors(movieId, emitter)
               .then((summary) => {
                 console.error('[Routes] Actor scraping completed successfully');
 
@@ -1475,7 +1475,7 @@ router.post("/scrape/rescrape", async (req, res) => {
                     client.send(JSON.stringify({
                       event: 'progress',
                       data: {
-                        message: `✅ Actor scraping completed: ${summary.scraping.total} actors processed (${summary.scraping.scraped} new, ${summary.scraping.cached} cached, ${summary.scraping.failed} failed). ${summary.updating.updated} movie files updated.`
+                        message: `✅ Actor scraping completed: ${summary.total} actors processed (${summary.scraped} new, ${summary.cached} cached, ${summary.failed} failed). Movie file updated: ${summary.movieUpdated ? 'Yes' : 'No'}`
                       },
                       scrapeId
                     }));
@@ -1484,7 +1484,7 @@ router.post("/scrape/rescrape", async (req, res) => {
                     client.send(JSON.stringify({
                       event: 'actorsUpdated',
                       data: {
-                        updated: summary.updating.updated
+                        updated: summary.movieUpdated
                       },
                       scrapeId
                     }));

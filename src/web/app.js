@@ -2346,7 +2346,8 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       // If this was a re-scrape of a specific movie, reload it
       if (data.movieId) {
         // Reload the same movie to show updated data
-        await loadItem("/item/scrape/current");
+        console.log('[complete] Reloading specific movie:', data.movieId);
+        await loadItem(`/item/scrape/${data.movieId}`);
         appendProgress(progressDiv, `🔄 Reloaded ${data.movieId} with updated data`, 'info');
       } else {
         // Auto-reload scrape items dopo completamento batch scraping
@@ -2372,9 +2373,26 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
 
     case 'actorsUpdated':
       // Actors have been updated, reload current item to show new actor data
-      const currentUrl = window.location.hash || '/item/scrape/current';
-      const itemUrl = currentUrl.startsWith('#') ? currentUrl.substring(1) : currentUrl;
-      loadItem(itemUrl);
+      console.log('[actorsUpdated] currentItem.id:', currentItem?.id);
+      console.log('[actorsUpdated] currentItem.fileId:', currentItem?.fileId);
+      console.log('[actorsUpdated] currentItem.folderId:', currentItem?.folderId);
+      console.log('[actorsUpdated] currentMode:', currentMode);
+
+      if (currentItem && currentItem.fileId && currentMode === 'scrape') {
+        // Reload the specific item by its fileId to maintain navigation position
+        console.log('[actorsUpdated] Reloading item by fileId:', currentItem.fileId);
+        loadItem(`/item/scrape/${currentItem.fileId}`);
+      } else if (currentItem && currentItem.folderId && currentMode === 'edit') {
+        // Edit mode uses folderId
+        console.log('[actorsUpdated] Reloading item by folderId:', currentItem.folderId);
+        loadItem(`/item/edit/${currentItem.folderId}`);
+      } else {
+        // Fallback to current if ID is not available
+        console.log('[actorsUpdated] Fallback to current');
+        const currentUrl = window.location.hash || '/item/scrape/current';
+        const itemUrl = currentUrl.startsWith('#') ? currentUrl.substring(1) : currentUrl;
+        loadItem(itemUrl);
+      }
       // Note: Close button will be shown by subsequent 'complete' event
       break;
 

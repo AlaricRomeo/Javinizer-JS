@@ -245,34 +245,102 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
 }
 
 /**
+ * Scrape multiple actors with shared browser (batch processing)
+ */
+async function scrapeActors(names) {
+  let browser = null;
+  const results = [];
+
+  try {
+    // Launch browser once for all actors
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled'
+      ]
+    });
+
+    console.error(`[javdb] Browser launched, processing ${names.length} actor(s)...`);
+
+    // Process each actor with shared browser
+    for (const name of names) {
+      try {
+        const result = await scrapeJavDB(name, false, browser);
+
+        if (result) {
+          results.push(result);
+        } else {
+          // Actor not found
+          results.push({
+            id: normalizeActorName(name),
+            name,
+            error: 'Not found'
+          });
+        }
+      } catch (error) {
+        console.error(`[javdb] Error processing ${name}:`, error.message);
+        results.push({
+          id: normalizeActorName(name),
+          name,
+          error: error.message
+        });
+      }
+    }
+
+    return results;
+
+  } finally {
+    // Always cleanup browser
+    if (browser) {
+      await browser.close();
+      console.error('[javdb] Browser closed');
+    }
+  }
+}
+
+/**
  * Main entry point
  */
 async function main() {
-  const args = process.argv.slice(2);
+  const names = process.argv.slice(2);
 
-  if (args.length === 0) {
-    console.error('[javdb] Usage: node run.js <actor_name>');
+  if (names.length === 0) {
+    console.error('[javdb] Usage: node run.js <NAME> [NAME2] [NAME3] ...');
+    console.error('[javdb] Example: node run.js "Hayami Remu"');
+    console.error('[javdb] Example: node run.js "Hayami Remu" "Sunohara Miki"');
     process.exit(1);
   }
 
-  const actorName = args[0];
-
   try {
-    const scrapedActor = await scrapeJavDB(actorName);
+    const results = await scrapeActors(names);
 
-    if (scrapedActor) {
-      console.log(JSON.stringify(scrapedActor, null, 2));
-      process.exit(0);
-    } else {
-      console.error('[javdb] Scraping failed, no data found');
-      console.log(JSON.stringify(null));
-      process.exit(0);
-    }
+    // Output ONLY valid JSON to stdout
+    console.log(JSON.stringify(results, null, 2));
+
+    // Check for errors
+    const hasErrors = results.some(r => r.error);
+
+    // Force exit after timeout (browser cleanup)
+    setTimeout(() => {
+      process.exit(hasErrors ? 1 : 0);
+    }, 5000);
 
   } catch (error) {
-    console.error('[javdb] Error:', error.message);
-    console.log(JSON.stringify(null));
-    process.exit(1);
+    console.error('[javdb] Critical error:', error.message);
+
+    // Return minimal array with error markers
+    const errorResults = names.map(name => ({
+      id: normalizeActorName(name),
+      name,
+      error: error.message
+    }));
+    console.log(JSON.stringify(errorResults, null, 2));
+
+    setTimeout(() => {
+      process.exit(1);
+    }, 5000);
   }
 }
 
@@ -281,4 +349,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { scrapeJavDB };
+module.exports = { scrapeJavDB, scrapeActors };
