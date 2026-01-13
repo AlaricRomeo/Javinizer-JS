@@ -1931,9 +1931,31 @@ async function initializeApp() {
     await checkLibraryCount();
     await checkScrapeAvailability();
 
-    // Set initial mode from config
-    const initialMode = configData.config.mode || "scrape";
+    // Check if mode and item are specified in URL (from grid view)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlMode = urlParams.get('mode');
+    const urlItem = urlParams.get('item');
+
+    // Set initial mode from URL or config
+    const initialMode = urlMode || configData.config.mode || "scrape";
+
+    // Save mode to config if it came from URL
+    if (urlMode && urlMode !== configData.config.mode) {
+      await saveModeToConfig(urlMode);
+    }
+
     await switchMode(initialMode);
+
+    // Load specific item if provided in URL
+    if (urlItem) {
+      const itemEndpoint = initialMode === 'scrape'
+        ? `/item/scrape/by-id/${encodeURIComponent(urlItem)}`
+        : `/item/by-id/${encodeURIComponent(urlItem)}`;
+      await loadItem(itemEndpoint);
+
+      // Clean URL to remove parameters
+      window.history.replaceState({}, '', '/');
+    }
 
     // Initialize scrape panel visibility based on mode
     const scrapePanel = document.querySelector(".scraper-panel");

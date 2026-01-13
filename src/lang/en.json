@@ -4,6 +4,7 @@
   },
   "nav": {
     "home": "Home",
+    "grid": "Grid",
     "actors": "Actors",
     "config": "Config",
     "about": "About"
@@ -278,5 +279,13 @@
       "issues": "Report Issues",
       "issuesUrl": "https://github.com/AlaricRomeo/Javinizer-JS/issues"
     }
+  },
+  "grid": {
+    "pageTitle": "Grid View - Javinizer-JS",
+    "heading": "Grid View",
+    "searchPlaceholder": "Search...",
+    "noItemsTitle": "No Items Found",
+    "noItemsDesc": "No items available in the library.",
+    "actors": "Actors"
   }
 }

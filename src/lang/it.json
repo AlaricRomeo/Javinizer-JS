@@ -4,6 +4,7 @@
   },
   "nav": {
     "home": "Home",
+    "grid": "Griglia",
     "actors": "Attori",
     "config": "Configurazione",
     "about": "Info"
@@ -280,5 +281,13 @@
       "issues": "Segnala Problemi",
       "issuesUrl": "https://github.com/AlaricRomeo/Javinizer-JS/issues"
     }
+  },
+  "grid": {
+    "pageTitle": "Vista Griglia - Javinizer-JS",
+    "heading": "Vista Griglia",
+    "searchPlaceholder": "Cerca...",
+    "noItemsTitle": "Nessun Elemento Trovato",
+    "noItemsDesc": "Nessun elemento disponibile nella libreria.",
+    "actors": "Attori"
   }
 }

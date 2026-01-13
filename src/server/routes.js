@@ -604,6 +604,243 @@ router.get("/scrape/count", (req, res) => {
   }
 });
 
+// GET /scrape-list - Get full list of scrape items for grid view
+router.get("/scrape-list", async (req, res) => {
+  try {
+    // Load scrape items first
+    scrapeReader.loadScrapeItems();
+
+    const scrapedItems = scrapeReader.items.map(item => {
+      const jsonData = fs.readFileSync(item.jsonPath, 'utf8');
+      const parsed = JSON.parse(jsonData);
+
+      return {
+        id: item.id,
+        filename: parsed.videoFile || item.id,
+        videoFile: parsed.videoFile,
+        title: parsed.data?.title || '',
+        coverUrl: parsed.data?.coverUrl || '',
+        genre: parsed.data?.genre || [],
+        actor: parsed.data?.actor || [],
+        matched: !!(parsed.data?.title)
+      };
+    });
+
+    // TODO: In futuro, salvare i VERI "not matched" - quelli per cui lo scraper restituisce solo l'id
+    res.json({ ok: true, items: scrapedItems });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// GET /library-list - Get full list of library items for grid view
+router.get("/library-list", async (req, res) => {
+  try {
+    if (libraryReader.items.length === 0 && !libraryReader.fullyLoaded) {
+      libraryReader.loadLibrary();
+    }
+
+    const items = await Promise.all(
+      libraryReader.items.map(async item => {
+        const builtItem = await buildItem(item);
+        return {
+          id: builtItem.id,
+          filename: builtItem.filename,
+          title: builtItem.title,
+          coverUrl: builtItem.coverUrl,
+          genre: builtItem.genre,
+          actor: builtItem.actor
+        };
+      })
+    );
+
+    res.json({ ok: true, items });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// POST /scrape-index - Set current scrape index
+router.post("/scrape-index", (req, res) => {
+  try {
+    const { index, setMode } = req.body;
+    if (typeof index !== 'number' || index < 0) {
+      return res.json(fail('Invalid index'));
+    }
+    scrapeReader.currentIndex = index;
+
+    // Only change mode if explicitly requested
+    if (setMode) {
+      const cfg = loadConfig();
+      cfg.mode = 'scrape';
+      saveConfig(cfg);
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// POST /library-index - Set current library index
+router.post("/library-index", (req, res) => {
+  try {
+    const { index, setMode } = req.body;
+    if (typeof index !== 'number' || index < 0) {
+      return res.json(fail('Invalid index'));
+    }
+    libraryReader.currentIndex = index;
+
+    // Only change mode if explicitly requested
+    if (setMode) {
+      const cfg = loadConfig();
+      cfg.mode = 'edit';
+      saveConfig(cfg);
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// POST /scrape-delete - Delete scrape item (deletes JSON file)
+router.post("/scrape-delete", (req, res) => {
+  try {
+    const { filename } = req.body;
+    if (!filename) {
+      return res.json(fail('Filename required'));
+    }
+
+    // Reload scrape items to ensure we have the latest list
+    scrapeReader.loadScrapeItems();
+
+    const index = scrapeReader.items.findIndex(item =>
+      item.id === filename
+    );
+
+    if (index === -1) {
+      return res.json(fail('Item not found'));
+    }
+
+    scrapeReader.currentIndex = index;
+    const result = scrapeReader.deleteCurrent();
+    res.json(result);
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// POST /library-delete - Delete library item (move video back to library root, delete folder)
+router.post("/library-delete", (req, res) => {
+  try {
+    const { filename } = req.body;
+    if (!filename) {
+      return res.json(fail('Filename required'));
+    }
+
+    const cfg = loadConfig();
+    const libraryPath = cfg.libraryPath;
+
+    if (!libraryPath || !fs.existsSync(libraryPath)) {
+      return res.json(fail('Library path not configured or not found'));
+    }
+
+    // Find the NFO file: {ID}.nfo in any subfolder
+    const folders = fs.readdirSync(libraryPath, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'));
+
+    let nfoPath = null;
+    let folderPath = null;
+
+    for (const folder of folders) {
+      const potentialNfoPath = path.join(libraryPath, folder.name, `${filename}.nfo`);
+      if (fs.existsSync(potentialNfoPath)) {
+        nfoPath = potentialNfoPath;
+        folderPath = path.join(libraryPath, folder.name);
+        break;
+      }
+    }
+
+    if (!nfoPath || !folderPath) {
+      return res.json(fail('Item not found'));
+    }
+
+    // SAFETY CHECK: Ensure folder is inside library path
+    if (!folderPath.startsWith(libraryPath)) {
+      return res.json(fail('Security error: folder path is outside library'));
+    }
+
+    // Find video file in folder and move it to library root
+    let videoMoved = false;
+    if (fs.existsSync(folderPath)) {
+      const entries = fs.readdirSync(folderPath);
+      const videoExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'];
+
+      for (const entry of entries) {
+        const ext = path.extname(entry).toLowerCase();
+        if (videoExtensions.includes(ext)) {
+          const videoPath = path.join(folderPath, entry);
+          const targetPath = path.join(libraryPath, entry);
+
+          // SAFETY CHECK: Verify video file exists before moving
+          if (!fs.existsSync(videoPath)) {
+            console.error(`[library-delete] ERROR: Video file not found: ${videoPath}`);
+            return res.json(fail('Video file not found in folder'));
+          }
+
+          // Move video back to library root
+          try {
+            fs.renameSync(videoPath, targetPath);
+            videoMoved = true;
+            console.error(`[library-delete] Moved video: ${entry} back to library root`);
+          } catch (err) {
+            console.error(`[library-delete] ERROR: Failed to move video: ${err.message}`);
+            return res.json(fail('Failed to move video file'));
+          }
+          break;
+        }
+      }
+
+      // SAFETY CHECK: Only delete folder if video was successfully moved
+      if (!videoMoved) {
+        console.error(`[library-delete] ERROR: No video file found in folder, aborting delete`);
+        return res.json(fail('No video file found in folder'));
+      }
+
+      // SAFETY CHECK: Verify video no longer exists in folder before deleting
+      const remainingEntries = fs.readdirSync(folderPath);
+      const hasVideo = remainingEntries.some(e => {
+        const ext = path.extname(e).toLowerCase();
+        return videoExtensions.includes(ext);
+      });
+
+      if (hasVideo) {
+        console.error(`[library-delete] ERROR: Video file still in folder, aborting delete`);
+        return res.json(fail('Safety check failed: video still in folder'));
+      }
+
+      // Safe to delete folder now
+      fs.rmSync(folderPath, { recursive: true, force: true });
+      console.error(`[library-delete] Deleted folder: ${folderPath}`);
+    }
+
+    // Remove item from libraryReader cache
+    const folderName = path.basename(folderPath);
+    const index = libraryReader.items.findIndex(item => item.id === folderName);
+    if (index !== -1) {
+      libraryReader.items.splice(index, 1);
+      if (libraryReader.currentIndex >= libraryReader.items.length) {
+        libraryReader.currentIndex = Math.max(0, libraryReader.items.length - 1);
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
 // POST /scrape/reload
 router.post("/scrape/reload", (req, res) => {
   try {

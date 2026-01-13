@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="grid.pageTitle">Grid View - Javinizer-JS</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+  <link rel="manifest" href="favicon/site.webmanifest">
+  <link rel="stylesheet" href="navbar.css">
+  <link rel="stylesheet" href="css/grid.css">
+  <script src="i18n.js?v=4"></script>
+  <script src="navbar-loader.js?v=4"></script>
+  <script src="i18n-bindings.js?v=4"></script>
+</head>
+<body>
+  <!-- Navbar will be loaded here by navbar-loader.js -->
+
+  <div class="grid-container">
+    <!-- Header -->
+    <div class="grid-header">
+      <h1 data-i18n="grid.heading">Grid View</h1>
+      <div class="header-actions">
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="Search..." data-i18n-placeholder="grid.searchPlaceholder">
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="loading">
+      <div class="spinner"></div>
+      <p data-i18n="messages.loading">Loading...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state" style="display: none;">
+      <h2 data-i18n="grid.noItemsTitle">No Items Found</h2>
+      <p data-i18n="grid.noItemsDesc">No items available in the library.</p>
+    </div>
+
+    <!-- Items Grid -->
+    <div id="itemsGrid" class="items-grid" style="display: none;"></div>
+  </div>
+
+  <script src="grid.js"></script>
+</body>
+</html>

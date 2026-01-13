@@ -4,6 +4,7 @@
   },
   "nav": {
     "home": "ホーム",
+    "grid": "グリッド",
     "actors": "女優",
     "config": "設定",
     "about": "情報"
@@ -263,5 +264,13 @@
       "issues": "問題を報告",
       "issuesUrl": "https://github.com/AlaricRomeo/Javinizer-JS/issues"
     }
+  },
+  "grid": {
+    "pageTitle": "グリッドビュー - Javinizer-JS",
+    "heading": "グリッドビュー",
+    "searchPlaceholder": "検索...",
+    "noItemsTitle": "アイテムが見つかりません",
+    "noItemsDesc": "ライブラリに利用可能なアイテムがありません。",
+    "actors": "女優"
   }
 }
