@@ -46,7 +46,7 @@ function extractCodesFromLibrary(libraryPath) {
   const codes = new Set();
 
   // Video file extensions to look for
-  const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts'];
+  const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts', '.mpg', '.mpeg'];
 
   items.forEach(item => {
     // Skip hidden files and directories
@@ -387,7 +387,7 @@ function saveToFile(code, data, sources, libraryPath) {
   // Find video file in library (recursively search subdirectories)
   let videoFile = '';
   if (libraryPath && fs.existsSync(libraryPath)) {
-    const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts'];
+    const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts', '.mpg', '.mpeg'];
 
     function findVideoRecursive(dirPath) {
       let items;

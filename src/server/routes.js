@@ -2010,6 +2010,25 @@ router.post("/play-video", async (req, res) => {
       pathModule.resolve(require('os').homedir()) // Home directory
     ];
 
+    // On Windows, add standard program installation directories
+    if (process.platform === 'win32') {
+      allowedPaths.push('C:\\Program Files');
+      allowedPaths.push('C:\\Program Files (x86)');
+      if (process.env.LOCALAPPDATA) {
+        allowedPaths.push(process.env.LOCALAPPDATA);
+      }
+    }
+    // On macOS, add /Applications
+    if (process.platform === 'darwin') {
+      allowedPaths.push('/Applications');
+    }
+    // On Linux, add standard binary paths
+    if (process.platform === 'linux') {
+      allowedPaths.push('/usr/bin');
+      allowedPaths.push('/usr/local/bin');
+      allowedPaths.push('/opt');
+    }
+
     // For video player path, check if it looks like a full path (contains path separator)
     // Only validate paths that look like full paths, allow executables in PATH
     if (videoPlayerPath.includes(pathModule.sep)) {
