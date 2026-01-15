@@ -249,6 +249,15 @@ body {
   background: #c82333;
 }
 
+.btn-play {
+  background: #28a745;
+  color: white;
+}
+
+.btn-play:hover {
+  background: #218838;
+}
+
 @media (max-width: 1400px) {
   .items-grid {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));

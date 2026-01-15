@@ -133,15 +133,11 @@
     "libraryPathSaveErrorAlert": "Errore durante il salvataggio del percorso libreria",
     "libraryPathSaveError": "✗ Errore nel salvataggio",
     "errorDuringDeletion": "Errore durante l'eliminazione",
-    "itemDeleted": "Item eliminato",
-    "saving": "⏳ Salvataggio...",
-    "noChanges": "Nessuna modifica da salvare",
     "changesSaved": "✓ Modifiche salvate",
     "confirmRemoveActor": "Rimuovere {name}?",
     "enterActorName": "Inserisci il nome dell'attore",
     "searchingActor": "Ricerca in corso...",
     "actorNotFound": "Attore non trovato",
-    "errorSearchingActor": "Errore durante la ricerca",
     "enterActorNameFirstAlert": "Inserisci il nome dell'attore prima di cercare",
     "confirmRemoveActorPrompt": "Rimuovere {name}?",
     "confirmDeleteActor": "Sei sicuro di voler eliminare {name}?",
@@ -165,7 +161,10 @@
     "userCanceled": "⚠️ Annullato dall'utente",
     "scraperFailed": "❌ Scraper \"{name}\" fallito: {message}",
     "actionRequired": "Azione Richiesta",
-    "javlibraryCloudflare": "1. Apri la finestra del browser che è apparsa (controlla la barra delle applicazioni se minimizzata)\n2. Supera la verifica di Cloudflare e accetta l'accordo per adulti\n3. Minimizza la finestra (NON chiuderla)\n4. Clicca Continua qui sotto"
+    "javlibraryCloudflare": "1. Apri la finestra del browser che è apparsa (controlla la barra delle applicazioni se minimizzata)\n2. Supera la verifica di Cloudflare e accetta l'accordo per adulti\n3. Minimizza la finestra (NON chiuderla)\n4. Clicca Continua qui sotto",
+    "confirmRescrape": "Fare il rescrape di  \"{movieId}\" con {scraper}?\n\nI campi trovati verranno sostituiti.\nI campi non trovati verranno lasciati come erano.",
+    "videoPlayerNotConfigured": "Percorso del video player non configurato",
+    "videoNotFound": "File video non trovato"
   },
   "actorModal": {
     "title": "Modifica Attore",

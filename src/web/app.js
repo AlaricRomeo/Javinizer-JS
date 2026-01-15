@@ -1242,7 +1242,7 @@ function setupEventHandlers() {
     }
   };
 
-  // Dropdown "Re-scrape Current Movie" - permette di ri-scrapare il movie corrente con uno scraper specifico
+  // Dropdown "Re-scrape Current Movie" - permette di fare il rescrape il movie corrente con uno scraper specifico
   document.getElementById("rescrapeDropdown").onchange = async (e) => {
     const selectedScraper = e.target.value;
     if (!selectedScraper) return;
@@ -1265,7 +1265,10 @@ function setupEventHandlers() {
     }
 
     // Conferma azione
-    if (!confirm(`Re-scrape "${movieId}" with ${selectedScraper}?\n\nNew data will be merged with existing data, giving priority to new values.`)) {
+    const confirmMsg = window.i18n
+      ? window.i18n.t("messages.confirmRescrape", { movieId, scraper: selectedScraper })
+      : `Re-scrape "${movieId}" with ${selectedScraper}?\n\nFound fields will be replaced.\nMissing fields will be kept as they were.`;
+    if (!confirm(confirmMsg)) {
       e.target.value = ""; // Reset dropdown
       return;
     }
@@ -2347,7 +2350,7 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       if (data.movieId) {
         // Reload the same movie to show updated data
         console.log('[complete] Reloading specific movie:', data.movieId);
-        await loadItem(`/item/scrape/${data.movieId}`);
+        await loadItem(`/item/scrape/by-id/${data.movieId}`);
         appendProgress(progressDiv, `🔄 Reloaded ${data.movieId} with updated data`, 'info');
       } else {
         // Auto-reload scrape items dopo completamento batch scraping

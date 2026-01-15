@@ -16,6 +16,28 @@ const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
 const _m = 80; // Max operations per session
 
 /**
+ * Clean stale lock files that prevent browser from starting
+ * @param {string} userDataDir - Path to browser data directory
+ */
+function cleanStaleLocks(userDataDir) {
+  if (!fs.existsSync(userDataDir)) return;
+
+  const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+
+  for (const lockFile of lockFiles) {
+    const lockPath = path.join(userDataDir, lockFile);
+    try {
+      if (fs.existsSync(lockPath)) {
+        fs.rmSync(lockPath, { force: true });
+        console.error(`[JavLibrary Scrape] Removed stale lock: ${lockFile}`);
+      }
+    } catch (e) {
+      // Ignore errors - file might already be deleted
+    }
+  }
+}
+
+/**
  * Clean old browser cache if it's stale
  * @param {string} userDataDir - Path to browser data directory
  */
@@ -29,20 +51,17 @@ function cleanOldCache(userDataDir) {
     if (ageMs > CACHE_MAX_AGE_MS) {
       console.error('[JavLibrary Scrape] Cache is older than 6h, cleaning...');
 
-      // Try graceful cleanup with timeout
-      const cleanupTimeout = setTimeout(() => {
-        console.error('[JavLibrary Scrape] Cache cleanup timeout - skipping (manual cleanup needed)');
-      }, 5000);
-
       try {
         fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-        clearTimeout(cleanupTimeout);
         console.error('[JavLibrary Scrape] Cache cleaned');
       } catch (rmError) {
-        clearTimeout(cleanupTimeout);
-        console.error(`[JavLibrary Scrape] Could not remove cache automatically: ${rmError.message}`);
-        console.error('[JavLibrary Scrape] Please manually delete:', userDataDir);
+        console.error(`[JavLibrary Scrape] Could not remove cache: ${rmError.message}`);
+        // If we can't delete the whole directory, at least clean the locks
+        cleanStaleLocks(userDataDir);
       }
+    } else {
+      // Cache is fresh but might have stale locks from crashed browser
+      cleanStaleLocks(userDataDir);
     }
   } catch (error) {
     console.error(`[JavLibrary Scrape] Error checking cache: ${error.message}`);
@@ -83,7 +102,23 @@ async function initBrowser(headless = false) {
     launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
   }
 
-  browser = await puppeteer.launch(launchOptions);
+  console.error('[Browser] Launching Puppeteer...');
+
+  // Launch with timeout
+  const launchPromise = puppeteer.launch(launchOptions);
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Browser launch timeout after 30s')), 30000);
+  });
+
+  browser = await Promise.race([launchPromise, timeoutPromise]);
+
+  // Handle browser disconnection
+  browser.on('disconnected', () => {
+    console.error('[Browser] Browser disconnected unexpectedly');
+    browser = null;
+    sessionPage = null;
+    _s = 0;
+  });
 
   console.error('[Browser] Browser ready with persistent session');
 }
@@ -181,8 +216,9 @@ async function initSession() {
  */
 async function fetchPage(url) {
   // Reuse the same page/tab from initSession - don't create new ones
-  if (!sessionPage) {
-    throw new Error('Session page not initialized. Call initSession first.');
+  if (!sessionPage || !browser || !browser.isConnected()) {
+    console.error('[JavLibrary Scrape] Browser disconnected, reinitializing...');
+    await initSession();
   }
 
   // Check session limit
@@ -203,6 +239,32 @@ async function fetchPage(url) {
     return html;
 
   } catch (error) {
+    // Check for browser disconnection errors
+    const isDisconnected = error.message.includes('Target closed') ||
+                          error.message.includes('Session closed') ||
+                          error.message.includes('Protocol error') ||
+                          error.message.includes('Connection closed') ||
+                          !browser ||
+                          !browser.isConnected();
+
+    if (isDisconnected) {
+      console.error('[JavLibrary Scrape] Browser disconnected during fetch, attempting recovery...');
+      try {
+        // Reset state
+        browser = null;
+        sessionPage = null;
+        _s = 0;
+
+        // Reinitialize
+        await initSession();
+        console.error('[JavLibrary Scrape] Recovery successful, retrying fetch...');
+        return await fetchPage(url); // Retry once
+      } catch (retryError) {
+        console.error(`[JavLibrary Scrape] Recovery failed: ${retryError.message}`);
+        throw retryError;
+      }
+    }
+
     console.error(`[JavLibrary Scrape] Error: ${error.message}`);
     throw error;
   }

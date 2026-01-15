@@ -643,11 +643,15 @@ router.get("/library-list", async (req, res) => {
     const items = await Promise.all(
       libraryReader.items.map(async item => {
         const builtItem = await buildItem(item);
+        // Use local cover image via endpoint, fallback to remote coverUrl
+        const localCoverUrl = `/item/library-cover/${encodeURIComponent(builtItem.folderId)}`;
         return {
           id: builtItem.id,
+          folderId: builtItem.folderId,
           filename: builtItem.filename,
           title: builtItem.title,
-          coverUrl: builtItem.coverUrl,
+          coverUrl: localCoverUrl, // Prefer local cover
+          remoteCoverUrl: builtItem.coverUrl, // Keep remote as fallback
           genre: builtItem.genre,
           actor: builtItem.actor
         };
@@ -2073,6 +2077,62 @@ router.get("/scrape/video/:itemId", async (req, res) => {
   } catch (err) {
     console.error('[GetScrapeVideo] Error:', err);
     res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// GET /item/library-cover/:folderId
+// Serve cover image from library folder
+// ─────────────────────────────
+router.get("/library-cover/:folderId", async (req, res) => {
+  try {
+    const folderId = req.params.folderId;
+    const config = loadConfig();
+
+    if (!config.libraryPath) {
+      return res.status(404).send('Library path not configured');
+    }
+
+    const folderPath = path.join(config.libraryPath, folderId);
+
+    if (!fs.existsSync(folderPath)) {
+      return res.status(404).send('Folder not found');
+    }
+
+    // Look for cover image (same priority as localMediaMapper)
+    const files = fs.readdirSync(folderPath);
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+
+    const findImage = (patterns) => {
+      for (const pattern of patterns) {
+        for (const file of files) {
+          const lowerFile = file.toLowerCase();
+          const ext = lowerFile.split('.').pop();
+          if (!imageExtensions.includes(ext)) continue;
+
+          if (pattern.includes('.')) {
+            if (lowerFile === pattern) return file;
+          } else {
+            const regex = new RegExp(`^.*${pattern}\\.(${imageExtensions.join('|')})$`, 'i');
+            if (regex.test(lowerFile)) return file;
+          }
+        }
+      }
+      return null;
+    };
+
+    const coverFile = findImage(['fanart']);
+
+    if (!coverFile) {
+      return res.status(404).send('Cover image not found');
+    }
+
+    const coverPath = path.join(folderPath, coverFile);
+    res.sendFile(coverPath);
+
+  } catch (err) {
+    console.error('[LibraryCover] Error:', err);
+    res.status(500).send(err.message);
   }
 });
 

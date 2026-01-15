@@ -116,9 +116,6 @@
     "libraryPathSaveErrorAlert": "ライブラリパスの保存エラー",
     "libraryPathSaveError": "✗ 保存エラー",
     "errorDuringDeletion": "削除中にエラー",
-    "itemDeleted": "アイテムが削除されました",
-    "saving": "⏳ 保存中...",
-    "noChanges": "保存する変更はありません",
     "changesSaved": "✓ 変更が保存されました",
     "confirmRemoveActor": "{name}を削除しますか？",
     "enterActorName": "女優名を入力してください",
@@ -148,7 +145,10 @@
     "userCanceled": "⚠️ ユーザーによってキャンセルされました",
     "scraperFailed": "❌ スクレイパー「{name}」が失敗しました: {message}",
     "actionRequired": "ユーザーアクションが必要",
-    "javlibraryCloudflare": "1. 表示されたブラウザウィンドウを開いてください（最小化されている場合はタスクバーを確認）\n2. Cloudflareチャレンジを解決し、成人向け規約に同意してください\n3. ウィンドウを最小化してください（閉じないでください）\n4. 下の「続行」をクリックしてください"
+    "javlibraryCloudflare": "1. 表示されたブラウザウィンドウを開いてください（最小化されている場合はタスクバーを確認）\n2. Cloudflareチャレンジを解決し、成人向け規約に同意してください\n3. ウィンドウを最小化してください（閉じないでください）\n4. 下の「続行」をクリックしてください",
+    "confirmRescrape": "「{movieId}」を{scraper}で再スクレイプしますか？\n\n見つかったフィールドは置き換えられます。\n見つからなかったフィールドは以前のまま残ります。",
+    "videoPlayerNotConfigured": "ビデオプレーヤーのパスが設定されていません",
+    "videoNotFound": "動画ファイルが見つかりません"
   },
   "actorModal": {
     "title": "女優を編集",

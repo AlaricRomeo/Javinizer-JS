@@ -2,10 +2,16 @@ let items = [];
 let filteredItems = [];
 let currentMode = 'scrape';
 
+// Lazy loading config
+const ITEMS_PER_PAGE = 30; // ~10 rows x 3 columns
+let displayedCount = 0;
+let isLoadingMore = false;
+
 document.addEventListener('DOMContentLoaded', async () => {
   await initializeI18n();
   await loadItems();
   setupEventListeners();
+  setupInfiniteScroll();
 });
 
 async function initializeI18n() {
@@ -61,7 +67,43 @@ function handleSearch(e) {
     });
   }
 
+  // Reset pagination when searching
+  displayedCount = 0;
   renderItems();
+}
+
+function setupInfiniteScroll() {
+  // Use IntersectionObserver for efficient scroll detection
+  const sentinel = document.createElement('div');
+  sentinel.id = 'scrollSentinel';
+  sentinel.style.height = '1px';
+  document.getElementById('itemsGrid').after(sentinel);
+
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && !isLoadingMore) {
+      loadMoreItems();
+    }
+  }, {
+    rootMargin: '200px' // Load 200px before reaching the end
+  });
+
+  observer.observe(sentinel);
+}
+
+function loadMoreItems() {
+  if (displayedCount >= filteredItems.length) return;
+
+  isLoadingMore = true;
+  const grid = document.getElementById('itemsGrid');
+  const nextBatch = filteredItems.slice(displayedCount, displayedCount + ITEMS_PER_PAGE);
+
+  nextBatch.forEach(item => {
+    const card = createItemCard(item);
+    grid.appendChild(card);
+  });
+
+  displayedCount += nextBatch.length;
+  isLoadingMore = false;
 }
 
 async function loadItems() {
@@ -135,10 +177,14 @@ function renderItems() {
   grid.style.display = 'grid';
   grid.innerHTML = '';
 
-  filteredItems.forEach(item => {
+  // Only render first batch, rest will be loaded on scroll
+  const initialBatch = filteredItems.slice(0, ITEMS_PER_PAGE);
+  initialBatch.forEach(item => {
     const card = createItemCard(item);
     grid.appendChild(card);
   });
+
+  displayedCount = initialBatch.length;
 }
 
 function createItemCard(item) {
@@ -149,6 +195,7 @@ function createItemCard(item) {
   const isNotMatched = !isMatched;
 
   const coverUrl = item.coverUrl || '';
+  const remoteCoverUrl = item.remoteCoverUrl || '';
   const hasCover = coverUrl && coverUrl.trim() !== '';
 
   const actors = item.actor || [];
@@ -164,9 +211,16 @@ function createItemCard(item) {
     statusBadge = '<span class="status-badge status-scraped">SCRAPED</span>';
   }
 
+  // For edit mode items, try local cover first, fallback to remote
+  const imgErrorHandler = remoteCoverUrl
+    ? `onerror="this.onerror=null; this.src='${remoteCoverUrl}'"`
+    : `onerror="this.style.display='none'; this.nextElementSibling.style.display='inline'"`;
+
   card.innerHTML = `
     <div class="item-cover">
-      ${hasCover ? `<img src="${coverUrl}" alt="${item.id || 'Cover'}" loading="lazy">` : '<span class="placeholder">📁</span>'}
+      ${hasCover
+        ? `<img src="${coverUrl}" alt="${item.id || 'Cover'}" loading="lazy" ${imgErrorHandler}><span class="placeholder" style="display:none">📁</span>`
+        : '<span class="placeholder">📁</span>'}
     </div>
     <div class="item-info">
       <div class="item-header">
@@ -183,10 +237,13 @@ function createItemCard(item) {
       ` : ''}
       ${!isNotMatched ? `
         <div class="item-actions">
-          <button class="btn btn-primary" onclick="selectItem('${item.id || item.filename}')">
+          <button class="btn btn-primary" onclick="selectItem('${item.folderId || item.id || item.filename}')">
             <span data-i18n="buttons.select">SELECT</span>
           </button>
-          <button class="btn btn-danger" onclick="deleteItem('${item.id || item.filename}')">
+          <button class="btn btn-play" onclick="playItem('${item.folderId || item.id || item.filename}')" title="Play">
+            ▶
+          </button>
+          <button class="btn btn-danger" onclick="deleteItem('${item.folderId || item.id || item.filename}')">
             🗑️
           </button>
         </div>
@@ -200,7 +257,7 @@ function createItemCard(item) {
 async function selectItem(identifier) {
   try {
     const item = items.find(i =>
-      (i.id && i.id === identifier) || i.filename === identifier
+      i.folderId === identifier || i.id === identifier || i.filename === identifier
     );
 
     if (!item) {
@@ -209,15 +266,6 @@ async function selectItem(identifier) {
     }
 
     const itemMode = item.mode || 'scrape';
-    const modeItems = items.filter(i => i.mode === itemMode);
-    const index = modeItems.findIndex(i =>
-      (i.id && i.id === identifier) || i.filename === identifier
-    );
-
-    if (index === -1) {
-      console.error('Item index not found in mode:', itemMode);
-      return;
-    }
 
     // Navigate to home with mode and item ID parameters
     window.location.href = `/?mode=${itemMode}&item=${encodeURIComponent(identifier)}`;
@@ -228,7 +276,7 @@ async function selectItem(identifier) {
 
 async function deleteItem(identifier) {
   const item = items.find(i =>
-    (i.id && i.id === identifier) || i.filename === identifier
+    i.folderId === identifier || i.id === identifier || i.filename === identifier
   );
 
   if (!item) return;
@@ -243,7 +291,10 @@ async function deleteItem(identifier) {
 
   try {
     const itemMode = item.mode || 'scrape';
-    const itemId = item.id || item.filename || identifier;
+    // For library items use folderId, for scrape items use id
+    const itemId = itemMode === 'edit'
+      ? (item.folderId || item.id || identifier)
+      : (item.id || item.filename || identifier);
 
     console.log('Deleting item:', { itemId, mode: itemMode, item });
 
@@ -264,5 +315,77 @@ async function deleteItem(identifier) {
   } catch (error) {
     console.error('Failed to delete item:', error);
     alert('Error deleting item');
+  }
+}
+
+async function playItem(identifier) {
+  const item = items.find(i =>
+    i.folderId === identifier || i.id === identifier || i.filename === identifier
+  );
+
+  if (!item) {
+    console.error('Item not found:', identifier);
+    return;
+  }
+
+  try {
+    // Get video player path from config
+    const configRes = await fetch('/item/config');
+    const configData = await configRes.json();
+    const videoPlayerPath = configData.ok ? configData.config.videoPlayerPath : null;
+
+    if (!videoPlayerPath || videoPlayerPath.trim() === '') {
+      alert(window.i18n ? window.i18n.t('messages.videoPlayerNotConfigured') : 'Video player path not configured');
+      return;
+    }
+
+    // Get video path based on mode
+    let videoPath = null;
+
+    if (item.mode === 'scrape') {
+      // For scrape items, videoFile is already in the item data
+      if (item.videoFile) {
+        videoPath = item.videoFile;
+      } else if (item.id) {
+        // Fallback: fetch from API
+        const response = await fetch(`/item/scrape/video/${encodeURIComponent(item.id)}`);
+        const data = await response.json();
+        if (data.ok && data.videoFile) {
+          videoPath = data.videoFile;
+        }
+      }
+    } else if (item.mode === 'edit') {
+      // For library items, get video from folder
+      const folderId = item.folderId || item.id;
+      const response = await fetch(`/item/videos/${encodeURIComponent(folderId)}`);
+      const data = await response.json();
+      if (data.ok && data.videos && data.videos.length > 0) {
+        videoPath = data.videos[0];
+      }
+    }
+
+    if (!videoPath) {
+      alert(window.i18n ? window.i18n.t('messages.videoNotFound') : 'Video file not found');
+      return;
+    }
+
+    // Play the video
+    const response = await fetch('/item/play-video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoPath: videoPath,
+        videoPlayerPath: videoPlayerPath
+      })
+    });
+
+    const result = await response.json();
+
+    if (!result.ok) {
+      alert('Error: ' + (result.error || 'Failed to play video'));
+    }
+  } catch (error) {
+    console.error('Failed to play video:', error);
+    alert('Error playing video');
   }
 }
