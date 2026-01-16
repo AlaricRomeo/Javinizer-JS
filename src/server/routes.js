@@ -559,8 +559,28 @@ router.get("/scrape/list", (req, res) => {
 // DELETE /scrape/current
 router.delete("/scrape/current", (req, res) => {
   try {
-    const result = scrapeReader.deleteCurrent();
-    res.json(result);
+    // Check if a specific ID was provided in the request body
+    const { id } = req.body;
+
+    if (id) {
+      // Reload items to ensure we have the latest list
+      scrapeReader.loadScrapeItems();
+
+      const index = scrapeReader.items.findIndex(item => item.id === id);
+
+      if (index === -1) {
+        return res.json(fail('Item not found'));
+      }
+
+      // Set the current index to the found item and delete it
+      scrapeReader.currentIndex = index;
+      const result = scrapeReader.deleteCurrent();
+      res.json(result);
+    } else {
+      // Legacy behavior: delete current item based on currentIndex
+      const result = scrapeReader.deleteCurrent();
+      res.json(result);
+    }
   } catch (err) {
     res.json(fail(err.message));
   }
@@ -614,6 +634,30 @@ router.get("/scrape-list", async (req, res) => {
       const jsonData = fs.readFileSync(item.jsonPath, 'utf8');
       const parsed = JSON.parse(jsonData);
 
+      // Determine if the item is matched based on whether scraper returned only the id or meaningful data
+      // An item is considered NOT matched only if the scraper returns only the id with no other significant data
+      const hasMeaningfulData = Boolean(parsed.data && (
+        Boolean(parsed.data.title) ||
+        Boolean(parsed.data.originalTitle) ||
+        Boolean(parsed.data.releaseDate) ||
+        parsed.data.runtime > 0 ||
+        Boolean(parsed.data.studio) ||
+        Boolean(parsed.data.label) ||
+        Boolean(parsed.data.series) ||
+        Boolean(parsed.data.director) ||
+        Boolean(parsed.data.plot) ||
+        Boolean(parsed.data.tagline) ||
+        Boolean(parsed.data.contentRating) ||
+        (Array.isArray(parsed.data.genres) && parsed.data.genres.length > 0) ||
+        (Array.isArray(parsed.data.tags) && parsed.data.tags.length > 0) ||
+        (Array.isArray(parsed.data.actor) && parsed.data.actor.length > 0) ||
+        Boolean(parsed.data.coverUrl) ||
+        Boolean(parsed.data.screenshotUrl) ||
+        Boolean(parsed.data.trailerUrl) ||
+        Boolean(parsed.data.contentId) ||
+        (parsed.data.images && (parsed.data.images.poster || (Array.isArray(parsed.data.images.fanart) && parsed.data.images.fanart.length > 0)))
+      ));
+
       return {
         id: item.id,
         filename: parsed.videoFile || item.id,
@@ -622,7 +666,7 @@ router.get("/scrape-list", async (req, res) => {
         coverUrl: parsed.data?.coverUrl || '',
         genre: parsed.data?.genre || [],
         actor: parsed.data?.actor || [],
-        matched: !!(parsed.data?.title)
+        matched: hasMeaningfulData
       };
     });
 

@@ -943,7 +943,18 @@ function createActorCard(actor, index) {
   // Aggiungi nome e ruolo
   const nameDiv = document.createElement('div');
   nameDiv.className = 'name';
-  nameDiv.textContent = actor.name || (window.i18n ? window.i18n.t("messages.missingName") : 'Nome mancante');
+  // Se c'è il nome visualizza il nome
+  if (actor.name) {
+    nameDiv.textContent = actor.name;
+  }
+  // Se non c'è il nome visualizza l'alternate name
+  else if (actor.altName) {
+    nameDiv.textContent = actor.altName;
+  }
+  // Se non c'è né il nome né l'alternate name visualizza "Missing Name"
+  else {
+    nameDiv.textContent = window.i18n ? window.i18n.t("messages.missingName") : 'Nome mancante';
+  }
 
   const roleDiv = document.createElement('div');
   roleDiv.className = 'role';
@@ -971,7 +982,18 @@ function updateActorCard(card, actor, index) {
   // Update name
   const nameDiv = card.querySelector('.name');
   if (nameDiv) {
-    nameDiv.textContent = actor.name || (window.i18n ? window.i18n.t("messages.missingName") : 'Nome mancante');
+    // Se c'è il nome visualizza il nome
+  if (actor.name) {
+    nameDiv.textContent = actor.name;
+  }
+  // Se non c'è il nome visualizza l'alternate name
+  else if (actor.altName) {
+    nameDiv.textContent = actor.altName;
+  }
+  // Se non c'è né il nome né l'alternate name visualizza "Missing Name"
+  else {
+    nameDiv.textContent = window.i18n ? window.i18n.t("messages.missingName") : 'Nome mancante';
+  }
   }
 
   // Update role
@@ -1289,8 +1311,13 @@ function setupEventHandlers() {
     }
 
     try {
+      // Send the current item ID in the request body to ensure we delete the right item
       const res = await fetch("/item/scrape/current", {
-        method: "DELETE"
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ id: currentItem?.id })
       });
 
       const data = await res.json();

@@ -60,7 +60,14 @@ function handleSearch(e) {
         item.id,
         item.filename,
         item.title,
-        ...(item.actor || []).map(a => a.name)
+        ...(item.actor || []).map(a => {
+          // Se c'è il nome usa il nome
+          if (a.name) return a.name;
+          // Se non c'è il nome usa l'alternate name
+          if (a.altName) return a.altName;
+          // Se non c'è né il nome né l'alternate name usa "Missing Name"
+          return "Missing Name";
+        })
       ].filter(Boolean).join(' ').toLowerCase();
 
       return searchText.includes(query);
@@ -191,7 +198,7 @@ function createItemCard(item) {
   const card = document.createElement('div');
   card.className = 'item-card';
 
-  const isMatched = item.mode === 'edit' || (item.matched !== false && item.title && item.title.trim() !== '');
+  const isMatched = item.mode === 'edit' || item.matched !== false;
   const isNotMatched = !isMatched;
 
   const coverUrl = item.coverUrl || '';
@@ -199,7 +206,14 @@ function createItemCard(item) {
   const hasCover = coverUrl && coverUrl.trim() !== '';
 
   const actors = item.actor || [];
-  const actorNames = actors.map(a => a.name).filter(Boolean).join(', ');
+  const actorNames = actors.map(a => {
+    // Se c'è il nome visualizza il nome
+    if (a.name) return a.name;
+    // Se non c'è il nome visualizza l'alternate name
+    if (a.altName) return a.altName;
+    // Se non c'è né il nome né l'alternate name visualizza "Missing Name"
+    return "Missing Name";
+  }).join(', ');
 
   const genres = item.genre || [];
   const genreText = Array.isArray(genres) ? genres.slice(0, 3).join(', ') : '';
@@ -243,7 +257,7 @@ function createItemCard(item) {
           <button class="btn btn-play" onclick="playItem('${item.folderId || item.id || item.filename}')" title="Play">
             ▶
           </button>
-          <button class="btn btn-danger" onclick="deleteItem('${item.folderId || item.id || item.filename}')">
+          <button class="btn btn-danger" onclick="deleteItem('${item.id}', '${item.mode || 'scrape'}')">
             🗑️
           </button>
         </div>
@@ -274,13 +288,7 @@ async function selectItem(identifier) {
   }
 }
 
-async function deleteItem(identifier) {
-  const item = items.find(i =>
-    i.folderId === identifier || i.id === identifier || i.filename === identifier
-  );
-
-  if (!item) return;
-
+async function deleteItem(identifier, mode) {
   const confirmMsg = window.i18n
     ? window.i18n.t('messages.confirmDeleteItem')
     : 'Are you sure you want to delete this item?';
@@ -290,15 +298,14 @@ async function deleteItem(identifier) {
   }
 
   try {
-    const itemMode = item.mode || 'scrape';
-    // For library items use folderId, for scrape items use id
-    const itemId = itemMode === 'edit'
-      ? (item.folderId || item.id || identifier)
-      : (item.id || item.filename || identifier);
+    // Use the mode passed from the button or fallback to 'scrape' if not provided
+    const itemMode = mode || 'scrape';
 
-    console.log('Deleting item:', { itemId, mode: itemMode, item });
+    // Use the identifier directly as the filename for deletion
+    const itemId = identifier;
 
     const endpoint = itemMode === 'scrape' ? '/item/scrape-delete' : '/item/library-delete';
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -308,6 +315,7 @@ async function deleteItem(identifier) {
     const result = await response.json();
 
     if (result.ok) {
+      // Reload items to refresh the grid
       await loadItems();
     } else {
       alert('Failed to delete item: ' + (result.error || 'Unknown error'));
