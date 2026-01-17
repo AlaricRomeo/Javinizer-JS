@@ -332,7 +332,8 @@ function mergeResults(code, scraperResults, config) {
   allFields.forEach(fieldName => {
     const priority = getFieldPriority(fieldName, config);
 
-    // Find first scraper in priority order that provides a non-empty value
+    // First, try to find a non-empty value from scrapers in priority order
+    let foundValue = false;
     for (const scraperName of priority) {
       const scraperResult = scraperResults.find(r => r.scraperName === scraperName);
 
@@ -347,7 +348,33 @@ function mergeResults(code, scraperResults, config) {
 
         if (!isEmpty) {
           merged[fieldName] = value;
-          break; // Found non-empty value, stop looking
+          foundValue = true;
+          break; // Found non-empty value from prioritized scraper, stop looking
+        }
+      }
+    }
+
+    // If no value was found from prioritized scrapers, try any other scraper that provides the field
+    if (!foundValue) {
+      for (const scraperResult of scraperResults) {
+        // Skip scrapers that are already in the priority list (we already tried them)
+        if (priority.includes(scraperResult.scraperName)) {
+          continue;
+        }
+
+        if (scraperResult.data[fieldName] !== undefined) {
+          const value = scraperResult.data[fieldName];
+
+          // Check if value is non-empty
+          const isEmpty = value === null ||
+                         value === '' ||
+                         (Array.isArray(value) && value.length === 0) ||
+                         (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
+
+          if (!isEmpty) {
+            merged[fieldName] = value;
+            break; // Found non-empty value from non-prioritized scraper, stop looking
+          }
         }
       }
     }
