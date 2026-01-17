@@ -248,6 +248,7 @@ function isActorComplete(actor) {
   return isComplete;
 }
 
+
 /**
  * Merge local actor data with scraped data
  * Local data takes priority for non-empty fields
@@ -667,6 +668,7 @@ async function getActor(actorName, forceOverwrite = false) {
     if (localActor) {
       console.log(`[ActorScraperManager] Loaded actor from cache: ${actorId}`);
 
+
       // Check if local data is complete
       if (isActorComplete(localActor)) {
         console.log(`[ActorScraperManager] Actor is complete, returning from cache`);
@@ -681,6 +683,7 @@ async function getActor(actorName, forceOverwrite = false) {
       if (scrapedActor) {
         // Merge local and scraped data (local takes priority for non-empty fields)
         const mergedActor = mergeLocalWithScraped(localActor, scrapedActor);
+
 
         // Save the merged data
         saveActorLocal(mergedActor);
@@ -697,7 +700,10 @@ async function getActor(actorName, forceOverwrite = false) {
 
   // Not in cache, scrape it
   console.log(`[ActorScraperManager] Actor not in cache, scraping: ${actorName}`);
-  return await scrapeActor(actorName);
+  const scrapedActor = await scrapeActor(actorName);
+
+
+  return scrapedActor;
 }
 
 // ─────────────────────────────
@@ -973,6 +979,7 @@ async function updateMovieActorData() {
           const thumbUrl = resolveActorThumb(actorData);
           if (thumbUrl) actor.thumb = thumbUrl;
 
+
           movieUpdated = true;
           console.log(`[ActorScraperManager] Updated actor in ${filename}: ${actor.name} -> ${actorId}`);
         }
@@ -1220,6 +1227,7 @@ async function processSingleMovieActors(movieId, emitter = null) {
         const thumbUrl = resolveActorThumb(actorData);
         if (thumbUrl) actor.thumb = thumbUrl;
 
+
         updated = true;
         console.log(`[ActorScraperManager] Updated actor in movie: ${actor.name} -> ${actorId}`);
       }
@@ -1450,6 +1458,7 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
 
           const thumbUrl = resolveActorThumb(actorData);
           if (thumbUrl) actor.thumb = thumbUrl;
+
 
           updated = true;
         }

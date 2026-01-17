@@ -1,6 +1,7 @@
 # Claude Code Project Rules
 
 ## Project Context
+K.I.S.S.
 
 - **Stile di programmazione:** Preferisci componenti funzionali, usa TypeScript rigoroso.
 

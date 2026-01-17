@@ -193,7 +193,18 @@ function createActorCard(actor) {
     // Try to load local file with common extensions
     const extensions = ['webp', 'jpg', 'png'];
     const img = document.createElement('img');
-    img.alt = actor.name || 'Actor';
+    // Se c'è il nome usa il nome
+    if (actor.name) {
+      img.alt = actor.name;
+    }
+    // Se non c'è il nome usa l'alternate name
+    else if (actor.altName) {
+      img.alt = actor.altName;
+    }
+    // Se non c'è né il nome né l'alternate name usa "Actor"
+    else {
+      img.alt = 'Actor';
+    }
 
     let currentExtIndex = 0;
 
@@ -222,7 +233,18 @@ function createActorCard(actor) {
     // No ID, use thumb URL directly
     const img = document.createElement('img');
     img.src = actor.thumb;
-    img.alt = actor.name || 'Actor';
+    // Se c'è il nome usa il nome
+    if (actor.name) {
+      img.alt = actor.name;
+    }
+    // Se non c'è il nome usa l'alternate name
+    else if (actor.altName) {
+      img.alt = actor.altName;
+    }
+    // Se non c'è né il nome né l'alternate name usa "Actor"
+    else {
+      img.alt = 'Actor';
+    }
     img.onerror = () => {
       thumb.innerHTML = '👤';
     };
@@ -238,7 +260,18 @@ function createActorCard(actor) {
 
   const name = document.createElement('div');
   name.className = 'actor-name';
-  name.textContent = actor.name || 'Unknown';
+  // Se c'è il nome visualizza il nome
+  if (actor.name) {
+    name.textContent = actor.name;
+  }
+  // Se non c'è il nome visualizza l'alternate name
+  else if (actor.altName) {
+    name.textContent = actor.altName;
+  }
+  // Se non c'è né il nome né l'alternate name visualizza "Unknown"
+  else {
+    name.textContent = 'Unknown';
+  }
 
   const altName = document.createElement('div');
   altName.className = 'actor-altname';
