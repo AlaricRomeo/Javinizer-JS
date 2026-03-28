@@ -1,12 +1,9 @@
 /**
  * Cache Helper for Actor Scrapers
  *
- * Provides unified cache management for all actor scrapers.
- * Each scraper should:
- * 1. Check cache first (external path or internal)
- * 2. If data is complete, return it
- * 3. If data is incomplete or missing, scrape online
- * 4. Save to cache (external path if set, otherwise internal)
+ * Internal cache (data/actors/) is always used for all scrapers.
+ * externalPath is a user-curated folder, read-only for the system,
+ * used exclusively by the "local" scraper.
  */
 
 const fs = require('fs');
@@ -29,22 +26,27 @@ function loadConfig() {
 }
 
 /**
- * Get actors cache directory path
- * Returns external path if configured, otherwise internal cache
+ * Get internal actors cache path (always data/actors/)
  */
 function getActorsCachePath() {
-  const config = loadConfig();
-
-  // Check if external path is configured in scrapers.actors.externalPath
-  if (config.scrapers &&
-      config.scrapers.actors &&
-      config.scrapers.actors.externalPath &&
-      config.scrapers.actors.externalPath.trim() !== '') {
-    return config.scrapers.actors.externalPath;
-  }
-
-  // Fallback to internal cache
   return path.join(__dirname, '../../data/actors');
+}
+
+/**
+ * Get external actors path (user-curated, used only by "local" scraper)
+ * Returns null if not configured
+ */
+function getExternalActorsPath() {
+  try {
+    const config = loadConfig();
+    if (config.scrapers &&
+        config.scrapers.actors &&
+        config.scrapers.actors.externalPath &&
+        config.scrapers.actors.externalPath.trim() !== '') {
+      return config.scrapers.actors.externalPath;
+    }
+  } catch (_) {}
+  return null;
 }
 
 /**
@@ -169,44 +171,6 @@ function loadFromCache(actorName) {
   }
 }
 
-/**
- * Save actor to cache (.nfo format)
- * Saves to external path if configured, otherwise internal cache
- */
-function saveToCache(actor) {
-  const actorsPath = getActorsCachePath();
-
-  // Ensure directory exists
-  if (!fs.existsSync(actorsPath)) {
-    fs.mkdirSync(actorsPath, { recursive: true });
-  }
-
-  // Ensure actor has ID
-  if (!actor.id) {
-    actor.id = normalizeActorName(actor.name);
-  }
-
-  const actorNfoPath = path.join(actorsPath, `${actor.id}.nfo`);
-
-  // Update metadata
-  actor.meta = actor.meta || {};
-  actor.meta.lastUpdate = new Date().toISOString();
-
-  try {
-    // Convert to NFO format and save
-    const nfoContent = actorToNFO(actor);
-    fs.writeFileSync(actorNfoPath, nfoContent, 'utf-8');
-    console.error(`[CacheHelper] Saved actor to cache: ${actor.id}.nfo`);
-
-    // Update index
-    updateIndex(actor);
-
-    return true;
-  } catch (error) {
-    console.error(`[CacheHelper] Failed to save actor to cache:`, error.message);
-    return false;
-  }
-}
 
 /**
  * Check if actor data is complete
@@ -263,8 +227,8 @@ function mergeActorData(cached, scraped) {
 module.exports = {
   loadConfig,
   getActorsCachePath,
+  getExternalActorsPath,
   loadFromCache,
-  saveToCache,
   isActorComplete,
   mergeActorData,
   resolveActorId,

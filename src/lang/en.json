@@ -32,6 +32,7 @@
     "browse": "📁",
     "scrapeNow": "🔍 Scrape Now!",
     "clearCache": "🗑️ Clear Scrapers Cache",
+    "rebuildActorsIndex": "🔄 Rebuild Actors Index",
     "deleteItem": "🗑️ Delete Item",
     "deleteAllItems": "🗑️ Delete All Items",
     "manageActors": "👥 Manage Actors",

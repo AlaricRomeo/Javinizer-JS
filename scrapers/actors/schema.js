@@ -219,6 +219,11 @@ function actorToNFO(actor) {
   let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
   xml += '<actor>\n';
 
+  // ID (canonical, stable)
+  if (actor.id) {
+    xml += `  <id>${escapeXml(actor.id)}</id>\n`;
+  }
+
   // Basic info
   if (actor.name) {
     xml += `  <name>${escapeXml(actor.name)}</name>\n`;
@@ -341,6 +346,10 @@ function nfoToActor(nfoContent) {
       .replace(/&lt;/g, '<')
       .replace(/&amp;/g, '&');
   };
+
+  // Parse ID (canonical)
+  const storedId = getTagValue('id');
+  if (storedId) actor.id = unescapeXml(storedId);
 
   // Parse basic fields
   actor.name = unescapeXml(getTagValue('name'));

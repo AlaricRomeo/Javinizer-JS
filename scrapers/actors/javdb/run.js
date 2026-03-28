@@ -145,6 +145,18 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
       actor.name = fullName.replace(/ - JAV Profile$/i, '').trim();
     }
 
+    // Verify the returned name matches the searched name (exact or inverted)
+    const normalize = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const searchedNorm = normalize(actorName);
+    const invertedNorm = normalize(invertName(actorName));
+    const returnedNorm = normalize(actor.name);
+
+    if (returnedNorm !== searchedNorm && returnedNorm !== invertedNorm) {
+      console.error(`[javdb] Name mismatch: searched "${actorName}", got "${actor.name}" — skipping`);
+      if (shouldCloseBrowser) await browser.close();
+      return null;
+    }
+
     // Extract data from the bold tags section
     // Pattern: <b>DOB:</b> <a>1993-10-20</a>
     // Pattern: <b>Measurements:</b> 88-59-84

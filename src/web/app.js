@@ -1264,6 +1264,24 @@ function setupEventHandlers() {
     }
   };
 
+  document.getElementById("rebuildActorsIndex").onclick = async () => {
+    try {
+      const res = await fetch("/item/actors/rebuild-index", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const parts = Object.entries(data.summary).map(([k, v]) => `${k}: ${v}`).join(', ');
+        showNotification(`✓ Index rebuilt (${parts})`, "success");
+      } else {
+        showNotification((window.i18n ? window.i18n.t("messages.errorPrefix") : "Errore: ") + data.error, "error");
+      }
+    } catch (err) {
+      showNotification("Errore durante la ricostruzione dell'indice", "error");
+    }
+  };
+
   // Dropdown "Re-scrape Current Movie" - permette di fare il rescrape il movie corrente con uno scraper specifico
   document.getElementById("rescrapeDropdown").onchange = async (e) => {
     const selectedScraper = e.target.value;
@@ -1729,11 +1747,14 @@ function setupActorModalEventListeners() {
     searchStatus.style.color = "#666";
     searchStatus.textContent = window.i18n ? window.i18n.t("messages.searchingActorData") : "Cercando dati dell'attore...";
 
+    const overwriteCheckbox = document.getElementById("actorEditOverwriteLocal");
+    const forceOverwrite = overwriteCheckbox ? overwriteCheckbox.checked : false;
+
     try {
       const response = await fetch("/item/actors/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: actorName })
+        body: JSON.stringify({ name: actorName, forceOverwrite })
       });
 
       const result = await response.json();

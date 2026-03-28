@@ -194,37 +194,74 @@ app.use("/actors", (req, res) => {
     const fs = require("fs");
     const path = require("path");
 
-    // Load config directly to get actors path
-    let actorsPath;
+    const internalActorsPath = path.join(process.cwd(), 'data/actors');
+
+    let externalActorsPath = null;
     try {
       const configPath = path.join(process.cwd(), 'config.json');
       if (fs.existsSync(configPath)) {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-
-        // Check if external actors path is configured
-        if (config.scrapers && config.scrapers.actors && config.scrapers.actors.externalPath) {
-          actorsPath = config.scrapers.actors.externalPath;
-        } else {
-          // Default path
-          actorsPath = path.join(process.cwd(), 'data/actors');
+        if (config.scrapers && config.scrapers.actors && config.scrapers.actors.externalPath &&
+            config.scrapers.actors.externalPath.trim() !== '') {
+          externalActorsPath = config.scrapers.actors.externalPath;
         }
-      } else {
-        // Default path if config doesn't exist
-        actorsPath = path.join(process.cwd(), 'data/actors');
       }
     } catch (configErr) {
       console.error('[Server] Error loading config for actors path:', configErr.message);
-      // Fallback to default path
-      actorsPath = path.join(process.cwd(), 'data/actors');
     }
 
-    // Get filename from URL (e.g., /actors/mao-hamasaki.webp?t=123 → mao-hamasaki.webp)
-    // Strip query parameters
+    // Get filename from URL — strip query parameters
     const url = new URL(req.url, `http://${req.headers.host}`);
-    const filename = decodeURIComponent(url.pathname.substring(1));
-    const filePath = path.join(actorsPath, filename);
+    let filename = decodeURIComponent(url.pathname.substring(1));
 
-    // Verify file exists
+    // /actors/external/file.jpg → serve from externalPath
+    if (filename.startsWith('external/') && externalActorsPath) {
+      const extFilename = filename.slice('external/'.length);
+      const filePath = path.join(externalActorsPath, extFilename);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).send("Actor thumbnail not found");
+      }
+      filename = extFilename;
+      var actorsPath = externalActorsPath;
+    } else {
+      // Try internal cache first, fallback to externalPath
+      const internalPath = path.join(internalActorsPath, filename);
+      const externalPath = externalActorsPath ? path.join(externalActorsPath, filename) : null;
+
+      var actorsPath = internalActorsPath;
+      if (!fs.existsSync(internalPath) && externalPath && fs.existsSync(externalPath)) {
+        var actorsPath = externalActorsPath;
+      }
+    }
+
+    var filePath = path.join(actorsPath, filename);
+
+    // If not found by exact filename, try all extensions + inverted ID
+    if (!fs.existsSync(filePath)) {
+      const nameWithoutExt = path.basename(filename, path.extname(filename));
+      const exts = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+
+      // Also try inverted slug: "asamiya-rei" → "rei-asamiya"
+      const parts = nameWithoutExt.split('-');
+      const invertedId = parts.length >= 2
+        ? [...parts.slice(Math.ceil(parts.length / 2)), ...parts.slice(0, Math.ceil(parts.length / 2))].join('-')
+        : null;
+
+      const idsToTry = [nameWithoutExt];
+      if (invertedId && invertedId !== nameWithoutExt) idsToTry.push(invertedId);
+
+      outer: for (const id of idsToTry) {
+        for (const e of exts) {
+          const candidate = path.join(internalActorsPath, `${id}${e}`);
+          if (fs.existsSync(candidate)) {
+            filePath = candidate;
+            filename = `${id}${e}`;
+            break outer;
+          }
+        }
+      }
+    }
+
     if (!fs.existsSync(filePath)) {
       return res.status(404).send("Actor thumbnail not found");
     }
@@ -336,6 +373,15 @@ cleanupTempDirectory();
 // ─────────────────────────────
 // Start server
 // ─────────────────────────────
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[Server] Port ${PORT} already in use. Kill the existing process and retry.`);
+    process.exit(1);
+  } else {
+    throw err;
+  }
+});
+
 server.listen(PORT, () => {
   console.log(`WebUI active on http://localhost:${PORT}`);
 });

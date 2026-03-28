@@ -245,39 +245,38 @@ function updateActorPreview(url, forceRemote = false) {
     return;
   }
 
-  // If we have an actor, prioritize local file lookup
-  // This works even when url is empty (after uploading a local image)
+  // If we have an actor, prioritize local file lookup (try all extensions)
   if (unifiedCurrentActor && (unifiedCurrentActor.id || unifiedCurrentActor.name)) {
-    // Use actor ID if available (most reliable), otherwise normalize the name
     const actorId = unifiedCurrentActor.id || normalizeActorNameForFile(unifiedCurrentActor.name);
-    // Add cache-busting timestamp to force reload after image changes
-    const localImageUrl = `/actors/${actorId}.jpg?t=${Date.now()}`;
+    const extensions = ['webp', 'jpg', 'jpeg', 'png'];
+    const ts = Date.now();
+    let extIndex = 0;
 
-    previewImg.src = localImageUrl;
-
-    // Set up error handler for when local image doesn't exist
-    previewImg.onerror = () => {
-      // If local image fails, try the original thumb URL
-      if (url && url.trim() !== "" && url !== localImageUrl) {
+    const tryNext = () => {
+      if (extIndex < extensions.length) {
+        previewImg.src = `/actors/${actorId}.${extensions[extIndex++]}?t=${ts}`;
+      } else if (url && url.trim() !== '') {
         previewImg.src = url;
         previewImg.onerror = () => {
-          previewImg.style.display = "none";
-          placeholder.style.display = "block";
+          previewImg.style.display = 'none';
+          placeholder.style.display = 'block';
         };
         previewImg.onload = () => {
-          previewImg.style.display = "block";
-          placeholder.style.display = "none";
+          previewImg.style.display = 'block';
+          placeholder.style.display = 'none';
         };
       } else {
-        previewImg.style.display = "none";
-        placeholder.style.display = "block";
+        previewImg.style.display = 'none';
+        placeholder.style.display = 'block';
       }
     };
 
+    previewImg.onerror = tryNext;
     previewImg.onload = () => {
-      previewImg.style.display = "block";
-      placeholder.style.display = "none";
+      previewImg.style.display = 'block';
+      placeholder.style.display = 'none';
     };
+    tryNext();
     return;
   }
 
@@ -617,10 +616,18 @@ async function uploadActorImage() {
 
     if (result.ok && result.url) {
       // Update thumb URL field with uploaded image URL
-      document.getElementById("actorEditThumb").value = result.url;
+      const thumbField = document.getElementById("actorEditThumb");
+      thumbField.value = result.url;
+      thumbField.dataset.uploadedFile = result.url;
 
-      // Update preview
-      updateActorPreview(result.url);
+      // Show temp image directly in preview (file not yet moved to actors dir)
+      const previewImg = document.getElementById("actorEditPreviewImg");
+      const placeholder = document.getElementById("actorEditPreviewPlaceholder");
+      if (previewImg && placeholder) {
+        previewImg.src = result.url;
+        previewImg.style.display = "block";
+        placeholder.style.display = "none";
+      }
 
       // Clear file input
       fileInput.value = "";

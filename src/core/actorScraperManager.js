@@ -111,44 +111,47 @@ function saveActorLocal(actor) {
  * @param {string} actorName - Actor name to scrape
  * @returns {Promise<object|null>} - Scraped actor data or null
  */
-function executeActorScraper(scraperName, actorName) {
+function executeActorScraper(scraperName, actorName, nameVariants = []) {
   return new Promise(async (resolve) => {
     const scraperPath = path.join(__dirname, '../../scrapers/actors', scraperName, 'run.js');
 
-    // Check if scraper exists
     if (!fs.existsSync(scraperPath)) {
       console.error(`[ActorScraperManager] Scraper not found: ${scraperPath}`);
       resolve(null);
       return;
     }
 
-    console.log(`[ActorScraperManager] Executing scraper in-process: ${scraperName} for ${actorName}`);
-
-    // Try to require the scraper module and execute in-process
     try {
       const scraperModule = require(scraperPath);
 
-      // Prefer exported function based on scraper type
       const fn = (scraperModule && (scraperModule.scrapeLocal || scraperModule.scrapeJavDB || scraperModule.scrapeActor || scraperModule.scrape))
         ? (scraperModule.scrapeLocal || scraperModule.scrapeJavDB || scraperModule.scrapeActor || scraperModule.scrape)
         : null;
 
       if (typeof fn === 'function') {
-        // Run scraper with timeout
-        const timeoutMs = 30000; // 30s
+        const timeoutMs = 30000;
+
+        // Build unique list: original + inverted + all variants + their inverted forms
+        const invert = n => { const p = n.trim().split(/\s+/); return p.length === 2 ? `${p[1]} ${p[0]}` : n; };
+        const seen = new Set();
+        const allNames = [actorName, invert(actorName), ...nameVariants]
+          .flatMap(n => [n, invert(n)])
+          .filter(n => { if (!n || seen.has(n)) return false; seen.add(n); return true; });
 
         const runPromise = (async () => {
-          try {
-            const result = await fn(actorName);
-            return result || null;
-          } catch (err) {
-            console.error(`[ActorScraperManager] Scraper ${scraperName} threw:`, err.message);
-            return null;
+          for (const name of allNames) {
+            try {
+              console.log(`[ActorScraperManager] Executing scraper in-process: ${scraperName} for ${name}`);
+              const result = await fn(name);
+              if (result) return result;
+            } catch (err) {
+              console.error(`[ActorScraperManager] Scraper ${scraperName} threw for "${name}":`, err.message);
+            }
           }
+          return null;
         })();
 
         const timeoutPromise = new Promise(res => setTimeout(() => res(null), timeoutMs));
-
         const final = await Promise.race([runPromise, timeoutPromise]);
 
         if (final === null) {
@@ -399,102 +402,74 @@ function mergeActorData(actorName, scraperResults, scraperPriority) {
   return merged;
 }
 
+/**
+ * Resolve actor ID from index, trying original and inverted name.
+ * Generates a new ID if not found.
+ */
+function resolveActorIdWithFallback(actorName) {
+  let actorId = resolveActorId(actorName);
+  if (!actorId) {
+    const parts = actorName.trim().split(/\s+/);
+    if (parts.length === 2) actorId = resolveActorId(`${parts[1]} ${parts[0]}`);
+  }
+  if (!actorId) actorId = normalizeActorName(actorName);
+  return actorId;
+}
+
+/**
+ * Extract all name variants from scraper results collected so far.
+ * Used to pass alt names to subsequent scrapers.
+ */
+function extractNameVariants(scraperResults) {
+  const variants = new Set();
+  for (const { data } of scraperResults) {
+    if (!data) continue;
+    if (data.name) variants.add(data.name);
+    if (data.altName) {
+      data.altName.split(',').map(s => s.trim()).filter(Boolean).forEach(n => variants.add(n));
+    }
+    if (data.otherNames && Array.isArray(data.otherNames)) {
+      data.otherNames.forEach(n => n && variants.add(n));
+    }
+  }
+  return Array.from(variants);
+}
+
 // ─────────────────────────────
 // Main Scraping Function
 // ─────────────────────────────
 
 /**
- * Scrape actor data from enabled scrapers, excluding 'local'
- * @param {string} actorName - Actor name
- * @param {EventEmitter} emitter - Optional event emitter
- * @returns {Promise<object|null>} - Merged actor data or null
+ * Core scraping function — runs enabled scrapers sequentially and merges results.
+ * @param {string} actorName
+ * @param {string[]} enabledScrapers
+ * @param {string} actorId
+ * @param {EventEmitter|null} emitter
  */
-async function scrapeActorExcludingLocal(actorName, emitter = null) {
-  const config = loadConfig();
-  const actorsEnabled = (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false);
-
-  if (!actorsEnabled) {
-    console.error('[ActorScraperManager] Actor scraping is disabled in config');
-    return null;
-  }
-
-  const originalScrapers = (config.scrapers && config.scrapers.actors && config.scrapers.actors.scrapers)
-    ? config.scrapers.actors.scrapers
-    : ['javdb'];
-
-  // Filter out 'local' scraper
-  const enabledScrapers = originalScrapers.filter(s => s !== 'local');
-
-  console.log(`[ActorScraperManager] Scraping actor (excluding local): ${actorName}`);
-  console.log(`[ActorScraperManager] Enabled scrapers: ${enabledScrapers.join(', ')}`);
-
-  if (emitter) {
-    emitter.emit('progress', {
-      message: `  📂 Scrapers: ${enabledScrapers.join(', ')}`
-    });
-  }
-
-  let actorId = resolveActorId(actorName);
-
-  // If not found, try inverted name
-  if (!actorId) {
-    const parts = actorName.trim().split(/\s+/);
-    if (parts.length === 2) {
-      const invertedName = `${parts[1]} ${parts[0]}`;
-      console.log(`[ActorScraperManager] Trying inverted name: ${invertedName}`);
-      actorId = resolveActorId(invertedName);
-    }
-  }
-
-  if (!actorId) {
-    actorId = normalizeActorName(actorName);
-    console.log(`[ActorScraperManager] New actor, generated ID: ${actorId}`);
-  } else {
-    console.log(`[ActorScraperManager] Found existing actor ID: ${actorId}`);
-  }
+async function runScrapers(actorName, enabledScrapers, actorId, emitter, initialVariants = []) {
+  if (emitter) emitter.emit('progress', { message: `  📂 Scrapers: ${enabledScrapers.join(', ')}` });
 
   const scraperResults = [];
 
   for (const scraperName of enabledScrapers) {
-    if (emitter) {
-      emitter.emit('progress', {
-        message: `[${scraperName}] Searching for: ${actorName}`
-      });
-    }
+    if (emitter) emitter.emit('progress', { message: `[${scraperName}] Searching for: ${actorName}` });
 
-    const result = await executeActorScraper(scraperName, actorName);
+    const variants = [...new Set([...initialVariants, ...extractNameVariants(scraperResults)])];
+    const result = await executeActorScraper(scraperName, actorName, variants);
 
     if (result) {
-      scraperResults.push({
-        scraperName,
-        data: result
-      });
-
+      scraperResults.push({ scraperName, data: result });
       console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
-
-      if (emitter) {
-        emitter.emit('progress', {
-          message: `[${scraperName}] ✓ Data found`
-        });
-      }
+      if (emitter) emitter.emit('progress', { message: `[${scraperName}] ✓ Data found` });
 
       const tempMerged = mergeActorData(actorName, scraperResults, enabledScrapers);
       if (isActorComplete(tempMerged)) {
         console.log('[ActorScraperManager] All fields populated, stopping scraping');
-
-        if (emitter) {
-          emitter.emit('progress', {
-            message: `  ✓ All fields complete, stopping`
-          });
-        }
+        if (emitter) emitter.emit('progress', { message: `  ✓ All fields complete, stopping` });
         break;
       }
     } else {
-      if (emitter) {
-        emitter.emit('progress', {
-          message: `[${scraperName}] ✗ Not found`
-        });
-      }
+      if (emitter) emitter.emit('progress', { message: `[${scraperName}] ✗ Not found` });
     }
   }
 
@@ -505,131 +480,58 @@ async function scrapeActorExcludingLocal(actorName, emitter = null) {
 
   const merged = mergeActorData(actorName, scraperResults, enabledScrapers);
 
-  // Ensure we use the resolved actor ID (not the one generated from actorName)
-  merged.id = actorId;
+  // Use ID from scraper results (e.g. from local/externalPath NFO) if available,
+  // otherwise fall back to the derived actorId
+  const idFromResults = scraperResults.map(r => r.data && r.data.id).find(id => id);
+  merged.id = idFromResults || actorId;
 
+  console.log(`[ActorScraperManager] Using actor ID: ${merged.id}`);
   saveActorLocal(merged);
-
   return merged;
 }
 
 /**
- * Scrape actor data from enabled scrapers
- * Uses intelligent merging and stops when all fields are populated
- *
- * @param {string} actorName - Actor name (any variant)
- * @param {EventEmitter} emitter - Optional event emitter for progress updates
- * @returns {Promise<object|null>} - Merged actor data or null
+ * Scrape actor using all enabled scrapers.
  */
 async function scrapeActor(actorName, emitter = null) {
   const config = loadConfig();
-
-  // Check if actors feature is enabled
-  const actorsEnabled = (config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false);
-
-  if (!actorsEnabled) {
+  if (!(config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false)) {
     console.error('[ActorScraperManager] Actor scraping is disabled in config');
     return null;
   }
 
-  // Get enabled scrapers from config.scrapers.actors.scrapers (default to ['javdb'])
-  const enabledScrapers = (config.scrapers && config.scrapers.actors && config.scrapers.actors.scrapers)
-    ? config.scrapers.actors.scrapers
-    : ['javdb'];
+  const enabledScrapers = config.scrapers?.actors?.scrapers || ['javdb'];
+  console.log(`[ActorScraperManager] Scraping actor: ${actorName}, scrapers: ${enabledScrapers.join(', ')}`);
 
-  console.log(`[ActorScraperManager] Scraping actor: ${actorName}`);
-  console.log(`[ActorScraperManager] Enabled scrapers: ${enabledScrapers.join(', ')}`);
+  const actorId = resolveActorIdWithFallback(actorName);
+  return runScrapers(actorName, enabledScrapers, actorId, emitter);
+}
 
-  if (emitter) {
-    emitter.emit('progress', {
-      message: `  📂 Scrapers: ${enabledScrapers.join(', ')}`
-    });
-  }
-
-  // Try to resolve actor ID from index
-  let actorId = resolveActorId(actorName);
-
-  // If not found, try inverted name
-  if (!actorId) {
-    const parts = actorName.trim().split(/\s+/);
-    if (parts.length === 2) {
-      const invertedName = `${parts[1]} ${parts[0]}`;
-      console.log(`[ActorScraperManager] Trying inverted name: ${invertedName}`);
-      actorId = resolveActorId(invertedName);
-    }
-  }
-
-  if (!actorId) {
-    // Generate new ID from name
-    actorId = normalizeActorName(actorName);
-    console.log(`[ActorScraperManager] New actor, generated ID: ${actorId}`);
-  } else {
-    console.log(`[ActorScraperManager] Found existing actor ID: ${actorId}`);
-  }
-
-  const scraperResults = [];
-
-  // Execute scrapers sequentially
-  for (const scraperName of enabledScrapers) {
-    if (emitter) {
-      emitter.emit('progress', {
-        message: `[${scraperName}] Searching for: ${actorName}`
-      });
-    }
-
-    const result = await executeActorScraper(scraperName, actorName);
-
-    if (result) {
-      scraperResults.push({
-        scraperName,
-        data: result
-      });
-
-      console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
-
-      if (emitter) {
-        emitter.emit('progress', {
-          message: `[${scraperName}] ✓ Data found`
-        });
-      }
-
-      // Check if we have all fields populated
-      const tempMerged = mergeActorData(actorName, scraperResults, enabledScrapers);
-      if (isActorComplete(tempMerged)) {
-        console.log('[ActorScraperManager] All fields populated, stopping scraping');
-
-        if (emitter) {
-          emitter.emit('progress', {
-            message: `  ✓ All fields complete, stopping`
-          });
-        }
-        break;
-      }
-    } else {
-      if (emitter) {
-        emitter.emit('progress', {
-          message: `[${scraperName}] ✗ Not found`
-        });
-      }
-    }
-  }
-
-  // If no data found, return null
-  if (scraperResults.length === 0) {
-    console.error('[ActorScraperManager] No data found for actor');
+/**
+ * Scrape actor excluding 'local' scraper (used when forceOverwrite=true).
+ * Still reads name variants from local/externalPath to help remote scrapers find the actor.
+ */
+async function scrapeActorExcludingLocal(actorName, emitter = null) {
+  const config = loadConfig();
+  if (!(config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false)) {
+    console.error('[ActorScraperManager] Actor scraping is disabled in config');
     return null;
   }
 
-  // Merge results
-  const merged = mergeActorData(actorName, scraperResults, enabledScrapers);
+  const enabledScrapers = (config.scrapers?.actors?.scrapers || ['javdb']).filter(s => s !== 'local');
+  console.log(`[ActorScraperManager] Scraping actor (excluding local): ${actorName}, scrapers: ${enabledScrapers.join(', ')}`);
 
-  // Ensure we use the resolved actor ID (not the one generated from actorName)
-  merged.id = actorId;
+  const actorId = resolveActorIdWithFallback(actorName);
 
-  // Save to local storage
-  saveActorLocal(merged);
+  // Collect name variants from local/externalPath without using it as a scraper source
+  const { scrapeLocal } = require('../../scrapers/actors/local/run');
+  const localData = await scrapeLocal(actorName).catch(() => null);
+  const initialVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
+  if (initialVariants.length > 0) {
+    console.log(`[ActorScraperManager] Name variants from local: ${initialVariants.join(', ')}`);
+  }
 
-  return merged;
+  return runScrapers(actorName, enabledScrapers, actorId, emitter, initialVariants);
 }
 
 /**
