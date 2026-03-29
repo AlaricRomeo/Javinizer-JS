@@ -88,6 +88,14 @@
                     </div>
 
                     <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="copyActorsToMovieFolder" name="copyActorsToMovieFolder">
+                            <span data-i18n="config.copyActorsToMovieFolder"></span>
+                        </label>
+                        <div class="info-text" data-i18n="config.copyActorsToMovieFolderHelp"></div>
+                    </div>
+
+                    <div class="form-group">
                         <label for="actorsScrapers" data-i18n="config.actorScraperNames">Actor Scraper Names (comma-separated)</label>
                         <input type="text" id="actorsScrapers" name="actorsScrapers" placeholder="e.g. javdb">
                         <div class="info-text">
@@ -216,6 +224,7 @@
             const actorsPath = document.getElementById('actorsPath').value.trim();
             const actorsScrapersInput = document.getElementById('actorsScrapers').value.trim();
             const actorsScrapers = actorsScrapersInput ? actorsScrapersInput.split(',').map(s => s.trim()).filter(Boolean) : ['javdb'];
+            const copyActorsToMovieFolder = document.getElementById('copyActorsToMovieFolder').checked;
 
             // Collect video player path
             const videoPlayerPath = document.getElementById('videoPlayerPath').value.trim();
@@ -234,7 +243,8 @@
                     actors: {
                         enabled: actorsEnabled,
                         scrapers: actorsScrapers,
-                        externalPath: actorsPath || ''
+                        externalPath: actorsPath || '',
+                        copyToMovieFolder: copyActorsToMovieFolder
                     }
                 },
                 fieldPriorities: fieldPriorities
@@ -310,6 +320,7 @@
                 const actorsEnabled = (config.scrapers && config.scrapers.actors) ? config.scrapers.actors.enabled : false;
                 const actorsPath = (config.scrapers && config.scrapers.actors) ? config.scrapers.actors.externalPath || '' : '';
                 const actorsScrapersArray = (config.scrapers && config.scrapers.actors) ? config.scrapers.actors.scrapers : ['javdb'];
+                const copyActorsToMovieFolderValue = (config.scrapers && config.scrapers.actors) ? !!config.scrapers.actors.copyToMovieFolder : false;
 
                 // Load video player path
                 const videoPlayerPath = config.videoPlayerPath || '';
@@ -320,6 +331,7 @@
                 document.getElementById('actorsEnabled').checked = actorsEnabled;
                 document.getElementById('actorsPath').value = actorsPath;
                 document.getElementById('actorsScrapers').value = actorsScrapersArray.join(', ');
+                document.getElementById('copyActorsToMovieFolder').checked = copyActorsToMovieFolderValue;
                 document.getElementById('videoPlayerPath').value = videoPlayerPath;
                 document.getElementById('scrapeFolderPattern').value = scrapeFolderPattern;
 

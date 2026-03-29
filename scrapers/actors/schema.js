@@ -38,6 +38,16 @@ function normalizeActorName(name) {
   // Remove leading/trailing hyphens
   normalized = normalized.replace(/^-+|-+$/g, '');
 
+  // Fallback for names with no latin characters (e.g. pure Japanese)
+  // Generate a deterministic short hash from the original name
+  if (!normalized) {
+    let h = 5381;
+    for (let i = 0; i < name.length; i++) {
+      h = (((h << 5) + h) ^ name.charCodeAt(i)) >>> 0;
+    }
+    normalized = 'actor-' + h.toString(16).padStart(8, '0');
+  }
+
   return normalized;
 }
 

@@ -1,5 +1,42 @@
 # Release Notes
 
+## v0.9.5 (2026-03-29)
+
+### 🎭 Actor System — Major Overhaul
+
+#### Index-free actor lookup
+- Removed `actors-index.json` entirely from both `data/actors/` and `externalPath`
+- All actor lookups now scan `.nfo` files directly — simpler and always accurate
+- Removed "Rebuild Actors Index" button (no longer needed)
+- `actorIndexManager.js` is now unused (kept for reference, not called)
+
+#### Smarter local scraper (`scrapers/actors/local/run.js`)
+- Searches `externalPath` first, then `data/actors` as fallback
+- Fixed `matchesActor`: now correctly tries both `actor.name` and `invertName(actor.name)` plus all altnames and their inverted forms — previously only inverted the search term, not the stored name
+- `searchInDirectory` exported for reuse
+
+#### Actor scraping flow improvements
+- Batch scrape (`processSingleMovieActors`, `processMultipleMoviesActors`, `batchScrapeActors`): now checks local NFOs (including externalPath) before going online
+- If local data is complete → skip online scrapers entirely
+- If local data is incomplete → continue online but only fill missing fields (local values preserved)
+- `scrapeActor`: pre-loads all known name variants (name + altnames) from local NFO before running online scrapers, so javdb etc. try all name forms
+- `resolveActorThumb`: local file (`thumbLocal`) now takes priority over online URL (`thumbUrl`)
+
+#### Save to library fixes
+- `POST /actors/save-to-library`: now searches `data/actors` only (not externalPath) when looking up the cached actor to copy
+- Duplicate check now scans externalPath NFOs for both `name` and all `altName` values of the incoming actor
+- Fixed stale closure bug: "+" button on actor cards now reads `currentItem.actor[index]` at click time instead of capturing the object reference at render time
+
+#### Config: "Copy actors to movie folder"
+- New checkbox in configuration page under Actor Scrapers section
+- When enabled, actor thumbnails are automatically copied to `<movie_folder>/actors/` on every movie save
+- i18n keys added: `config.copyActorsToMovieFolder`, `config.copyActorsToMovieFolderHelp`
+
+#### "Clear Scrapers Cache"
+- Already cleared `data/actors/` — confirmed working
+
+---
+
 ## v0.9.0 Beta (2024-12-28)
 
 ### 🎉 First Beta Release

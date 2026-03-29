@@ -373,6 +373,36 @@ button:disabled {
   font-size: 10px;
   color: #999;
 }
+.actor-add-to-lib-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(102, 126, 234, 0.85);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+  padding: 0;
+  z-index: 2;
+}
+.actor-card:hover .actor-add-to-lib-btn {
+  opacity: 1;
+}
+.actor-add-to-lib-btn:hover {
+  background: rgba(102, 126, 234, 1);
+}
+.actor-add-to-lib-btn--done {
+  background: #28a745 !important;
+}
 .add-actor-btn {
   background: #28a745;
   width: 100%;

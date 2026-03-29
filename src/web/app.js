@@ -923,12 +923,22 @@ function createActorThumbnail(thumbUrl, actorName) {
 function normalizeActorNameForFile(name) {
   if (!name) return '';
 
-  // Convert to lowercase and replace spaces and special characters with hyphens
-  return name
+  let normalized = name
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')  // Replace special characters with spaces
+    .replace(/[^a-z0-9\s]/g, ' ')
     .trim()
-    .replace(/\s+/g, '-');         // Replace spaces with hyphens
+    .replace(/\s+/g, '-');
+
+  // Fallback for pure non-latin names (e.g. Japanese): deterministic hash
+  if (!normalized) {
+    let h = 5381;
+    for (let i = 0; i < name.length; i++) {
+      h = (((h << 5) + h) ^ name.charCodeAt(i)) >>> 0;
+    }
+    normalized = 'actor-' + h.toString(16).padStart(8, '0');
+  }
+
+  return normalized;
 }
 
 function createActorCard(actor, index) {
@@ -963,10 +973,64 @@ function createActorCard(actor, index) {
   actorCard.appendChild(nameDiv);
   actorCard.appendChild(roleDiv);
 
+  // Bottone "+" per salvare in libreria
+  const addToLibBtn = document.createElement('button');
+  addToLibBtn.className = 'actor-add-to-lib-btn';
+  addToLibBtn.title = window.i18n ? window.i18n.t('buttons.addToLibrary') : 'Add to library';
+  addToLibBtn.textContent = '+';
+  addToLibBtn.onclick = (e) => {
+    e.stopPropagation();
+    saveActorToLibrary(currentItem.actor[index], addToLibBtn);
+  };
+  actorCard.appendChild(addToLibBtn);
+
   // Click per aprire modal di editing
   actorCard.onclick = () => editActor(index);
 
   return actorCard;
+}
+
+async function saveActorToLibrary(actor, btn) {
+  const id = normalizeActorNameForFile(actor.name || actor.altName || '');
+
+  btn.textContent = '…';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/actors/save-to-library', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, name: actor.name, altName: actor.altName, thumb: actor.thumb, role: actor.role }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = '✓';
+      btn.classList.add('actor-add-to-lib-btn--done');
+      showNotification(`✓ ${actor.name || id} ${window.i18n ? window.i18n.t('messages.actorSavedToLibrary') : 'saved to library'}`, 'success');
+      setTimeout(() => {
+        btn.textContent = '+';
+        btn.classList.remove('actor-add-to-lib-btn--done');
+        btn.disabled = false;
+      }, 2000);
+    } else if (data.duplicate) {
+      btn.textContent = '✓';
+      btn.classList.add('actor-add-to-lib-btn--done');
+      showNotification(`${actor.name || id} ${window.i18n ? window.i18n.t('messages.actorAlreadyInLibrary') : 'already in library'}`, 'info');
+      setTimeout(() => {
+        btn.textContent = '+';
+        btn.classList.remove('actor-add-to-lib-btn--done');
+        btn.disabled = false;
+      }, 2000);
+    } else {
+      btn.textContent = '+';
+      btn.disabled = false;
+      showNotification((window.i18n ? window.i18n.t('messages.errorPrefix') : 'Error: ') + data.error, 'error');
+    }
+  } catch (err) {
+    btn.textContent = '+';
+    btn.disabled = false;
+    showNotification((window.i18n ? window.i18n.t('messages.errorPrefix') : 'Error: ') + err.message, 'error');
+  }
 }
 
 function updateActorCard(card, actor, index) {
@@ -1264,23 +1328,6 @@ function setupEventHandlers() {
     }
   };
 
-  document.getElementById("rebuildActorsIndex").onclick = async () => {
-    try {
-      const res = await fetch("/item/actors/rebuild-index", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" }
-      });
-      const data = await res.json();
-      if (data.ok) {
-        const parts = Object.entries(data.summary).map(([k, v]) => `${k}: ${v}`).join(', ');
-        showNotification(`✓ Index rebuilt (${parts})`, "success");
-      } else {
-        showNotification((window.i18n ? window.i18n.t("messages.errorPrefix") : "Errore: ") + data.error, "error");
-      }
-    } catch (err) {
-      showNotification("Errore durante la ricostruzione dell'indice", "error");
-    }
-  };
 
   // Dropdown "Re-scrape Current Movie" - permette di fare il rescrape il movie corrente con uno scraper specifico
   document.getElementById("rescrapeDropdown").onchange = async (e) => {

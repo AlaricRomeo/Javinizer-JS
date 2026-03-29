@@ -3,98 +3,91 @@
 /**
  * Local Actor Scraper
  *
- * Reads ONLY from externalPath (user-curated library).
- * Searches by: index, normalized name, name/altName fields (including comma-separated altnames).
+ * Scans .nfo files in externalPath (user-curated library) then data/actors cache.
+ * Matches against <name> and <altname> fields (both name orders: "A B" and "B A").
  * Returns null if not found (passes to next scraper).
  */
 
 const fs = require('fs');
 const path = require('path');
 const { removeEmptyFields, normalizeActorName, nfoToActor } = require('../schema');
-const { getExternalActorsPath } = require('../cache-helper');
+const { getExternalActorsPath, getActorsCachePath } = require('../cache-helper');
 
 function invertName(name) {
   const parts = name.trim().split(/\s+/);
   return parts.length === 2 ? `${parts[1]} ${parts[0]}` : name;
 }
 
-function loadDirIndex(dirPath) {
-  for (const name of ['actors-index.json', '.index.json']) {
-    const p = path.join(dirPath, name);
-    if (fs.existsSync(p)) {
-      try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch (_) {}
-    }
-  }
-  return {};
-}
-
 /**
- * Check if actorName matches any of the names in the NFO (name + all altnames).
+ * Check if actorName matches any of the names in the NFO (name + all altnames),
+ * trying both "Firstname Lastname" and "Lastname Firstname" for each candidate.
  */
 function matchesActor(actor, actorName) {
   const needle = actorName.toLowerCase().trim();
-  const candidates = [actor.name, invertName(actorName)];
+  const needleInverted = invertName(actorName).toLowerCase();
+
+  const namesToCheck = [];
+
+  if (actor.name) {
+    namesToCheck.push(actor.name.toLowerCase().trim());
+    namesToCheck.push(invertName(actor.name).toLowerCase().trim());
+  }
 
   if (actor.altName) {
-    const altNames = actor.altName.split(',').map(s => s.trim()).filter(Boolean);
-    candidates.push(...altNames);
-  }
-  if (actor.otherNames && Array.isArray(actor.otherNames)) {
-    candidates.push(...actor.otherNames);
+    for (const alt of actor.altName.split(',').map(s => s.trim()).filter(Boolean)) {
+      namesToCheck.push(alt.toLowerCase());
+      namesToCheck.push(invertName(alt).toLowerCase());
+    }
   }
 
-  return candidates.some(c => c && c.toLowerCase().trim() === needle);
+  if (actor.otherNames && Array.isArray(actor.otherNames)) {
+    for (const n of actor.otherNames) {
+      namesToCheck.push(n.toLowerCase());
+      namesToCheck.push(invertName(n).toLowerCase());
+    }
+  }
+
+  return namesToCheck.some(c => c === needle || c === needleInverted);
+}
+
+/**
+ * Scan all .nfo files in dirPath and return the first matching actor, or null.
+ */
+function searchInDirectory(dirPath, actorName) {
+  const files = fs.readdirSync(dirPath).filter(f => f.endsWith('.nfo'));
+  for (const file of files) {
+    try {
+      const actor = nfoToActor(fs.readFileSync(path.join(dirPath, file), 'utf-8'));
+      if (!actor.id) actor.id = file.replace('.nfo', '');
+      if (!matchesActor(actor, actorName)) continue;
+      if (actor.thumbLocal && fs.existsSync(path.join(dirPath, actor.thumbLocal))) {
+        actor.thumb = `/actors/${actor.thumbLocal}`;
+      }
+      console.error(`[local] Found in ${path.basename(dirPath)}: ${actor.id}`);
+      return removeEmptyFields(actor);
+    } catch (_) {}
+  }
+  return null;
 }
 
 async function scrapeLocal(actorName) {
-  const externalPath = getExternalActorsPath();
-
-  if (!externalPath || !fs.existsSync(externalPath)) {
-    console.error('[local] No externalPath configured, skipping');
-    return null;
-  }
-
   console.error(`[local] Searching for: ${actorName}`);
 
-  const namesToTry = [actorName];
-  const inverted = invertName(actorName);
-  if (inverted !== actorName) namesToTry.push(inverted);
+  const externalPath = getExternalActorsPath();
+  const cachePath = getActorsCachePath();
 
-  // 1. Try index lookup
-  const index = loadDirIndex(externalPath);
-  for (const name of namesToTry) {
-    const id = index[name.toLowerCase()];
-    if (!id) continue;
-    const nfoPath = path.join(externalPath, `${id}.nfo`);
-    if (!fs.existsSync(nfoPath)) continue;
-    try {
-      const actor = nfoToActor(fs.readFileSync(nfoPath, 'utf-8'));
-      // Use ID from NFO if present, otherwise use filename-derived ID
-      actor.id = actor.id || id;
-      if (actor.thumbLocal && fs.existsSync(path.join(externalPath, actor.thumbLocal))) {
-        actor.thumb = `/actors/${actor.thumbLocal}`;
-      }
-      console.error(`[local] Found via index: ${actor.id}`);
-      return removeEmptyFields(actor);
-    } catch (_) {}
+  // 1. Search externalPath first
+  if (externalPath && fs.existsSync(externalPath)) {
+    const actor = searchInDirectory(externalPath, actorName);
+    if (actor) return actor;
+  } else {
+    console.error('[local] No externalPath configured, skipping external search');
   }
 
-  // 2. Scan all NFOs — match name, inverted name, or any altname
-  const files = fs.readdirSync(externalPath).filter(f => f.endsWith('.nfo'));
-  for (const file of files) {
-    try {
-      const actor = nfoToActor(fs.readFileSync(path.join(externalPath, file), 'utf-8'));
-      // Use ID from NFO if present, otherwise use filename-derived ID
-      if (!actor.id) actor.id = file.replace('.nfo', '');
-
-      if (!matchesActor(actor, actorName)) continue;
-
-      if (actor.thumbLocal && fs.existsSync(path.join(externalPath, actor.thumbLocal))) {
-        actor.thumb = `/actors/${actor.thumbLocal}`;
-      }
-      console.error(`[local] Found via full scan: ${actor.id}`);
-      return removeEmptyFields(actor);
-    } catch (_) {}
+  // 2. Fallback to internal cache
+  if (fs.existsSync(cachePath)) {
+    const actor = searchInDirectory(cachePath, actorName);
+    if (actor) return actor;
   }
 
   console.error(`[local] ✗ Not found: ${actorName}`);
@@ -133,4 +126,4 @@ async function main() {
 
 if (require.main === module) main();
 
-module.exports = { scrapeLocal, scrapeActors };
+module.exports = { scrapeLocal, scrapeActors, searchInDirectory };

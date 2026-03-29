@@ -336,7 +336,7 @@ async function saveActor() {
       const response = await fetch('/api/actors/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(actorData)
+        body: JSON.stringify({ ...actorData, context: modalMode })
       });
 
       const result = await response.json();

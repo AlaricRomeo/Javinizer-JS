@@ -973,6 +973,16 @@ router.post("/scrape/save", async (req, res) => {
         console.error(`[Routes] Actor scraping completed: ${actorResults.scraped} scraped, ${actorResults.failed} failed`);
       }
 
+      // Auto copy actor thumbs to movie folder if enabled in config
+      if (currentConfig.scrapers?.actors?.copyToMovieFolder && results.folder && itemToSave.actor?.length) {
+        try {
+          const { copied, skipped } = await copyActorsToFolder(results.folder, itemToSave.actor);
+          console.error(`[Routes] Auto copy actors: copied=${copied.length}, skipped=${skipped.length}`);
+        } catch (err) {
+          console.error('[Routes] Auto copy actors failed:', err.message);
+        }
+      }
+
       // Remove the JSON file (it has been processed and saved)
       try {
         fs.unlinkSync(jsonPath);
@@ -1654,83 +1664,11 @@ router.post("/scrape/clear-cache", async (req, res) => {
 // ─────────────────────────────
 
 const {
-  loadActorLocal,
   saveActorLocal,
-  resolveActorId,
   scrapeActor
 } = require('../core/actorScraperManager');
 
 
-// POST /actors/rebuild-index
-// Rebuilds actors-index.json for both internal cache and externalPath
-// ─────────────────────────────
-router.post("/actors/rebuild-index", async (req, res) => {
-  try {
-    const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
-    const { nfoToActor } = require('../../scrapers/actors/schema');
-    const { normalizeActorName } = require('../../scrapers/actors/schema');
-
-    const pathsToRebuild = [
-      { label: 'internal', dir: getActorsCachePath() },
-    ];
-    const externalPath = getExternalActorsPath();
-    if (externalPath) pathsToRebuild.push({ label: 'external', dir: externalPath });
-
-    const summary = {};
-
-    for (const { label, dir } of pathsToRebuild) {
-      if (!fs.existsSync(dir)) { summary[label] = 0; continue; }
-
-      const index = {};
-      const files = fs.readdirSync(dir).filter(f => f.endsWith('.nfo'));
-
-      for (const file of files) {
-        try {
-          const content = fs.readFileSync(path.join(dir, file), 'utf-8');
-          const actor = nfoToActor(content);
-          const id = actor.id || file.replace('.nfo', '');
-
-          // Also inject <id> into NFO if missing
-          if (!actor.id) {
-            const updatedContent = content.replace(
-              /(<actor>\s*)/,
-              `$1<id>${id}</id>\n  `
-            );
-            fs.writeFileSync(path.join(dir, file), updatedContent, 'utf-8');
-          }
-
-          const namesToIndex = [actor.name];
-          if (actor.altName) {
-            actor.altName.split(',').map(s => s.trim()).filter(Boolean).forEach(n => namesToIndex.push(n));
-          }
-          if (actor.otherNames && Array.isArray(actor.otherNames)) {
-            actor.otherNames.forEach(n => n && namesToIndex.push(n));
-          }
-
-          // Add inverted forms
-          const allNames = [...namesToIndex];
-          namesToIndex.forEach(n => {
-            const parts = n.trim().split(/\s+/);
-            if (parts.length === 2) allNames.push(`${parts[1]} ${parts[0]}`);
-          });
-
-          allNames.filter(Boolean).forEach(n => {
-            index[n.toLowerCase()] = id;
-          });
-
-        } catch (_) {}
-      }
-
-      fs.writeFileSync(path.join(dir, 'actors-index.json'), JSON.stringify(index, null, 2), 'utf-8');
-      summary[label] = Object.keys(index).length;
-      console.error(`[RebuildIndex] ${label}: ${files.length} actors, ${Object.keys(index).length} index entries`);
-    }
-
-    res.json({ ok: true, summary });
-  } catch (err) {
-    res.json({ ok: false, error: err.message });
-  }
-});
 
 // ─────────────────────────────
 // GET /actors - List all actors from externalPath only
@@ -1747,14 +1685,29 @@ router.get("/actors", async (req, res) => {
     const files = fs.readdirSync(actorsPath);
     const actors = [];
 
+    const { normalizeActorName } = require('../../scrapers/actors/schema');
+
     for (const file of files) {
       if (!file.endsWith('.nfo')) continue;
 
       try {
         const nfoContent = fs.readFileSync(path.join(actorsPath, file), 'utf-8');
         const actor = nfoToActor(nfoContent);
-        actor.id = file.replace('.nfo', '');
-        if (actor.name) actors.push(actor);
+        let fileId = file.replace('.nfo', '');
+        // If filename-derived ID is empty (e.g. ".nfo"), rename the file using name-based ID
+        if (!fileId && actor.name) {
+          const newId = normalizeActorName(actor.name);
+          if (newId) {
+            const oldPath = path.join(actorsPath, file);
+            const newNfoPath = path.join(actorsPath, `${newId}.nfo`);
+            try {
+              fs.renameSync(oldPath, newNfoPath);
+              fileId = newId;
+            } catch (_) {}
+          }
+        }
+        actor.id = fileId || null;
+        if (actor.name && actor.id) actors.push(actor);
       } catch (_) {}
     }
 
@@ -1769,7 +1722,6 @@ router.get("/actors", async (req, res) => {
 router.post("/actors/save", async (req, res) => {
   try {
     const { normalizeActorName } = require('../../scrapers/actors/schema');
-    const { removeActorFromIndex } = require('../core/actorIndexManager');
     const actorData = req.body;
 
     // Track original ID to handle renames
@@ -1810,8 +1762,6 @@ router.post("/actors/save", async (req, res) => {
         }
       });
 
-      // Remove old actor from index
-      removeActorFromIndex(originalId);
     }
 
     // Update thumbUrl if thumb is a remote URL
@@ -1944,8 +1894,19 @@ router.post("/actors/save", async (req, res) => {
     actorData.meta = actorData.meta || {};
     actorData.meta.lastUpdate = new Date().toISOString();
 
-    // Save actor
+    // Save actor to internal cache always
     saveActorLocal(actorData);
+
+    // If called from library context, also save to externalPath
+    if (actorData.context === 'library') {
+      const { getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+      const { actorToNFO } = require('../../scrapers/actors/schema');
+      const extPath = getExternalActorsPath();
+      if (extPath && fs.existsSync(extPath)) {
+        const nfoContent = actorToNFO(actorData);
+        fs.writeFileSync(path.join(extPath, `${actorData.id}.nfo`), nfoContent, 'utf-8');
+      }
+    }
 
     res.json({ ok: true, id: actorData.id });
   } catch (err) {
@@ -1953,47 +1914,25 @@ router.post("/actors/save", async (req, res) => {
   }
 });
 
-// POST /actors/delete - Delete actor
+// POST /actors/delete - Delete actor from externalPath library
 router.post("/actors/delete", async (req, res) => {
   try {
     const { id } = req.body;
+    if (!id) return res.json({ ok: false, error: 'Actor ID required' });
 
-    if (!id) {
-      return res.json({ ok: false, error: 'Actor ID required' });
-    }
+    const { getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+    const actorsPath = getExternalActorsPath();
 
-    // Use centralized cache helper
-    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
-    const actorsPath = getActorsCachePath();
-    const actorNfoPath = path.join(actorsPath, `${id}.nfo`);
+    if (!actorsPath) return res.json({ ok: false, error: 'External library path not configured' });
 
     // Delete NFO file
-    if (fs.existsSync(actorNfoPath)) {
-      fs.unlinkSync(actorNfoPath);
-    }
+    const nfoPath = path.join(actorsPath, `${id}.nfo`);
+    if (fs.existsSync(nfoPath)) fs.unlinkSync(nfoPath);
 
     // Delete image files (try all extensions)
-    const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
-    for (const ext of extensions) {
-      const imagePath = path.join(actorsPath, `${id}.${ext}`);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    }
-
-    // Remove from index
-    const indexPath = path.join(actorsPath, '.index.json');
-    if (fs.existsSync(indexPath)) {
-      const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-
-      // Remove all entries pointing to this actor ID
-      Object.keys(index).forEach(key => {
-        if (index[key] === id) {
-          delete index[key];
-        }
-      });
-
-      fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+    for (const ext of ['webp', 'jpg', 'jpeg', 'png', 'gif']) {
+      const imgPath = path.join(actorsPath, `${id}.${ext}`);
+      if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
     }
 
     res.json({ ok: true });
@@ -2321,6 +2260,81 @@ router.get("/videos/:folderId", async (req, res) => {
 });
 
 // ─────────────────────────────
+// Helper: copy actor thumbs to a movie folder's actors/ subfolder
+// ─────────────────────────────
+async function copyActorsToFolder(folderPath, actors) {
+  const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+  const { scrapeLocal } = require('../../scrapers/actors/local/run');
+  const actorsPath = getActorsCachePath();
+  const destFolder = path.join(folderPath, 'actors');
+
+  if (!fs.existsSync(destFolder)) fs.mkdirSync(destFolder, { recursive: true });
+
+  const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
+  const copied = [];
+  const skipped = [];
+
+  for (const actor of actors) {
+    if (!actor.name) continue;
+    let found = false;
+
+    // 1. Find actor via NFO scan (externalPath first, then data/actors)
+    const actorData = await scrapeLocal(actor.name).catch(() => null);
+    const actorId = actorData && actorData.id;
+    if (actorId) {
+      for (const ext of extensions) {
+        const srcPath = path.join(actorsPath, `${actorId}.${ext}`);
+        if (fs.existsSync(srcPath)) {
+          fs.copyFileSync(srcPath, path.join(destFolder, `${actor.name}.${ext}`));
+          copied.push(actor.name);
+          found = true;
+          break;
+        }
+      }
+    }
+
+    // 2. Fallback: download from remote thumb URL
+    if (!found && actor.thumb && actor.thumb.startsWith('http')) {
+      try {
+        const imageUrl = new URL(actor.thumb);
+        const protocol = imageUrl.protocol === 'https:' ? https : http;
+        const imageBuffer = await new Promise((resolve, reject) => {
+          const req2 = protocol.get(actor.thumb, { timeout: 15000 }, (response) => {
+            if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+              const redirectUrl = new URL(response.headers.location, actor.thumb);
+              const rp = redirectUrl.protocol === 'https:' ? https : http;
+              const req3 = rp.get(redirectUrl.href, { timeout: 15000 }, (res2) => {
+                const chunks = [];
+                res2.on('data', c => chunks.push(c));
+                res2.on('end', () => resolve(Buffer.concat(chunks)));
+                res2.on('error', reject);
+              });
+              req3.on('error', reject);
+              return;
+            }
+            const chunks = [];
+            response.on('data', c => chunks.push(c));
+            response.on('end', () => resolve(Buffer.concat(chunks)));
+            response.on('error', reject);
+          });
+          req2.on('error', reject);
+        });
+        const ext = path.extname(imageUrl.pathname) || '.jpg';
+        fs.writeFileSync(path.join(destFolder, `${actor.name}${ext}`), imageBuffer);
+        copied.push(actor.name);
+        found = true;
+      } catch (dlErr) {
+        console.error(`[copyActorsToFolder] Failed to download thumb for ${actor.name}:`, dlErr.message);
+      }
+    }
+
+    if (!found) skipped.push(actor.name);
+  }
+
+  return { copied, skipped };
+}
+
+// ─────────────────────────────
 // POST /actors/copy-to-movie
 // Copy actor thumbnails to the movie folder's actors/ subfolder
 // ─────────────────────────────
@@ -2342,80 +2356,125 @@ router.post("/actors/copy-to-movie", async (req, res) => {
       return res.json({ ok: false, error: `Movie folder does not exist: ${folderPath}` });
     }
 
-    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
-    const actorsPath = getActorsCachePath();
-    const destFolder = path.join(folderPath, 'actors');
-
-    if (!fs.existsSync(destFolder)) {
-      fs.mkdirSync(destFolder, { recursive: true });
-    }
-
-    const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
-    const copied = [];
-    const skipped = [];
-
-    for (const actor of actors) {
-      if (!actor.name) continue;
-
-      let found = false;
-
-      // 1. Try local cache first
-      const actorId = resolveActorId(actor.name);
-      if (actorId) {
-        for (const ext of extensions) {
-          const srcPath = path.join(actorsPath, `${actorId}.${ext}`);
-          if (fs.existsSync(srcPath)) {
-            const destPath = path.join(destFolder, `${actor.name}.${ext}`);
-            fs.copyFileSync(srcPath, destPath);
-            copied.push(actor.name);
-            found = true;
-            break;
-          }
-        }
-      }
-
-      // 2. Fallback: download from remote thumb URL
-      if (!found && actor.thumb && actor.thumb.startsWith('http')) {
-        try {
-          const imageUrl = new URL(actor.thumb);
-          const protocol = imageUrl.protocol === 'https:' ? https : http;
-          const imageBuffer = await new Promise((resolve, reject) => {
-            const req2 = protocol.get(actor.thumb, { timeout: 15000 }, (response) => {
-              if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                const redirectUrl = new URL(response.headers.location, actor.thumb);
-                const redirectProtocol = redirectUrl.protocol === 'https:' ? https : http;
-                const req3 = redirectProtocol.get(redirectUrl.href, { timeout: 15000 }, (res2) => {
-                  const chunks = [];
-                  res2.on('data', c => chunks.push(c));
-                  res2.on('end', () => resolve(Buffer.concat(chunks)));
-                  res2.on('error', reject);
-                });
-                req3.on('error', reject);
-                return;
-              }
-              const chunks = [];
-              response.on('data', c => chunks.push(c));
-              response.on('end', () => resolve(Buffer.concat(chunks)));
-              response.on('error', reject);
-            });
-            req2.on('error', reject);
-          });
-          const ext = path.extname(imageUrl.pathname) || '.jpg';
-          const destPath = path.join(destFolder, `${actor.name}${ext}`);
-          fs.writeFileSync(destPath, imageBuffer);
-          copied.push(actor.name);
-          found = true;
-        } catch (dlErr) {
-          console.error(`[actors/copy-to-movie] Failed to download thumb for ${actor.name}:`, dlErr.message);
-        }
-      }
-
-      if (!found) skipped.push(actor.name);
-    }
-
+    const { copied, skipped } = await copyActorsToFolder(folderPath, actors);
     res.json({ ok: true, copied, skipped });
   } catch (err) {
     console.error('[actors/copy-to-movie] Error:', err);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /actors/save-to-library
+// Copy actor from internal cache to externalPath
+// ─────────────────────────────
+router.post("/actors/save-to-library", async (req, res) => {
+  try {
+    const { id, name, altName, thumb, role } = req.body;
+    if (!id && !name) throw new Error("Missing actor ID or name");
+
+    const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+    const { normalizeActorName, actorToNFO } = require('../../scrapers/actors/schema');
+    const cachePath = getActorsCachePath();
+    const externalPath = getExternalActorsPath();
+
+    if (!externalPath) {
+      return res.json({ ok: false, error: "External library path not configured" });
+    }
+
+    if (!fs.existsSync(externalPath)) {
+      fs.mkdirSync(externalPath, { recursive: true });
+    }
+
+    // Check for duplicates in externalPath via NFO scan
+    // Check name + all altnames of the incoming actor
+    const { searchInDirectory } = require('../../scrapers/actors/local/run');
+    if (fs.existsSync(externalPath)) {
+      const namesToCheck = [name, ...(altName ? altName.split(',').map(s => s.trim()).filter(Boolean) : [])];
+      console.log(`[save-to-library] duplicate check for: ${namesToCheck.join(', ')}`);
+      for (const n of namesToCheck) {
+        if (!n) continue;
+        const existing = searchInDirectory(externalPath, n);
+        if (existing) {
+          console.log(`[save-to-library] duplicate found: "${n}" matched actor "${existing.name}" (id: ${existing.id})`);
+          return res.json({ ok: false, error: `Actor "${n}" already in library`, duplicate: true });
+        }
+      }
+    }
+
+    // Find actor in internal cache only (data/actors) — do NOT search externalPath here
+    const cachedActor = fs.existsSync(cachePath) ? searchInDirectory(cachePath, name) : null;
+
+    console.log(`[save-to-library] name="${name}" cached=${cachedActor ? cachedActor.id : 'none'}`);
+
+    let copiedNfo = false;
+    let copiedImage = false;
+    let usedId = null;
+
+    if (cachedActor && cachedActor.id) {
+      const srcId = cachedActor.id;
+      const srcNfo = path.join(cachePath, `${srcId}.nfo`);
+      if (fs.existsSync(srcNfo)) {
+        fs.copyFileSync(srcNfo, path.join(externalPath, `${srcId}.nfo`));
+        copiedNfo = true;
+        usedId = srcId;
+      }
+
+      for (const ext of ['webp', 'jpg', 'jpeg', 'png']) {
+        const srcImg = path.join(cachePath, `${srcId}.${ext}`);
+        if (fs.existsSync(srcImg)) {
+          fs.copyFileSync(srcImg, path.join(externalPath, `${srcId}.${ext}`));
+          copiedImage = true;
+          break;
+        }
+      }
+    }
+
+    // Fallback: actor not in internal cache — create NFO from movie data + download thumb
+    if (!copiedNfo) {
+      if (!name) {
+        return res.json({ ok: false, error: `Actor not found in cache and no name provided` });
+      }
+
+      const canonicalId = normalizeActorName(name);
+      usedId = canonicalId;
+
+      // Write minimal NFO from movie actor data
+      const actorData = { id: canonicalId, name, altName: altName || '', role: role || 'Actress', thumb: thumb || '' };
+      const nfoContent = actorToNFO(actorData);
+      fs.writeFileSync(path.join(externalPath, `${canonicalId}.nfo`), nfoContent, 'utf-8');
+      copiedNfo = true;
+      console.log(`[save-to-library] Created NFO from movie data: ${canonicalId}.nfo`);
+
+      // Download thumb if it's a remote URL
+      if (thumb && thumb.startsWith('http')) {
+        const https = require('https');
+        const http = require('http');
+        const urlExtension = thumb.match(/\.(webp|jpg|jpeg|png)(\?|$)/i);
+        const ext = urlExtension ? urlExtension[1].toLowerCase() : 'jpg';
+        const imgPath = path.join(externalPath, `${canonicalId}.${ext}`);
+        try {
+          await new Promise((resolve, reject) => {
+            const protocol = thumb.startsWith('https') ? https : http;
+            protocol.get(thumb, response => {
+              if (response.statusCode !== 200) return reject(new Error(`HTTP ${response.statusCode}`));
+              const stream = fs.createWriteStream(imgPath);
+              response.pipe(stream);
+              stream.on('finish', () => { stream.close(); resolve(); });
+              stream.on('error', reject);
+            }).on('error', reject);
+          });
+          copiedImage = true;
+          console.log(`[save-to-library] Downloaded thumb: ${canonicalId}.${ext}`);
+        } catch (dlErr) {
+          console.error(`[save-to-library] Failed to download thumb:`, dlErr.message);
+        }
+      }
+    }
+
+    res.json({ ok: true, copiedNfo, copiedImage, id: usedId });
+  } catch (err) {
+    console.error('[save-to-library] Error:', err);
     res.json({ ok: false, error: err.message });
   }
 });

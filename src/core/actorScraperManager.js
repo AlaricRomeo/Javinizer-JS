@@ -7,7 +7,7 @@
  * - Executes enabled actor scrapers sequentially
  * - Merges results based on priority rules
  * - Caches actors locally in data/actors/
- * - Uses actors-index.json for name variant mapping
+ * - Finds actors by scanning NFO files (no index)
  */
 
 const { spawn } = require('child_process');
@@ -16,54 +16,11 @@ const path = require('path');
 const { normalizeActorName, actorToNFO, nfoToActor } = require('../../scrapers/actors/schema');
 const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
 const { loadConfig, getScrapePath } = require('./config');
-const { updateActorInIndex, resolveActorId: resolveActorIdFromIndex } = require('./actorIndexManager');
-
-// ─────────────────────────────
-// Configuration Loading
-// ─────────────────────────────
-// Using centralized config from config.js
-// Removed getActorsPath() - now using cache-helper's getActorsCachePath()
-
-// Note: Index management is now handled by actorIndexManager.js
-// Keeping resolveActorId as a wrapper for backward compatibility
-
-/**
- * Resolve actor name to ID using centralized index manager
- * @param {string} name - Actor name (any variant)
- * @returns {string|null} - Actor ID or null if not found
- */
-function resolveActorId(name) {
-  return resolveActorIdFromIndex(name);
-}
 
 // ─────────────────────────────
 // Local Storage
 // ─────────────────────────────
 
-/**
- * Load actor data from local storage (.nfo format)
- *
- * @param {string} id - Actor ID (slug)
- * @returns {object|null} - Actor data or null if not found
- */
-function loadActorLocal(id) {
-  const actorsPath = getActorsCachePath();
-  const actorPath = path.join(actorsPath, `${id}.nfo`);
-
-  if (!fs.existsSync(actorPath)) {
-    return null;
-  }
-
-  try {
-    const nfoContent = fs.readFileSync(actorPath, 'utf-8');
-    const actor = nfoToActor(nfoContent);
-    actor.id = id; // Ensure ID is set
-    return actor;
-  } catch (error) {
-    console.error(`[ActorScraperManager] Failed to load actor ${id}:`, error.message);
-    return null;
-  }
-}
 
 /**
  * Save actor data to local storage (.nfo format)
@@ -93,8 +50,6 @@ function saveActorLocal(actor) {
     fs.writeFileSync(actorNfoPath, nfoContent, 'utf-8');
     console.log(`[ActorScraperManager] Saved actor NFO: ${actor.id}.nfo`);
 
-    // Update index using centralized index manager
-    updateActorInIndex(actor);
   } catch (error) {
     console.error(`[ActorScraperManager] Failed to save actor ${actor.id}:`, error.message);
   }
@@ -187,26 +142,25 @@ function executeActorScraper(scraperName, actorName, nameVariants = []) {
  * @returns {string} - Best thumb URL to use
  */
 function resolveActorThumb(actorData) {
-  // Priority 1: Use original URL if available
-  if (actorData.thumbUrl && actorData.thumbUrl.startsWith('http')) {
-    return actorData.thumbUrl;
-  }
-
-  // Priority 2: Use thumb field BUT only if it's a remote URL
-  // If it's a local /actors/ or /media/ path, we ignore it for "resolution" 
-  // as the frontend handles local lookup via ID and thumbLocal.
-  if (actorData.thumb && actorData.thumb.startsWith('http')) {
-    return actorData.thumb;
-  }
-
-  // Priority 3: For local uploaded files, use /media/ endpoint (if in temp)
+  // Priority 1: local temp/uploaded file
   if (actorData.thumbLocal && (actorData.thumbLocal.startsWith('upload_') || actorData.thumbLocal.startsWith('temp_'))) {
     return `/media/${actorData.thumbLocal}`;
   }
 
-  // Final fallback: return empty string. 
-  // We NO LONGER return speculative /actors/ paths here because 
-  // we want the <thumb> field in the NFO to remain empty when the file is local.
+  // Priority 2: local saved file — always prefer over online URL
+  if (actorData.thumbLocal) {
+    return `/actors/${actorData.thumbLocal}`;
+  }
+
+  // Priority 3: online URL (thumbUrl or thumb)
+  if (actorData.thumbUrl && actorData.thumbUrl.startsWith('http')) {
+    return actorData.thumbUrl;
+  }
+
+  if (actorData.thumb && actorData.thumb.startsWith('http')) {
+    return actorData.thumb;
+  }
+
   return '';
 }
 
@@ -402,19 +356,6 @@ function mergeActorData(actorName, scraperResults, scraperPriority) {
   return merged;
 }
 
-/**
- * Resolve actor ID from index, trying original and inverted name.
- * Generates a new ID if not found.
- */
-function resolveActorIdWithFallback(actorName) {
-  let actorId = resolveActorId(actorName);
-  if (!actorId) {
-    const parts = actorName.trim().split(/\s+/);
-    if (parts.length === 2) actorId = resolveActorId(`${parts[1]} ${parts[0]}`);
-  }
-  if (!actorId) actorId = normalizeActorName(actorName);
-  return actorId;
-}
 
 /**
  * Extract all name variants from scraper results collected so far.
@@ -462,6 +403,19 @@ async function runScrapers(actorName, enabledScrapers, actorId, emitter, initial
       console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
       if (emitter) emitter.emit('progress', { message: `[${scraperName}] ✓ Data found` });
 
+      // Local scraper found data — if complete, skip online scrapers; if incomplete, continue to fill missing fields
+      if (scraperName === 'local') {
+        const tempMerged = mergeActorData(actorName, scraperResults, enabledScrapers);
+        if (isActorComplete(tempMerged)) {
+          console.log('[ActorScraperManager] Local found complete actor, skipping online scrapers');
+          if (emitter) emitter.emit('progress', { message: `  ✓ Found locally (complete), skipping online scrapers` });
+          break;
+        }
+        console.log('[ActorScraperManager] Local found incomplete actor, continuing with online scrapers to fill missing fields');
+        if (emitter) emitter.emit('progress', { message: `  ⚠ Found locally but incomplete, fetching missing fields online` });
+        continue;
+      }
+
       const tempMerged = mergeActorData(actorName, scraperResults, enabledScrapers);
       if (isActorComplete(tempMerged)) {
         console.log('[ActorScraperManager] All fields populated, stopping scraping');
@@ -503,8 +457,13 @@ async function scrapeActor(actorName, emitter = null) {
   const enabledScrapers = config.scrapers?.actors?.scrapers || ['javdb'];
   console.log(`[ActorScraperManager] Scraping actor: ${actorName}, scrapers: ${enabledScrapers.join(', ')}`);
 
-  const actorId = resolveActorIdWithFallback(actorName);
-  return runScrapers(actorName, enabledScrapers, actorId, emitter);
+  // Pre-load all known name variants from local storage so every scraper can try them
+  const { scrapeLocal } = require('../../scrapers/actors/local/run');
+  const localData = await scrapeLocal(actorName).catch(() => null);
+  const actorId = (localData && localData.id) ? localData.id : normalizeActorName(actorName);
+  const initialVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
+
+  return runScrapers(actorName, enabledScrapers, actorId, emitter, initialVariants);
 }
 
 /**
@@ -521,11 +480,10 @@ async function scrapeActorExcludingLocal(actorName, emitter = null) {
   const enabledScrapers = (config.scrapers?.actors?.scrapers || ['javdb']).filter(s => s !== 'local');
   console.log(`[ActorScraperManager] Scraping actor (excluding local): ${actorName}, scrapers: ${enabledScrapers.join(', ')}`);
 
-  const actorId = resolveActorIdWithFallback(actorName);
-
   // Collect name variants from local/externalPath without using it as a scraper source
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localData = await scrapeLocal(actorName).catch(() => null);
+  const actorId = (localData && localData.id) ? localData.id : normalizeActorName(actorName);
   const initialVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
   if (initialVariants.length > 0) {
     console.log(`[ActorScraperManager] Name variants from local: ${initialVariants.join(', ')}`);
@@ -549,63 +507,29 @@ async function getActor(actorName, forceOverwrite = false) {
     return await scrapeActorExcludingLocal(actorName);
   }
 
-  // Normal flow: try cache first
-  // Try to resolve actor ID from index with exact name
-  let actorId = resolveActorId(actorName);
+  // Normal flow: scan local NFOs (externalPath first, then data/actors)
+  const { scrapeLocal } = require('../../scrapers/actors/local/run');
+  const localActor = await scrapeLocal(actorName).catch(() => null);
 
-  // If not found, try inverted name
-  if (!actorId) {
-    const parts = actorName.trim().split(/\s+/);
-    if (parts.length === 2) {
-      const invertedName = `${parts[1]} ${parts[0]}`;
-      console.log(`[ActorScraperManager] Trying inverted name in cache: ${invertedName}`);
-      actorId = resolveActorId(invertedName);
-    }
-  }
-
-  if (actorId) {
-    // Try to load from local storage
-    const localActor = loadActorLocal(actorId);
-
-    if (localActor) {
-      console.log(`[ActorScraperManager] Loaded actor from cache: ${actorId}`);
-
-
-      // Check if local data is complete
-      if (isActorComplete(localActor)) {
-        console.log(`[ActorScraperManager] Actor is complete, returning from cache`);
-        return localActor;
-      }
-
-      // Local data is incomplete - scrape online to fill missing fields
-      console.log(`[ActorScraperManager] Actor in cache but incomplete, scraping to fill missing fields: ${actorId}`);
-
-      const scrapedActor = await scrapeActor(actorName);
-
-      if (scrapedActor) {
-        // Merge local and scraped data (local takes priority for non-empty fields)
-        const mergedActor = mergeLocalWithScraped(localActor, scrapedActor);
-
-
-        // Save the merged data
-        saveActorLocal(mergedActor);
-
-        console.log(`[ActorScraperManager] Merged local and scraped data for: ${actorId}`);
-        return mergedActor;
-      }
-
-      // Scraping failed, return incomplete local data
-      console.log(`[ActorScraperManager] Scraping failed, returning incomplete local data: ${actorId}`);
+  if (localActor && !localActor.error) {
+    if (isActorComplete(localActor)) {
+      console.log(`[ActorScraperManager] Actor complete in local: ${localActor.id}`);
       return localActor;
     }
+    // Incomplete — scrape online to fill missing fields
+    console.log(`[ActorScraperManager] Actor incomplete in local, filling online: ${localActor.id}`);
+    const scrapedActor = await scrapeActor(actorName);
+    if (scrapedActor) {
+      const mergedActor = mergeLocalWithScraped(localActor, scrapedActor);
+      saveActorLocal(mergedActor);
+      return mergedActor;
+    }
+    return localActor;
   }
 
-  // Not in cache, scrape it
-  console.log(`[ActorScraperManager] Actor not in cache, scraping: ${actorName}`);
-  const scrapedActor = await scrapeActor(actorName);
-
-
-  return scrapedActor;
+  // Not found locally — scrape online
+  console.log(`[ActorScraperManager] Actor not found locally, scraping: ${actorName}`);
+  return await scrapeActor(actorName);
 }
 
 // ─────────────────────────────
@@ -740,21 +664,20 @@ async function batchScrapeActors(emitter = null) {
     }
 
     try {
-      // Check if already in cache and complete
-      const actorId = resolveActorId(actorName);
-      if (actorId) {
-        const existing = loadActorLocal(actorId);
-        if (existing && isActorComplete(existing)) {
-          console.log(`[Actor Scrape] Actor already cached and complete: ${actorName}`);
-          cached++;
-
-          if (emitter) {
-            emitter.emit('progress', {
-              message: `[local] ✓ ${actorName} - complete in cache`
-            });
-          }
-          continue;
+      // Check if already in externalPath or cache and complete
+      const { scrapeLocal } = require('../../scrapers/actors/local/run');
+      const localData = await scrapeLocal(actorName).catch(() => null);
+      if (localData && !localData.error && isActorComplete(localData)) {
+        console.log(`[Actor Scrape] Actor found locally and complete: ${actorName}`);
+        cached++;
+        // Ensure it's saved to internal cache
+        saveActorLocal(localData);
+        if (emitter) {
+          emitter.emit('progress', {
+            message: `[local] ✓ ${actorName} - complete in library`
+          });
         }
+        continue;
       }
 
       // Use scrapeActor with emitter to get detailed progress messages
@@ -846,27 +769,11 @@ async function updateMovieActorData() {
         for (const actor of movieData.actor) {
           if (!actor.name) continue;
 
-          // Try to resolve actor ID
-          let actorId = resolveActorId(actor.name);
-
-          // If not found, try inverted name
-          if (!actorId) {
-            const parts = actor.name.trim().split(/\s+/);
-            if (parts.length === 2) {
-              const invertedName = `${parts[1]} ${parts[0]}`;
-              actorId = resolveActorId(invertedName);
-            }
-          }
-
-          // If still not found, try normalized name as fallback
-          if (!actorId) {
-            actorId = normalizeActorName(actor.name);
-          }
-
-          // Load actor data from cache
-          const actorData = loadActorLocal(actorId);
-          if (!actorData) {
-            console.error(`[ActorScraperManager] Actor not in cache: ${actor.name} (tried ID: ${actorId})`);
+          // Find actor via NFO scan (externalPath first, then data/actors)
+          const { scrapeLocal } = require('../../scrapers/actors/local/run');
+          const actorData = await scrapeLocal(actor.name).catch(() => null);
+          if (!actorData || actorData.error) {
+            console.error(`[ActorScraperManager] Actor not found locally: ${actor.name}`);
             continue;
           }
 
@@ -1033,21 +940,19 @@ async function processSingleMovieActors(movieId, emitter = null) {
     }
 
     try {
-      // Check if already in cache and complete
-      const actorId = resolveActorId(actorName);
-      if (actorId) {
-        const existing = loadActorLocal(actorId);
-        if (existing && isActorComplete(existing)) {
-          console.log(`[ActorScraperManager] Actor already cached and complete: ${actorName}`);
-          cached++;
-
-          if (emitter) {
-            emitter.emit('progress', {
-              message: `[local] ✓ ${actorName} - complete in cache`
-            });
-          }
-          continue;
+      // Check if already in externalPath or cache and complete
+      const { scrapeLocal } = require('../../scrapers/actors/local/run');
+      const localData = await scrapeLocal(actorName).catch(() => null);
+      if (localData && !localData.error && isActorComplete(localData)) {
+        console.log(`[ActorScraperManager] Actor found locally and complete: ${actorName}`);
+        cached++;
+        saveActorLocal(localData);
+        if (emitter) {
+          emitter.emit('progress', {
+            message: `[local] ✓ ${actorName} - complete in library`
+          });
         }
+        continue;
       }
 
       // Use scrapeActor with emitter to get detailed progress messages
@@ -1094,29 +999,13 @@ async function processSingleMovieActors(movieId, emitter = null) {
       for (const actor of movieData.actor) {
         if (!actor.name) continue;
 
-        // Try to resolve actor ID
-        let actorId = resolveActorId(actor.name);
-
-        // If not found, try inverted name
-        if (!actorId) {
-          const parts = actor.name.trim().split(/\s+/);
-          if (parts.length === 2) {
-            const invertedName = `${parts[1]} ${parts[0]}`;
-            actorId = resolveActorId(invertedName);
+          // Find actor via NFO scan (externalPath first, then data/actors)
+          const { scrapeLocal } = require('../../scrapers/actors/local/run');
+          const actorData = await scrapeLocal(actor.name).catch(() => null);
+          if (!actorData || actorData.error) {
+            console.error(`[ActorScraperManager] Actor not found locally: ${actor.name}`);
+            continue;
           }
-        }
-
-        // If still not found, try normalized name as fallback
-        if (!actorId) {
-          actorId = normalizeActorName(actor.name);
-        }
-
-        // Load actor data from cache
-        const actorData = loadActorLocal(actorId);
-        if (!actorData) {
-          console.error(`[ActorScraperManager] Actor not in cache: ${actor.name} (tried ID: ${actorId})`);
-          continue;
-        }
 
         // Update actor fields in movie JSON (only if not empty)
         if (actorData.altName) actor.altName = actorData.altName;
@@ -1127,11 +1016,11 @@ async function processSingleMovieActors(movieId, emitter = null) {
         if (actorData.hips) actor.hips = actorData.hips;
 
         const thumbUrl = resolveActorThumb(actorData);
+        console.log(`[ActorScraperManager] thumb resolve for ${actor.name}: thumbLocal="${actorData.thumbLocal}" thumb="${actorData.thumb}" → "${thumbUrl}"`);
         if (thumbUrl) actor.thumb = thumbUrl;
 
-
         updated = true;
-        console.log(`[ActorScraperManager] Updated actor in movie: ${actor.name} -> ${actorId}`);
+        console.log(`[ActorScraperManager] Updated actor in movie: ${actor.name}`);
       }
 
       // Save updated movie JSON (preserve wrapper if it exists)
@@ -1255,21 +1144,19 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
     }
 
     try {
-      // Check if already in cache and complete
-      const actorId = resolveActorId(actorName);
-      if (actorId) {
-        const existing = loadActorLocal(actorId);
-        if (existing && isActorComplete(existing)) {
-          console.log(`[ActorScraperManager] Actor already cached and complete: ${actorName}`);
-          cached++;
-
-          if (emitter) {
-            emitter.emit('progress', {
-              message: `[local] ✓ ${actorName} - complete in cache`
-            });
-          }
-          continue;
+      // Check if already in externalPath or cache and complete
+      const { scrapeLocal } = require('../../scrapers/actors/local/run');
+      const localData = await scrapeLocal(actorName).catch(() => null);
+      if (localData && !localData.error && isActorComplete(localData)) {
+        console.log(`[ActorScraperManager] Actor found locally and complete: ${actorName}`);
+        cached++;
+        saveActorLocal(localData);
+        if (emitter) {
+          emitter.emit('progress', {
+            message: `[local] ✓ ${actorName} - complete in library`
+          });
         }
+        continue;
       }
 
       // Use scrapeActor with emitter to get detailed progress messages
@@ -1326,27 +1213,11 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
         for (const actor of movieData.actor) {
           if (!actor.name) continue;
 
-          // Try to resolve actor ID
-          let actorId = resolveActorId(actor.name);
-
-          // If not found, try inverted name
-          if (!actorId) {
-            const parts = actor.name.trim().split(/\s+/);
-            if (parts.length === 2) {
-              const invertedName = `${parts[1]} ${parts[0]}`;
-              actorId = resolveActorId(invertedName);
-            }
-          }
-
-          // If still not found, try normalized name as fallback
-          if (!actorId) {
-            actorId = normalizeActorName(actor.name);
-          }
-
-          // Load actor data from cache
-          const actorData = loadActorLocal(actorId);
-          if (!actorData) {
-            console.error(`[ActorScraperManager] Actor not in cache: ${actor.name} (tried ID: ${actorId})`);
+          // Find actor via NFO scan (externalPath first, then data/actors)
+          const { scrapeLocal } = require('../../scrapers/actors/local/run');
+          const actorData = await scrapeLocal(actor.name).catch(() => null);
+          if (!actorData || actorData.error) {
+            console.error(`[ActorScraperManager] Actor not found locally: ${actor.name}`);
             continue;
           }
 
@@ -1442,9 +1313,7 @@ async function batchProcessActors(emitter = null) {
 module.exports = {
   scrapeActor,
   getActor,
-  loadActorLocal,
   saveActorLocal,
-  resolveActorId,
   batchScrapeActors,
   updateMovieActorData,
   batchProcessActors,
