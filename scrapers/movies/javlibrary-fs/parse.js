@@ -14,13 +14,22 @@ const { createEmptyMovie, removeEmptyFields } = require('../schema');
 function extractFirstResultUrl(html) {
   const $ = cheerio.load(html);
 
-  // Check if this is a search results page by looking for the results list
-  const firstResult = $('.video a[href*="?v="]').first();
+  // A detail page always has #video_title — if present, we're already on the right page
+  if ($('#video_title').length) return null;
+
+  // Search results page: each result is a .video div with an anchor
+  // Links can be either ?v= format or .html format (e.g. ./javli63f7y.html)
+  const firstResult = $('.video > a[href*="?v="]').first().length
+    ? $('.video > a[href*="?v="]').first()
+    : $('.video > a[href$=".html"]').first().length
+      ? $('.video > a[href$=".html"]').first()
+      : $('.video a[href*="?v="]').first().length
+        ? $('.video a[href*="?v="]').first()
+        : $('.video a[href$=".html"]').first();
 
   if (firstResult.length) {
     let url = firstResult.attr('href');
     if (url) {
-      // Convert relative to absolute if needed
       if (url.startsWith('/')) {
         url = 'https://www.javlibrary.com' + url;
       } else if (!url.startsWith('http')) {
