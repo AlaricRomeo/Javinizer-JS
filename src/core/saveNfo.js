@@ -1,7 +1,7 @@
 const fs = require("fs");
 const xml2js = require("xml2js");
 
-const ucFirst = str => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : str;
+const ucFirst = str => str ? str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : str;
 
 /**
  * Maps canonical model field names

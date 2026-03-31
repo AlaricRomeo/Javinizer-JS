@@ -216,7 +216,7 @@ function removeEmptyFields(actor) {
  * @returns {string} - XML string in Kodi NFO format
  */
 function actorToNFO(actor) {
-  const ucFirst = str => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : str;
+  const ucFirst = str => str ? str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : str;
 
   const escapeXml = (str) => {
     if (!str) return '';
