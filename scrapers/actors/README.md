@@ -8,6 +8,11 @@ Sistema di scraping attori separato dai film, con cache locale e scraping intell
 - **[EXAMPLES.md](./EXAMPLES.md)** - Esempi pratici di implementazione
 - **[WORKFLOW.md](./WORKFLOW.md)** - Workflow dettagliato del sistema
 
+## Convenzione nomi
+
+Gli scraper il cui nome termina in **`-fs`** richiedono [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) attivo per bypassare la protezione Cloudflare.  
+Configura l'URL tramite la variabile d'ambiente `FLARESOLVERR_URL` (default: `http://localhost:8191`).
+
 ## Struttura
 
 ```
@@ -15,13 +20,15 @@ scrapers/actors/
 ├── SCRAPER-STANDARD.md    # ⭐ Standard input/output per scraper
 ├── schema.js              # Schema dati attore standard
 ├── cache-helper.js        # Utility per cache management
-├── local/                 # Scraper locale (cache filesystem)
+├── local/                 # Scraper locale (NFO scan)
 │   └── run.js
-└── javdb/                 # Scraper esterno (javdatabase.com)
-    └── run.js
+├── javdb/                 # javdatabase.com (Puppeteer)
+│   └── run.js
+└── xslist-fs/             # xslist.org (FlareSolverr richiesto)
+    ├── run.js
+    └── flaresolverr.js
 
 data/actors/
-├── actors-index.json      # Mapping name variants → actor ID
 └── {actor-id}.nfo         # File NFO attore (Kodi format)
 ```
 
@@ -91,6 +98,14 @@ Scrape da javdatabase.com
 - Usa Puppeteer headless
 - Scarica foto automaticamente
 
+### XSList-FS Scraper ⚠️ FlareSolverr richiesto
+Scrape da xslist.org
+- Path: `scrapers/actors/xslist-fs/run.js`
+- Source: `https://xslist.org/search?query={cognome+nome}&lg=en`
+- Usa FlareSolverr per bypassare Cloudflare
+- Estrae: nome, altName (giapponese), data di nascita, misure, foto
+- Richiede `FLARESOLVERR_URL` (default: `http://localhost:8191`)
+
 ## Configurazione (config.json)
 
 ```json
@@ -99,7 +114,7 @@ Scrape da javdatabase.com
     "actors": {
       "enabled": true,
       "externalPath": null,
-      "scrapers": ["local", "javdb"]
+      "scrapers": ["local", "xslist-fs", "javdb"]
     }
   }
 }

@@ -84,7 +84,8 @@ function executeActorScraper(scraperName, actorName, nameVariants = []) {
         : null;
 
       if (typeof fn === 'function') {
-        const timeoutMs = 30000;
+        // FlareSolverr-based scrapers (xslist) need more time
+        const timeoutMs = ['xslist'].includes(scraperName) ? 120000 : 30000;
 
         // Build unique list: original + inverted + all variants + their inverted forms
         const invert = n => { const p = n.trim().split(/\s+/); return p.length === 2 ? `${p[1]} ${p[0]}` : n; };
@@ -1016,7 +1017,6 @@ async function processSingleMovieActors(movieId, emitter = null) {
         if (actorData.hips) actor.hips = actorData.hips;
 
         const thumbUrl = resolveActorThumb(actorData);
-        console.log(`[ActorScraperManager] thumb resolve for ${actor.name}: thumbLocal="${actorData.thumbLocal}" thumb="${actorData.thumb}" → "${thumbUrl}"`);
         if (thumbUrl) actor.thumb = thumbUrl;
 
         updated = true;

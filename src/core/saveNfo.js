@@ -1,6 +1,8 @@
 const fs = require("fs");
 const xml2js = require("xml2js");
 
+const ucFirst = str => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : str;
+
 /**
  * Maps canonical model field names
  * to XML NFO field names (bidirectional)
@@ -49,8 +51,8 @@ function modelFieldToXml(key, value) {
         }))
       };
     }
-    // Simple arrays
-    return { xmlKey, xmlValue: value.map(v => String(v)) };
+    // Simple arrays (genres, tags) — title-case each entry
+    return { xmlKey, xmlValue: value.map(v => ucFirst(String(v))) };
   }
 
   // Handle complex objects
@@ -162,12 +164,12 @@ async function saveNfoFull(nfoPath, model) {
 
   // Genres (array)
   if (model.genres && model.genres.length > 0) {
-    movie.genre = model.genres;
+    movie.genre = model.genres.map(ucFirst);
   }
 
   // Tags (array)
   if (model.tags && model.tags.length > 0) {
-    movie.tag = model.tags;
+    movie.tag = model.tags.map(ucFirst);
   }
 
   // Actors (complex array)

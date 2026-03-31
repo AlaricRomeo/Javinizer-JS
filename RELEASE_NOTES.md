@@ -1,5 +1,26 @@
 # Release Notes
 
+## v0.9.6 (2026-04-01)
+
+### 🎭 New Actor Scraper: xslist-fs
+
+- New scraper `xslist-fs` for [xslist.org](https://xslist.org/en)
+- Extracts: English name, Japanese altName, birthdate, bust/waist/hips, photo
+- Uses FlareSolverr to bypass Cloudflare protection
+- Requires `FLARESOLVERR_URL` env variable (default: `http://localhost:8191`)
+- Enable via config: add `xslist-fs` to actor scrapers list (e.g. `local, xslist-fs, javdb`)
+
+### 📝 NFO title-case formatting
+
+- Genres, tags (movie NFO) now written with initial capitals on each word (ucFirst)
+- Actor `name` and `altName` now written with initial capitals in actor NFO
+
+### 📖 Documentation
+
+- Scrapers with names ending in `-fs` require FlareSolverr — documented in `scrapers/actors/README.md`
+
+---
+
 ## v0.9.5 (2026-03-29)
 
 ### 🎭 Actor System — Major Overhaul
