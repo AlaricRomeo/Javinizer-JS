@@ -1905,6 +1905,29 @@ router.post("/actors/save", async (req, res) => {
       if (extPath && fs.existsSync(extPath)) {
         const nfoContent = actorToNFO(actorData);
         fs.writeFileSync(path.join(extPath, `${actorData.id}.nfo`), nfoContent, 'utf-8');
+
+        // If a local image was just uploaded, copy it to externalPath too
+        // so it persists after cache is cleared
+        if (actorData.thumbLocal) {
+          const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+          const cachedImagePath = path.join(getActorsCachePath(), actorData.thumbLocal);
+          const extImagePath = path.join(extPath, actorData.thumbLocal);
+          if (fs.existsSync(cachedImagePath)) {
+            // Remove any old images for this actor in externalPath before copying
+            const extensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+            extensions.forEach(e => {
+              const oldExtImage = path.join(extPath, `${actorData.id}${e}`);
+              if (fs.existsSync(oldExtImage)) {
+                try { fs.unlinkSync(oldExtImage); } catch (_) {}
+              }
+            });
+            try {
+              fs.copyFileSync(cachedImagePath, extImagePath);
+            } catch (err) {
+              console.error('[ActorSave] Failed to copy image to externalPath:', err.message);
+            }
+          }
+        }
       }
     }
 

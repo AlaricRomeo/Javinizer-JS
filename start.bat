@@ -66,6 +66,20 @@ if not exist "node_modules\" (
     )
 )
 
+REM Fix sharp native bindings for Windows (runs once or after npm install)
+echo [INFO] Checking sharp native bindings for Windows...
+node -e "require('sharp')" >nul 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    echo [INFO] Reinstalling sharp for Windows platform...
+    call npm install --os=win32 --cpu=x64 --no-audit sharp
+    if %ERRORLEVEL% NEQ 0 (
+        echo [ERROR] Failed to install sharp!
+        pause
+        exit /b 1
+    )
+    echo.
+)
+
 REM Kill any existing processes on port 4004
 echo [INFO] Checking for existing processes on port 4004...
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :4004 ^| findstr LISTENING') do (
