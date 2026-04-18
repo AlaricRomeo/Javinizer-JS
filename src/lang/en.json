@@ -245,7 +245,9 @@
     "genreRulesHelp": "One rule per line. -Genre to remove (also matches combined genres like \"3P, 4P\"). OldName->NewName to replace. +Genre to add. # for comments. Case-insensitive.",
     "genreRulesPlaceholder": "-Creampie\nActress Best->Best Of\n+Exclusive",
     "genreRulesApply": "Apply to scraped files",
+    "genreRulesApplyLibrary": "Apply to library (NFO)",
     "genreRulesApplySuccess": "Done: {updated} of {total} files updated",
+    "genreRulesApplyLibrarySuccess": "Done: {updated} of {total} NFO files updated",
     "genreRulesApplyError": "Error applying genre rules"
   },
   "about": {

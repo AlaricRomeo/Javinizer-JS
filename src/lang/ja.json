@@ -225,6 +225,8 @@
     "genreRulesPlaceholder": "-Creampie\nActress Best->Best Of\n+Exclusive",
     "genreRulesApply": "スクレイプ済みファイルに適用",
     "genreRulesApplySuccess": "完了: {total}件中{updated}件を更新",
+    "genreRulesApplyLibrary": "ライブラリに適用（NFO）",
+    "genreRulesApplyLibrarySuccess": "完了: {total}件中{updated}件のNFOファイルを更新",
     "genreRulesApplyError": "ジャンルルールの適用中にエラーが発生しました"
   },
   "about": {

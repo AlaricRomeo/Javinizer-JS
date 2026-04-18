@@ -1719,6 +1719,54 @@ router.post("/genre-rules/apply", async (req, res) => {
 });
 
 // ─────────────────────────────
+// POST /genre-rules/apply-library — apply genre rules to all library NFO files (edit mode)
+// ─────────────────────────────
+router.post("/genre-rules/apply-library", async (req, res) => {
+  try {
+    const { applyGenreRules } = require('../core/genreFilter');
+    const { readNfo } = require('../core/readNfo');
+    const { mapNfoToModel } = require('../core/nfoMapper');
+
+    const config = loadConfig();
+    const rulesText = config.genreRules || '';
+
+    if (!rulesText.trim()) {
+      return res.json({ ok: true, updated: 0, message: 'No genre rules defined' });
+    }
+
+    if (libraryReader.items.length === 0) {
+      libraryReader.loadLibrary();
+    }
+
+    const items = libraryReader.items.filter(item => item.nfo && fs.existsSync(item.nfo));
+    let updated = 0;
+
+    for (const item of items) {
+      try {
+        const parsedXml = await readNfo(item.nfo);
+        const model = mapNfoToModel(parsedXml);
+        if (!model || !Array.isArray(model.genres)) continue;
+
+        const before = model.genres;
+        const after = applyGenreRules(before, rulesText);
+
+        if (JSON.stringify(before) !== JSON.stringify(after)) {
+          await saveNfoPatch(item.nfo, { genres: after });
+          updated++;
+        }
+      } catch (err) {
+        console.error(`[genre-rules/apply-library] Error processing ${item.nfo}: ${err.message}`);
+      }
+    }
+
+    res.json({ ok: true, updated, total: items.length });
+  } catch (err) {
+    console.error('[genre-rules/apply-library]', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
 // Actor Management Routes
 // ─────────────────────────────
 

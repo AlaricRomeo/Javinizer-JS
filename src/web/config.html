@@ -115,7 +115,10 @@
                             One rule per line. Prefix with - to remove, + to add. Use -&gt; to replace. Lines starting with # are ignored.
                         </div>
                     </div>
-                    <button type="button" id="applyGenreRulesBtn" class="save-button" style="margin-top: 10px;" data-i18n="config.genreRulesApply">Apply to scraped files</button>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button type="button" id="applyGenreRulesBtn" class="save-button" data-i18n="config.genreRulesApply">Apply to scraped files</button>
+                        <button type="button" id="applyGenreRulesLibraryBtn" class="save-button" data-i18n="config.genreRulesApplyLibrary">Apply to library (NFO)</button>
+                    </div>
                     <div id="genreRulesApplyResult" style="margin-top: 8px; display: none;"></div>
                 </div>
 
@@ -365,19 +368,19 @@
             }
         }
 
-        document.getElementById('applyGenreRulesBtn').addEventListener('click', async () => {
-            const btn = document.getElementById('applyGenreRulesBtn');
+        async function applyGenreRules(endpoint, successKey) {
             const resultEl = document.getElementById('genreRulesApplyResult');
-            btn.disabled = true;
+            const btns = ['applyGenreRulesBtn', 'applyGenreRulesLibraryBtn'].map(id => document.getElementById(id));
+            btns.forEach(b => b.disabled = true);
             resultEl.style.display = 'none';
 
             try {
-                const res = await fetch('/item/genre-rules/apply', { method: 'POST' });
+                const res = await fetch(endpoint, { method: 'POST' });
                 const data = await res.json();
                 resultEl.style.display = 'block';
                 if (data.ok) {
                     resultEl.className = 'status-message success';
-                    resultEl.textContent = i18n.t('config.genreRulesApplySuccess', { updated: data.updated, total: data.total });
+                    resultEl.textContent = i18n.t(successKey, { updated: data.updated, total: data.total });
                 } else {
                     resultEl.className = 'status-message error';
                     resultEl.textContent = data.error || i18n.t('config.genreRulesApplyError');
@@ -387,9 +390,15 @@
                 resultEl.className = 'status-message error';
                 resultEl.textContent = i18n.t('config.genreRulesApplyError');
             } finally {
-                btn.disabled = false;
+                btns.forEach(b => b.disabled = false);
             }
-        });
+        }
+
+        document.getElementById('applyGenreRulesBtn').addEventListener('click', () =>
+            applyGenreRules('/item/genre-rules/apply', 'config.genreRulesApplySuccess'));
+
+        document.getElementById('applyGenreRulesLibraryBtn').addEventListener('click', () =>
+            applyGenreRules('/item/genre-rules/apply-library', 'config.genreRulesApplyLibrarySuccess'));
 
         // Make sure i18n is loaded
         if (typeof i18n === 'undefined') {

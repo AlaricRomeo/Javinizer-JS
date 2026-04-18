@@ -246,7 +246,9 @@
     "genreRulesHelp": "Una regola per riga. -Genere per rimuovere (funziona anche su generi combinati tipo \"3P, 4P\"). VecchioNome->NuovoNome per sostituire. +Genere per aggiungere. # per commenti. Case-insensitive.",
     "genreRulesPlaceholder": "-Creampie\nActress Best->Best Of\n+Esclusiva",
     "genreRulesApply": "Applica ai file già scraped",
+    "genreRulesApplyLibrary": "Applica alla libreria (NFO)",
     "genreRulesApplySuccess": "Completato: {updated} di {total} file aggiornati",
+    "genreRulesApplyLibrarySuccess": "Completato: {updated} di {total} file NFO aggiornati",
     "genreRulesApplyError": "Errore nell'applicazione delle regole generi"
   },
   "about": {
