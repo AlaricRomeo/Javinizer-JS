@@ -240,7 +240,14 @@
     "videoPlayerPathHelp": "Percorso all'eseguibile del lettore video. Lasciare vuoto per disabilitare la funzione di riproduzione video.",
     "scrapeFolderPattern": "Pattern Cartella Modalità Scrape",
     "scrapeFolderPatternHelp": "Personalizza il pattern del nome cartella per i video scaricati. Usa placeholder: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Esempio: {id} - {title} ({maker} - {year})",
-    "scrapeFolderPatternPlaceholder": "{id} - {title}"
+    "scrapeFolderPatternPlaceholder": "{id} - {title}",
+    "genreManagement": "🎭 Gestione Generi",
+    "genreRules": "Regole Generi",
+    "genreRulesHelp": "Una regola per riga. -Genere per rimuovere (funziona anche su generi combinati tipo \"3P, 4P\"). VecchioNome->NuovoNome per sostituire. +Genere per aggiungere. # per commenti. Case-insensitive.",
+    "genreRulesPlaceholder": "-Creampie\nActress Best->Best Of\n+Esclusiva",
+    "genreRulesApply": "Applica ai file già scraped",
+    "genreRulesApplySuccess": "Completato: {updated} di {total} file aggiornati",
+    "genreRulesApplyError": "Errore nell'applicazione delle regole generi"
   },
   "about": {
     "pageTitle": "Info - Javinizer-JS",

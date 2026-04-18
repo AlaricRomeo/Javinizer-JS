@@ -16,6 +16,7 @@ const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
 const { loadConfig, getScrapePath } = require('./config');
+const { applyGenreRules } = require('./genreFilter');
 
 // ─────────────────────────────
 // Configuration Loading
@@ -310,80 +311,77 @@ function getFieldPriority(fieldName, config) {
  * @param {object} config - Configuration object
  * @returns {object} - Merged object with all schema fields
  */
-function mergeResults(code, scraperResults, config) {
-  // Import schema to ensure all fields are present
-  const { createEmptyMovie } = require('../../scrapers/movies/schema');
+function isEmptyValue(value) {
+  return value === null ||
+         value === undefined ||
+         value === '' ||
+         (Array.isArray(value) && value.length === 0) ||
+         (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
+}
 
-  // Start with empty movie structure (all fields present with defaults)
+function mergeResults(code, scraperResults, config) {
+  const { createEmptyMovie } = require('../../scrapers/movies/schema');
   const merged = createEmptyMovie(code);
 
-  // Collect all available fields from all scrapers
+  const globalOrder = (config.scrapers && config.scrapers.video) ? config.scrapers.video : [];
+
+  // Primary scraper = first in global order that actually returned results
+  const primaryName = globalOrder.find(name => scraperResults.some(r => r.scraperName === name));
+  const primaryResult = primaryName ? scraperResults.find(r => r.scraperName === primaryName) : null;
+
+  // Collect all available fields
   const allFields = new Set();
   scraperResults.forEach(({ data }) => {
     Object.keys(data).forEach(field => {
-      // Skip internal fields and error field (but keep contentId)
       if (field !== 'code' && field !== 'dvd_id' && field !== 'id' && field !== 'error') {
         allFields.add(field);
       }
     });
   });
 
-  // For each field, select value based on priority
   allFields.forEach(fieldName => {
-    const priority = getFieldPriority(fieldName, config);
+    // Step 1: primary scraper always wins for fields it found
+    if (primaryResult && primaryResult.data[fieldName] !== undefined) {
+      const value = primaryResult.data[fieldName];
+      if (!isEmptyValue(value)) {
+        merged[fieldName] = value;
+        return;
+      }
+    }
 
-    // First, try to find a non-empty value from scrapers in priority order
+    // Step 2: primary didn't have it — use fieldPriorities for remaining scrapers
+    const priority = getFieldPriority(fieldName, config).filter(n => n !== primaryName);
     let foundValue = false;
+
     for (const scraperName of priority) {
       const scraperResult = scraperResults.find(r => r.scraperName === scraperName);
-
       if (scraperResult && scraperResult.data[fieldName] !== undefined) {
         const value = scraperResult.data[fieldName];
-
-        // Check if value is non-empty
-        const isEmpty = value === null ||
-                       value === '' ||
-                       (Array.isArray(value) && value.length === 0) ||
-                       (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
-
-        if (!isEmpty) {
+        if (!isEmptyValue(value)) {
           merged[fieldName] = value;
           foundValue = true;
-          break; // Found non-empty value from prioritized scraper, stop looking
+          break;
         }
       }
     }
 
-    // If no value was found from prioritized scrapers, try any other scraper that provides the field
+    // Step 3: fallback — any remaining scraper not yet tried
     if (!foundValue) {
       for (const scraperResult of scraperResults) {
-        // Skip scrapers that are already in the priority list (we already tried them)
-        if (priority.includes(scraperResult.scraperName)) {
-          continue;
-        }
-
+        if (scraperResult.scraperName === primaryName) continue;
+        if (priority.includes(scraperResult.scraperName)) continue;
         if (scraperResult.data[fieldName] !== undefined) {
           const value = scraperResult.data[fieldName];
-
-          // Check if value is non-empty
-          const isEmpty = value === null ||
-                         value === '' ||
-                         (Array.isArray(value) && value.length === 0) ||
-                         (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
-
-          if (!isEmpty) {
+          if (!isEmptyValue(value)) {
             merged[fieldName] = value;
-            break; // Found non-empty value from non-prioritized scraper, stop looking
+            break;
           }
         }
       }
     }
   });
 
-  // Ensure 'id' matches 'code' (schema requirement)
   merged.id = code;
-
-  // Return merged result with full schema (all fields present)
   return merged;
 }
 
@@ -559,6 +557,10 @@ async function scrapeAll(codes, emitter = null) {
     const scraperResults = resultsByCode[code] || [];
     const merged = mergeResults(code, scraperResults, config);
 
+    if (merged.genres && config.genreRules) {
+      merged.genres = applyGenreRules(merged.genres, config.genreRules);
+    }
+
     // Only save if we have valid data (not just code/id fields)
     // Check for meaningful data beyond just id/code
     const hasValidData = merged.title || merged.studio || merged.releaseDate ||
@@ -644,4 +646,4 @@ if (require.main === module) {
 }
 
 // Export for use as module
-module.exports = { scrapeAll, extractCodesFromLibrary, executeScraper, mergeResults };
+module.exports = { scrapeAll, extractCodesFromLibrary, executeScraper, mergeResults, isEmptyValue };

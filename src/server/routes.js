@@ -1488,10 +1488,17 @@ router.post("/scrape/rescrape", async (req, res) => {
         // Ensure 'id' matches movieId
         mergedData.id = movieId;
 
+        // Apply genre filter rules
+        const { applyGenreRules } = require('../core/genreFilter');
+        const rescrapeConfig = loadConfig();
+        if (mergedData.genres && rescrapeConfig.genreRules) {
+          mergedData.genres = applyGenreRules(mergedData.genres, rescrapeConfig.genreRules);
+        }
+
         // Update wrapper with new data and metadata
         const updatedWrapper = {
           scrapedAt: new Date().toISOString(),
-          sources: [...new Set([scraper, ...(existingWrapper.sources || [])])], // Add new scraper to sources
+          sources: [...new Set([scraper, ...(existingWrapper.sources || [])])],
           videoFile: existingWrapper.videoFile,
           data: mergedData
         };
@@ -1656,6 +1663,58 @@ router.post("/scrape/clear-cache", async (req, res) => {
 
   } catch (err) {
     res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /genre-rules/apply — apply genre rules to all data/scrape/*.json files
+// ─────────────────────────────
+router.post("/genre-rules/apply", async (req, res) => {
+  try {
+    const { applyGenreRules } = require('../core/genreFilter');
+    const { loadConfig, getScrapePath } = require('../core/config');
+
+    const config = loadConfig();
+    const rulesText = config.genreRules || '';
+
+    if (!rulesText.trim()) {
+      return res.json({ ok: true, updated: 0, message: 'No genre rules defined' });
+    }
+
+    const scrapeDir = getScrapePath();
+    if (!fs.existsSync(scrapeDir)) {
+      return res.json({ ok: true, updated: 0, message: 'Scrape directory is empty' });
+    }
+
+    const files = fs.readdirSync(scrapeDir).filter(f => f.endsWith('.json'));
+    let updated = 0;
+
+    for (const file of files) {
+      const filePath = path.join(scrapeDir, file);
+      try {
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const wrapped = JSON.parse(raw);
+
+        if (!wrapped.data || !Array.isArray(wrapped.data.genres)) continue;
+
+        const before = wrapped.data.genres;
+        const after = applyGenreRules(before, rulesText);
+
+        const changed = JSON.stringify(before) !== JSON.stringify(after);
+        if (changed) {
+          wrapped.data.genres = after;
+          fs.writeFileSync(filePath, JSON.stringify(wrapped, null, 2), 'utf-8');
+          updated++;
+        }
+      } catch (err) {
+        console.error(`[genre-rules/apply] Error processing ${file}: ${err.message}`);
+      }
+    }
+
+    res.json({ ok: true, updated, total: files.length });
+  } catch (err) {
+    console.error('[genre-rules/apply]', err);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

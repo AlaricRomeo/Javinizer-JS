@@ -32,7 +32,7 @@ function loadConfig() {
       language: "en",
       scrapeFolderPattern: "{id}",
       scrapers: {
-        video: ["javlibrary", "r18dev"],
+        video: ["javlibrary", "r18dev", "libredmm"],
         actors: {
           enabled: true,
           scrapers: ["javdb"],

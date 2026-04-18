@@ -105,6 +105,20 @@
                     </div>
                 </div>
 
+                <!-- Genre Management -->
+                <div class="section">
+                    <div class="section-title" data-i18n="config.genreManagement">🎭 Genre Management</div>
+                    <div class="form-group">
+                        <label for="genreRules" data-i18n="config.genreRules">Genre Rules</label>
+                        <textarea id="genreRules" name="genreRules" rows="8"></textarea>
+                        <div class="info-text" data-i18n="config.genreRulesHelp">
+                            One rule per line. Prefix with - to remove, + to add. Use -&gt; to replace. Lines starting with # are ignored.
+                        </div>
+                    </div>
+                    <button type="button" id="applyGenreRulesBtn" class="save-button" style="margin-top: 10px;" data-i18n="config.genreRulesApply">Apply to scraped files</button>
+                    <div id="genreRulesApplyResult" style="margin-top: 8px; display: none;"></div>
+                </div>
+
                 <!-- Metadata Priorities -->
                 <div class="section">
                     <div class="section-title" data-i18n="config.metadataFieldPriorities">🎯 Metadata Field Priorities</div>
@@ -232,12 +246,16 @@
             // Collect scrape folder pattern
             const scrapeFolderPattern = document.getElementById('scrapeFolderPattern').value.trim();
 
+            // Collect genre rules
+            const genreRules = document.getElementById('genreRules').value;
+
             const newConfig = {
                 libraryPath: currentConfig.libraryPath || '',  // Preserve existing libraryPath
                 mode: currentConfig.mode || 'scrape',  // Preserve current mode
                 language: currentConfig.language || 'en',  // Preserve language
                 videoPlayerPath: videoPlayerPath || '',  // New video player path
                 scrapeFolderPattern: scrapeFolderPattern || '{id}',  // Folder pattern for scrape mode
+                genreRules: genreRules,
                 scrapers: {
                     video: scrapers,
                     actors: {
@@ -328,12 +346,16 @@
                 // Load scrape folder pattern
                 const scrapeFolderPattern = config.scrapeFolderPattern || '{id}';
 
+                // Load genre rules
+                const genreRules = config.genreRules || '';
+
                 document.getElementById('actorsEnabled').checked = actorsEnabled;
                 document.getElementById('actorsPath').value = actorsPath;
                 document.getElementById('actorsScrapers').value = actorsScrapersArray.join(', ');
                 document.getElementById('copyActorsToMovieFolder').checked = copyActorsToMovieFolderValue;
                 document.getElementById('videoPlayerPath').value = videoPlayerPath;
                 document.getElementById('scrapeFolderPattern').value = scrapeFolderPattern;
+                document.getElementById('genreRules').value = genreRules;
 
                 // Render field priorities
                 renderFieldPriorities();
@@ -342,6 +364,32 @@
                 showMessage(i18n.t('config.loadFailed'), 'error');
             }
         }
+
+        document.getElementById('applyGenreRulesBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('applyGenreRulesBtn');
+            const resultEl = document.getElementById('genreRulesApplyResult');
+            btn.disabled = true;
+            resultEl.style.display = 'none';
+
+            try {
+                const res = await fetch('/item/genre-rules/apply', { method: 'POST' });
+                const data = await res.json();
+                resultEl.style.display = 'block';
+                if (data.ok) {
+                    resultEl.className = 'status-message success';
+                    resultEl.textContent = i18n.t('config.genreRulesApplySuccess', { updated: data.updated, total: data.total });
+                } else {
+                    resultEl.className = 'status-message error';
+                    resultEl.textContent = data.error || i18n.t('config.genreRulesApplyError');
+                }
+            } catch (err) {
+                resultEl.style.display = 'block';
+                resultEl.className = 'status-message error';
+                resultEl.textContent = i18n.t('config.genreRulesApplyError');
+            } finally {
+                btn.disabled = false;
+            }
+        });
 
         // Make sure i18n is loaded
         if (typeof i18n === 'undefined') {

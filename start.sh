@@ -127,4 +127,13 @@ echo ""
 (sleep 2 && xdg-open http://localhost:4004 2>/dev/null || open http://localhost:4004 2>/dev/null) &
 
 # Start the Node.js server
+
+PORT=4004
+
+if ss -ltn | grep -q ":$PORT "; then
+    echo "[INFO] Server già in esecuzione sulla porta $PORT"
+    echo "[INFO] Apro il browser..."
+    xdg-open http://localhost:$PORT 2>/dev/null &
+    exit 0
+fi
 node src/server/index.js
