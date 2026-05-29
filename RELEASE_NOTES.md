@@ -4,7 +4,7 @@
 
 ### 🔄 Edit Mode Re-scrape
 
-- New re-scrape capability in edit/library mode: re-scrape any title already in your library
+- New re-scrape capability in edit/library mode: re-scrape any title already in your library using a specific scraper of your choice
 - Scraped data is loaded into the form for review — nothing is written until you click Save
 - Navigating away or switching mode discards the temporary data (existing dirty-field confirmation dialog)
 - Actor scraping runs automatically during edit-mode re-scrape if enabled in config
