@@ -282,7 +282,7 @@ NFO files are compatible with Jellyfin, Plex, and Kodi:
 
 The application supports different workflows:
 
-1. **Browse & Edit** - Manually browse and edit existing NFO files
+1. **Browse & Edit** - Manually browse and edit existing NFO files; re-scrape any title already in the library directly from edit mode
 2. **Scrape & Save** - Automatically scrape metadata and save to library
 3. **Actor Search** - Find and cache actor information
 

@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.7.0 (2026-05-29)
+
+### 🔄 Edit Mode Re-scrape
+
+- New re-scrape capability in edit/library mode: re-scrape any title already in your library
+- Scraped data is loaded into the form for review — nothing is written until you click Save
+- Navigating away or switching mode discards the temporary data (existing dirty-field confirmation dialog)
+- Actor scraping runs automatically during edit-mode re-scrape if enabled in config
+- Auto copy actors to movie folder on save when `copyToMovieFolder` is enabled (works in both scrape and edit mode)
+
+### 🖥️ UI Rationalization
+
+- Unified scraper panel: single panel works in both modes
+- In edit mode, scrape-only controls (Scrape Now, Clear Cache, Delete) are hidden automatically
+- Removed duplicate re-scrape dropdown that appeared only in edit mode
+
+---
+
 ## v0.9.6 (2026-04-01)
 
 ### 🎭 New Actor Scraper: xslist-fs
