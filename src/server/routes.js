@@ -448,6 +448,196 @@ router.post("/save", async (req, res) => {
 });
 
 // ─────────────────────────────
+// POST /item/edit-rescrape
+// Re-scrape a library item in edit mode - run scraper and return merged data via WebSocket
+// ─────────────────────────────
+router.post("/edit-rescrape", async (req, res) => {
+  const { EventEmitter } = require('events');
+  const { executeScraper } = require('../core/scraperManager');
+
+  try {
+    const { folderId, scraper } = req.body;
+
+    if (!folderId || !scraper) {
+      return res.json({ ok: false, error: 'Missing folderId or scraper' });
+    }
+
+    if (libraryReader.items.length === 0) libraryReader.loadLibrary();
+    const libraryItem = libraryReader.findById(folderId);
+    if (!libraryItem) {
+      return res.json({ ok: false, error: `Item not found: ${folderId}` });
+    }
+
+    const existingModel = await buildItem(libraryItem);
+    if (!existingModel) {
+      return res.json({ ok: false, error: `Failed to read NFO for: ${folderId}` });
+    }
+
+    const movieCode = existingModel.id;
+    const scrapeId = Date.now().toString();
+    res.json({ ok: true, scrapeId });
+
+    const emitter = new EventEmitter();
+
+    const broadcast = (event, data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event, data, scrapeId }));
+        }
+      });
+    };
+
+    emitter.on('start', data => broadcast('start', data));
+    emitter.on('progress', data => broadcast('progress', data));
+    emitter.on('scraperError', data => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'scraperError', data, scrapeId }));
+          if (data.callback) client.pendingScraperError = data.callback;
+        }
+      });
+    });
+    emitter.on('error', data => broadcast('error', data));
+    emitter.on('prompt', data => {
+      const promptId = Date.now().toString();
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({
+            event: 'prompt',
+            data: { promptId, scraperName: data.scraperName, promptType: data.promptType, message: data.message },
+            scrapeId
+          }));
+          client.pendingPrompts = client.pendingPrompts || {};
+          client.pendingPrompts[promptId] = data.callback;
+        }
+      });
+    });
+
+    const editRescrapeCfg = loadConfig();
+    const actorsEnabled = editRescrapeCfg.scrapers?.actors?.enabled;
+    let totalTasks = 1;
+    if (actorsEnabled) totalTasks++;
+    let completedTasks = 0;
+
+    const checkAllTasksComplete = (mergedData) => {
+      completedTasks++;
+      if (completedTasks >= totalTasks) {
+        broadcast('complete', {
+          message: `Re-scraping completed with ${scraper}.`,
+          folderId,
+          editMode: true,
+          mergedData
+        });
+      }
+    };
+
+    executeScraper(scraper, [movieCode], emitter)
+      .then(async (results) => {
+        if (!results || results.length === 0) {
+          throw new Error(`No results from scraper ${scraper}`);
+        }
+
+        const newData = results[0];
+        const mergedData = JSON.parse(JSON.stringify(existingModel));
+
+        Object.keys(newData).forEach(field => {
+          const value = newData[field];
+          const isEmpty = value === null || value === undefined || value === '' ||
+            (Array.isArray(value) && value.length === 0) ||
+            (typeof value === 'object' && !Array.isArray(value) && value !== null && Object.keys(value).length === 0);
+          if (!isEmpty) {
+            mergedData[field] = value;
+          }
+        });
+
+        const { applyGenreRules } = require('../core/genreFilter');
+        if (mergedData.genres && editRescrapeCfg.genreRules) {
+          mergedData.genres = applyGenreRules(mergedData.genres, editRescrapeCfg.genreRules);
+        }
+
+        // Video scraping done
+        checkAllTasksComplete(mergedData);
+
+        // Start actor scraping if enabled
+        if (actorsEnabled && mergedData.actor && mergedData.actor.length > 0) {
+          broadcast('progress', { message: '🎭 Starting automatic actor scraping...' });
+          setTimeout(async () => {
+            try {
+              const { enrichActorArray } = require('../core/actorScraperManager');
+              const summary = await enrichActorArray(mergedData.actor, emitter);
+              broadcast('progress', {
+                message: `✅ Actor scraping completed: ${summary.total} actors (${summary.scraped} new, ${summary.cached} cached, ${summary.failed} failed)`
+              });
+            } catch (actorErr) {
+              broadcast('progress', { message: `❌ Actor scraping failed: ${actorErr.message}` });
+            }
+            // Always complete even on actor error
+            checkAllTasksComplete(mergedData);
+          }, 500);
+        }
+      })
+      .catch((err) => {
+        console.error(`[Routes] Edit-rescrape error:`, err);
+        broadcast('error', { message: err.message });
+      });
+
+  } catch (err) {
+    console.error('[Routes] Edit-rescrape error:', err);
+    return res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /item/edit-rescrape/save
+// Save re-scraped data to existing library folder (regenerate NFO + images, video stays in place)
+// ─────────────────────────────
+router.post("/edit-rescrape/save", async (req, res) => {
+  try {
+    const { folderId, item } = req.body;
+
+    if (!folderId || !item) {
+      return res.json({ ok: false, error: 'Missing folderId or item' });
+    }
+
+    if (libraryReader.items.length === 0) libraryReader.loadLibrary();
+    const libraryItem = libraryReader.findById(folderId);
+    if (!libraryItem) {
+      return res.json({ ok: false, error: `Item not found: ${folderId}` });
+    }
+
+    const { saveNfoFull } = require('../core/saveNfo');
+    await saveNfoFull(libraryItem.nfo, item);
+
+    if (item.coverUrl) {
+      const saver = new ScrapeSaver(loadConfig());
+      const fanartPath = path.join(libraryItem.path, 'fanart.jpg');
+      const posterPath = path.join(libraryItem.path, 'poster.jpg');
+      try {
+        await saver.downloadImage(item.coverUrl, fanartPath);
+        await saver.createPoster(fanartPath, posterPath);
+      } catch (imgErr) {
+        console.warn(`[Routes] Image update failed: ${imgErr.message}`);
+      }
+    }
+
+    const editSaveCfg = loadConfig();
+    if (editSaveCfg.scrapers?.actors?.copyToMovieFolder && item.actor?.length) {
+      try {
+        const { copied, skipped } = await copyActorsToFolder(libraryItem.path, item.actor);
+        console.error(`[Routes] Auto copy actors to folder: copied=${copied.length}, skipped=${skipped.length}`);
+      } catch (copyErr) {
+        console.error('[Routes] Auto copy actors failed:', copyErr.message);
+      }
+    }
+
+    libraryReader.loadLibrary();
+    res.json({ ok: true });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
 // SCRAPE MODE ROUTES
 // ─────────────────────────────
 

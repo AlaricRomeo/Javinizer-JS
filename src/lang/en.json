@@ -21,7 +21,8 @@
     "categories": "Categories",
     "mediaUrls": "Media URLs",
     "actors": "Actors",
-    "rescrapeCurrentMovie": "Re-scrape Current Movie:"
+    "rescrapeCurrentMovie": "Re-scrape Current Movie:",
+    "editRescrapePanel": "Re-scrape (Edit Mode)"
   },
   "buttons": {
     "save": "💾 Save Changes",
@@ -166,6 +167,10 @@
     "actionRequired": "User Action Required",
     "javlibraryCloudflare": "1. Open the browser window that appeared (check taskbar if minimized)\n2. Solve the Cloudflare challenge and accept the adult agreement\n3. Minimize the window (DO NOT close it)\n4. Click Continue below",
     "confirmRescrape": "Re-scrape \"{movieId}\" with {scraper}?\n\nFound fields will be replaced.\nMissing fields will be kept as they were.",
+    "confirmEditRescrape": "Re-scrape \"{movieId}\" with {scraper}?\n\nScraped data will be loaded into the form.\nYou can review before saving.",
+    "editRescrapeLoaded": "✓ Scraped data loaded. Review and save to apply.",
+    "editRescrapeApplied": "Scraped data loaded into form. Review and save to apply.",
+    "editRescrapeSaved": "✓ Folder updated with scraped data",
     "videoPlayerNotConfigured": "Video player path not configured",
     "videoNotFound": "Video file not found"
   },

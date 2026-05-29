@@ -7,6 +7,7 @@ let currentMode = null; // "edit" or "scrape" - will be set in initializeApp
 // Sistema Dirty Tracking
 // ─────────────────────────────
 let dirtyFields = new Set();
+let hasEditRescrape = false;
 
 function markFieldDirty(fieldId, itemKey = null) {
   // Verifica che originalItem esista
@@ -43,6 +44,7 @@ function clearDirtyFields() {
     }
   });
   dirtyFields.clear();
+  hasEditRescrape = false;
 
   // Update save button for both modes
   updateSaveButton();
@@ -436,7 +438,7 @@ async function switchMode(newMode) {
   const editBtn = document.getElementById("modeEdit");
   const scrapeBtn = document.getElementById("modeScrape");
   const saveBtn = document.getElementById("saveItem");
-  const scrapePanel = document.querySelector(".scraper-panel");
+  const scrapePanel = document.getElementById("mainScraperPanel");
   const copyActorsBtn = document.getElementById("copyActorsToFolder");
 
   if (newMode === "edit") {
@@ -444,11 +446,15 @@ async function switchMode(newMode) {
     editBtn.classList.add("active");
     scrapeBtn.classList.remove("active");
 
-    // Disabilita il pannello scrape in edit mode
+    // In edit mode: show panel, hide scrape-only controls
     if (scrapePanel) {
-      scrapePanel.style.opacity = "0.5";
-      scrapePanel.style.pointerEvents = "none";
+      scrapePanel.style.opacity = "1";
+      scrapePanel.style.pointerEvents = "auto";
     }
+    ['scrapeNow', 'clearCache', 'deleteItem', 'deleteAllItems'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = "none";
+    });
 
     // Show copy actors button in edit mode
     if (copyActorsBtn) {
@@ -475,11 +481,16 @@ async function switchMode(newMode) {
     editBtn.classList.remove("active");
     scrapeBtn.classList.add("active");
 
-    // Abilita il pannello scrape in scrape mode
+    // In scrape mode: show panel and restore scrape-only controls
     if (scrapePanel) {
       scrapePanel.style.opacity = "1";
       scrapePanel.style.pointerEvents = "auto";
     }
+    ['scrapeNow', 'clearCache'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = "";
+    });
+    // deleteItem/deleteAllItems visibility managed by updateDeleteButtons
 
     // Hide copy actors button in scrape mode
     if (copyActorsBtn) {
@@ -1334,37 +1345,42 @@ function setupEventHandlers() {
     const selectedScraper = e.target.value;
     if (!selectedScraper) return;
 
-    if (currentMode !== "scrape") {
-      showNotification("Re-scraping is only available in scrape mode", "error");
-      e.target.value = ""; // Reset dropdown
-      return;
+    if (currentMode === "edit") {
+      const folderId = currentItem?.folderId;
+      if (!currentItem || !folderId) {
+        showNotification(window.i18n ? window.i18n.t("messages.noMovieLoaded") : "No movie loaded", "error");
+        e.target.value = "";
+        return;
+      }
+      const movieId = currentItem.id || folderId;
+      const confirmMsg = window.i18n
+        ? window.i18n.t("messages.confirmEditRescrape", { movieId, scraper: selectedScraper })
+        : `Re-scrape "${movieId}" with ${selectedScraper}?\n\nScraped data will be loaded into the form.\nYou can review before saving.`;
+      if (!confirm(confirmMsg)) {
+        e.target.value = "";
+        return;
+      }
+      e.target.value = "";
+      await editRescrapeCurrentMovie(selectedScraper, folderId);
+    } else {
+      // scrape mode
+      const movieId = currentItem?.id || currentItem?.data?.id;
+      if (!currentItem || !movieId) {
+        console.error('[Re-scrape] No movie loaded. currentItem:', currentItem);
+        showNotification(window.i18n ? window.i18n.t("messages.noMovieLoaded") : "No movie loaded", "error");
+        e.target.value = "";
+        return;
+      }
+      const confirmMsg = window.i18n
+        ? window.i18n.t("messages.confirmRescrape", { movieId, scraper: selectedScraper })
+        : `Re-scrape "${movieId}" with ${selectedScraper}?\n\nFound fields will be replaced.\nMissing fields will be kept as they were.`;
+      if (!confirm(confirmMsg)) {
+        e.target.value = "";
+        return;
+      }
+      e.target.value = "";
+      await rescrapeCurrentMovie(selectedScraper, movieId);
     }
-
-    // In scrape mode, currentItem has structure: { id, jsonPath, scrapedAt, sources, videoFile, data: {...} }
-    // We can use either currentItem.id or currentItem.data.id
-    const movieId = currentItem?.id || currentItem?.data?.id;
-
-    if (!currentItem || !movieId) {
-      console.error('[Re-scrape] No movie loaded. currentItem:', currentItem);
-      showNotification("No movie loaded", "error");
-      e.target.value = ""; // Reset dropdown
-      return;
-    }
-
-    // Conferma azione
-    const confirmMsg = window.i18n
-      ? window.i18n.t("messages.confirmRescrape", { movieId, scraper: selectedScraper })
-      : `Re-scrape "${movieId}" with ${selectedScraper}?\n\nFound fields will be replaced.\nMissing fields will be kept as they were.`;
-    if (!confirm(confirmMsg)) {
-      e.target.value = ""; // Reset dropdown
-      return;
-    }
-
-    // Reset dropdown immediatamente
-    e.target.value = "";
-
-    // Avvia re-scraping
-    await rescrapeCurrentMovie(selectedScraper, movieId);
   };
 
   // Bottone "Delete Item" - elimina il JSON corrente in scrape mode
@@ -1516,8 +1532,30 @@ function setupEventHandlers() {
         }, 1000);
 
       } else {
-        // EDIT MODE: Salva solo le modifiche al NFO esistente
-        // Verifica che ci siano modifiche
+        // EDIT MODE
+        if (hasEditRescrape) {
+          // Full rescrape save: regenerate NFO + images in existing folder
+          const resRes = await fetch("/item/edit-rescrape/save", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folderId: currentItem.folderId, item: currentItem })
+          });
+          const resData = await resRes.json();
+          if (!resData.ok) {
+            showNotification(resData.error, "error");
+            saveBtn.disabled = false;
+            saveText.textContent = originalText;
+            return;
+          }
+          showNotification(window.i18n ? window.i18n.t("messages.editRescrapeSaved") : "✓ Folder updated with scraped data", "success");
+          clearDirtyFields();
+          originalItem = JSON.parse(JSON.stringify(currentItem));
+          saveBtn.disabled = false;
+          saveText.textContent = originalText;
+          return;
+        }
+
+        // Regular edit: Salva solo le modifiche al NFO esistente
         if (dirtyFields.size === 0) {
           showNotification(window.i18n ? window.i18n.t("messages.noChanges") : "Nessuna modifica da salvare", "info");
           saveBtn.disabled = false;
@@ -2055,17 +2093,6 @@ async function initializeApp() {
       window.history.replaceState({}, '', '/');
     }
 
-    // Initialize scrape panel visibility based on mode
-    const scrapePanel = document.querySelector(".scraper-panel");
-    if (scrapePanel) {
-      if (initialMode === "edit") {
-        scrapePanel.style.opacity = "0.5";
-        scrapePanel.style.pointerEvents = "none";
-      } else {
-        scrapePanel.style.opacity = "1";
-        scrapePanel.style.pointerEvents = "auto";
-      }
-    }
   } else {
     // Fallback se config non disponibile
     await checkLibraryCount();
@@ -2182,13 +2209,7 @@ async function playVideo() {
 function populateScraperDropdown(scrapers) {
   const dropdown = document.getElementById("rescrapeDropdown");
   if (!dropdown) return;
-
-  // Clear existing options except the first one (placeholder)
-  while (dropdown.options.length > 1) {
-    dropdown.remove(1);
-  }
-
-  // Add scrapers as options
+  while (dropdown.options.length > 1) dropdown.remove(1);
   scrapers.forEach(scraper => {
     const option = document.createElement("option");
     option.value = scraper;
@@ -2277,6 +2298,84 @@ async function rescrapeCurrentMovie(scraperName, movieId) {
   closeBtn.onclick = () => {
     modal.style.display = 'none';
   };
+}
+
+/**
+ * Re-scrape current library item in edit mode
+ */
+async function editRescrapeCurrentMovie(scraperName, folderId) {
+  const modal = document.getElementById('scrapingModal');
+  const progressDiv = document.getElementById('scrapingProgress');
+  const closeBtn = document.getElementById('scrapingClose');
+
+  modal.style.display = 'block';
+  progressDiv.innerHTML = `<div style="color: #667eea;">🔍 Re-scraping with ${scraperName}...</div>`;
+  closeBtn.style.display = 'none';
+
+  try {
+    if (!scrapingWebSocket || scrapingWebSocket.readyState !== WebSocket.OPEN) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      scrapingWebSocket = new WebSocket(`${protocol}//${window.location.host}`);
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('WebSocket connection timeout')), 5000);
+        scrapingWebSocket.onopen = () => { clearTimeout(timeout); resolve(); };
+        scrapingWebSocket.onerror = () => { clearTimeout(timeout); reject(new Error('WebSocket connection failed')); };
+      });
+    }
+
+    scrapingWebSocket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        const { event: eventType, data } = message;
+        handleScrapingEvent(progressDiv, closeBtn, eventType, data);
+      } catch (error) {
+        console.error('[WebSocket] Error parsing message:', error);
+      }
+    };
+
+    const response = await fetch('/item/edit-rescrape', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderId, scraper: scraperName })
+    });
+
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || 'Failed to start re-scraping');
+
+    appendProgress(progressDiv, `✅ Re-scraping started with ${scraperName}`, 'success');
+  } catch (error) {
+    console.error('[Edit-Rescrape] Error:', error);
+    appendProgress(progressDiv, `❌ Error: ${error.message}`, 'error');
+    closeBtn.style.display = 'block';
+  }
+
+  closeBtn.onclick = () => { modal.style.display = 'none'; };
+}
+
+/**
+ * Apply scraped data into currentItem in edit mode (no server reload)
+ */
+function applyEditRescrapeData(mergedData, folderId) {
+  if (!currentItem || currentItem.folderId !== folderId) return;
+
+  const skipFields = new Set(['folderId', 'local', 'images', 'meta', 'fileId']);
+  Object.keys(mergedData).forEach(key => {
+    if (!skipFields.has(key)) {
+      currentItem[key] = mergedData[key];
+    }
+  });
+
+  renderItem(currentItem); // internally calls clearDirtyFields()
+  // set these AFTER renderItem so they survive the clearDirtyFields() inside it
+  hasEditRescrape = true;
+  dirtyFields.add('_rescrape');
+  updateSaveButton();
+
+  showNotification(
+    window.i18n ? window.i18n.t("messages.editRescrapeLoaded") : "✓ Scraped data loaded. Review and save.",
+    "success"
+  );
 }
 
 /**
@@ -2441,8 +2540,12 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       // Show Close button - complete is only sent when ALL scraping is done
       closeBtn.style.display = 'block';
 
-      // If this was a re-scrape of a specific movie, reload it
-      if (data.movieId) {
+      // Edit mode rescrape: apply merged data into the form (no server reload)
+      if (data.editMode && data.mergedData) {
+        applyEditRescrapeData(data.mergedData, data.folderId);
+        appendProgress(progressDiv, window.i18n ? window.i18n.t("messages.editRescrapeApplied") : 'Scraped data loaded into form. Review and save to apply.', 'info');
+      // If this was a re-scrape of a specific movie in scrape mode, reload it
+      } else if (data.movieId) {
         // Reload the same movie to show updated data
         console.log('[complete] Reloading specific movie:', data.movieId);
         await loadItem(`/item/scrape/by-id/${data.movieId}`);

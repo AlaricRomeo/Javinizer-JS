@@ -21,7 +21,8 @@
     "categories": "Categorie",
     "mediaUrls": "Media URLs",
     "actors": "Attori",
-    "rescrapeCurrentMovie": "Re-scrape Film Corrente:"
+    "rescrapeCurrentMovie": "Re-scrape Film Corrente:",
+    "editRescrapePanel": "Re-scrape (Modalità Edit)"
   },
   "fields": {
     "id": "ID",
@@ -167,6 +168,10 @@
     "actionRequired": "Azione Richiesta",
     "javlibraryCloudflare": "1. Apri la finestra del browser che è apparsa (controlla la barra delle applicazioni se minimizzata)\n2. Supera la verifica di Cloudflare e accetta l'accordo per adulti\n3. Minimizza la finestra (NON chiuderla)\n4. Clicca Continua qui sotto",
     "confirmRescrape": "Fare il rescrape di  \"{movieId}\" con {scraper}?\n\nI campi trovati verranno sostituiti.\nI campi non trovati verranno lasciati come erano.",
+    "confirmEditRescrape": "Fare il rescrape di \"{movieId}\" con {scraper}?\n\nI dati estratti verranno caricati nel modulo.\nPotrai rivedere prima di salvare.",
+    "editRescrapeLoaded": "✓ Dati estratti caricati. Rivedi e salva per applicare.",
+    "editRescrapeApplied": "Dati estratti caricati nel modulo. Rivedi e salva per applicare.",
+    "editRescrapeSaved": "✓ Cartella aggiornata con i dati estratti",
     "videoPlayerNotConfigured": "Percorso del video player non configurato",
     "videoNotFound": "File video non trovato"
   },

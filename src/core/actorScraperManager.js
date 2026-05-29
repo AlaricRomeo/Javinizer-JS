@@ -1310,6 +1310,79 @@ async function batchProcessActors(emitter = null) {
   };
 }
 
+/**
+ * Scrape actors and enrich an in-memory actor array.
+ * Used by edit-mode rescrape where there is no scrape JSON file on disk.
+ *
+ * @param {Array} actors - Actor array from the canonical model (modified in place)
+ * @param {EventEmitter} emitter - Optional emitter for progress events
+ * @returns {Promise<{scraped, cached, failed, total}>}
+ */
+async function enrichActorArray(actors, emitter = null) {
+  const summary = { scraped: 0, cached: 0, failed: 0, total: 0 };
+
+  if (!actors || !Array.isArray(actors) || actors.length === 0) {
+    return summary;
+  }
+
+  const actorNames = actors.map(a => a.name).filter(Boolean);
+  summary.total = actorNames.length;
+
+  if (emitter) emitter.emit('progress', { message: `[Actor Scrape] Found ${actorNames.length} actor(s) to process` });
+
+  // Phase 1: scrape/cache each actor
+  for (let i = 0; i < actorNames.length; i++) {
+    const actorName = actorNames[i];
+    if (emitter) emitter.emit('progress', { message: `[Actor Scrape] Processing ${i + 1}/${actorNames.length}: ${actorName}` });
+
+    try {
+      const { scrapeLocal } = require('../../scrapers/actors/local/run');
+      const localData = await scrapeLocal(actorName).catch(() => null);
+      if (localData && !localData.error && isActorComplete(localData)) {
+        summary.cached++;
+        saveActorLocal(localData);
+        if (emitter) emitter.emit('progress', { message: `[local] ✓ ${actorName} - complete in library` });
+        continue;
+      }
+      const actorData = await scrapeActor(actorName, emitter);
+      if (actorData) {
+        summary.scraped++;
+      } else {
+        summary.failed++;
+      }
+    } catch (err) {
+      summary.failed++;
+      if (emitter) emitter.emit('progress', { message: `[Actor Scrape] ${actorName} - error: ${err.message}` });
+    }
+  }
+
+  // Phase 2: enrich the in-memory actor array with scraped local data
+  if (emitter) emitter.emit('progress', { message: '[Actor Scrape] Enriching actor data...' });
+
+  for (const actor of actors) {
+    if (!actor.name) continue;
+    try {
+      const { scrapeLocal } = require('../../scrapers/actors/local/run');
+      const localData = await scrapeLocal(actor.name).catch(() => null);
+      if (!localData || localData.error) continue;
+
+      if (localData.altName) actor.altName = localData.altName;
+      if (localData.birthdate) actor.birthdate = localData.birthdate;
+      if (localData.height) actor.height = localData.height;
+      if (localData.bust) actor.bust = localData.bust;
+      if (localData.waist) actor.waist = localData.waist;
+      if (localData.hips) actor.hips = localData.hips;
+
+      const thumbUrl = resolveActorThumb(localData);
+      if (thumbUrl) actor.thumb = thumbUrl;
+    } catch (err) {
+      console.error(`[ActorScraperManager] enrichActorArray failed for ${actor.name}: ${err.message}`);
+    }
+  }
+
+  return summary;
+}
+
 module.exports = {
   scrapeActor,
   getActor,
@@ -1318,5 +1391,6 @@ module.exports = {
   updateMovieActorData,
   batchProcessActors,
   processSingleMovieActors,
-  processMultipleMoviesActors
+  processMultipleMoviesActors,
+  enrichActorArray
 };

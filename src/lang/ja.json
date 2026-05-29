@@ -21,7 +21,8 @@
     "categories": "カテゴリー",
     "mediaUrls": "メディアURL",
     "actors": "女優",
-    "rescrapeCurrentMovie": "現在の動画を再スクレイプ:"
+    "rescrapeCurrentMovie": "現在の動画を再スクレイプ:",
+    "editRescrapePanel": "再スクレイプ（編集モード）"
   },
   "fields": {
     "id": "ID",
@@ -147,6 +148,10 @@
     "actionRequired": "ユーザーアクションが必要",
     "javlibraryCloudflare": "1. 表示されたブラウザウィンドウを開いてください（最小化されている場合はタスクバーを確認）\n2. Cloudflareチャレンジを解決し、成人向け規約に同意してください\n3. ウィンドウを最小化してください（閉じないでください）\n4. 下の「続行」をクリックしてください",
     "confirmRescrape": "「{movieId}」を{scraper}で再スクレイプしますか？\n\n見つかったフィールドは置き換えられます。\n見つからなかったフィールドは以前のまま残ります。",
+    "confirmEditRescrape": "「{movieId}」を{scraper}で再スクレイプしますか？\n\n抽出されたデータがフォームに読み込まれます。\n保存前に確認できます。",
+    "editRescrapeLoaded": "✓ スクレイプデータを読み込みました。確認して保存してください。",
+    "editRescrapeApplied": "スクレイプデータをフォームに読み込みました。確認して保存してください。",
+    "editRescrapeSaved": "✓ スクレイプデータでフォルダを更新しました",
     "videoPlayerNotConfigured": "ビデオプレーヤーのパスが設定されていません",
     "videoNotFound": "動画ファイルが見つかりません"
   },
