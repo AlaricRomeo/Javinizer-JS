@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.8.0 (2026-08-18)
+## v2.0.0 (2026-08-18)
 
 ### 🔍 Library search-as-filter
 
