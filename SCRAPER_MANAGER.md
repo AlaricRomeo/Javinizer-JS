@@ -232,7 +232,7 @@ This works because stdin is inherited from your terminal.
 ```
 javinizer-js/
 ├── config.json              # Main configuration
-├── config-example.json      # Example with field priorities
+├── config.example.json      # Example with field priorities
 ├── scraperManager.js        # This file
 └── scrapers/
     ├── javlibrary/

@@ -6,6 +6,7 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
+const { loadConfig } = require('../../../src/core/config');
 
 let browser = null;
 let sessionPage = null; // Keep the same page/tab alive
@@ -97,9 +98,18 @@ async function initBrowser(headless = false) {
     defaultViewport: { width: 1920, height: 1080 }
   };
 
-  // Use system Chromium in Docker if available
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  // Use configured browser path, then env var, then Puppeteer default
+  try {
+    const cfg = loadConfig();
+    if (cfg.browserPath) {
+      launchOptions.executablePath = cfg.browserPath;
+    } else if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+  } catch (_) {
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
   }
 
   console.error('[Browser] Launching Puppeteer...');
@@ -277,6 +287,9 @@ async function closeBrowser() {
   if (browser) {
     console.error('[Browser] Closing browser...');
     try {
+      // Remove disconnected listener before killing to avoid spurious "unexpectedly" log
+      browser.removeAllListeners('disconnected');
+
       // Force kill the browser process immediately for faster shutdown
       const browserProcess = browser.process();
       if (browserProcess && browserProcess.pid) {

@@ -24,9 +24,8 @@ scrapers/actors/
 │   └── run.js
 ├── javdb/                 # javdatabase.com (Puppeteer)
 │   └── run.js
-└── xslist-fs/             # xslist.org (FlareSolverr richiesto)
-    ├── run.js
-    └── flaresolverr.js
+└── xcity/                 # xxx.xcity.jp (fetch + cheerio)
+    └── run.js
 
 data/actors/
 └── {actor-id}.nfo         # File NFO attore (Kodi format)
@@ -98,13 +97,14 @@ Scrape da javdatabase.com
 - Usa Puppeteer headless
 - Scarica foto automaticamente
 
-### XSList-FS Scraper ⚠️ FlareSolverr richiesto
-Scrape da xslist.org
-- Path: `scrapers/actors/xslist-fs/run.js`
-- Source: `https://xslist.org/search?query={cognome+nome}&lg=en`
-- Usa FlareSolverr per bypassare Cloudflare
-- Estrae: nome, altName (giapponese), data di nascita, misure, foto
-- Richiede `FLARESOLVERR_URL` (default: `http://localhost:8191`)
+### XCITY Scraper
+Scrape da xxx.xcity.jp (JAV Idol Listing)
+- Path: `scrapers/actors/xcity/run.js`
+- Ricerca: `https://xxx.xcity.jp/idol/?q={nome}` (match esatto sul nome tra i risultati)
+- Dettaglio: `https://xxx.xcity.jp/idol/detail/{id}/`
+- Usa `fetch` + `cheerio` (nessun browser/FlareSolverr richiesto)
+- Estrae: nome, data di nascita, altezza, misure (B/W/H), foto
+- Non fornisce `altName` (nessun nome giapponese in pagina)
 
 ## Configurazione (config.json)
 
@@ -114,7 +114,7 @@ Scrape da xslist.org
     "actors": {
       "enabled": true,
       "externalPath": null,
-      "scrapers": ["local", "xslist-fs", "javdb"]
+      "scrapers": ["local", "javdb", "xcity"]
     }
   }
 }

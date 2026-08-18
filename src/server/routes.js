@@ -354,15 +354,112 @@ router.get("/browse", (req, res) => {
       parent = null;
     }
 
+    // Optionally include files (for executable browser selection)
+    let files = [];
+    if (req.query.files === '1') {
+      files = items
+        .filter(item => item.isFile() && !item.name.startsWith("."))
+        .map(item => ({ name: item.name, path: path.join(dirPath, item.name) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
     res.json({
       ok: true,
       current: dirPath,
       parent: parent,
-      directories: directories
+      directories: directories,
+      files: files
     });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
+});
+
+// ─────────────────────────────
+// GET /search (edit mode only: search by ID and NFO title)
+// ─────────────────────────────
+let _searchIndex = null;
+
+function getSearchIndex() {
+  if (libraryReader.items.length === 0) libraryReader.loadLibrary();
+  // Rebuild if library changed
+  if (!_searchIndex || _searchIndex.length !== libraryReader.items.length) {
+    _searchIndex = libraryReader.items.map(item => {
+      let title = '';
+      let genres = [];
+      let actors = [];
+      try {
+        const content = fs.readFileSync(item.nfo, 'utf8');
+        const titleMatch = content.match(/<title>([\s\S]*?)<\/title>/i);
+        if (titleMatch) title = titleMatch[1].trim();
+
+        genres = [...content.matchAll(/<genre>([\s\S]*?)<\/genre>/gi)]
+          .map(m => m[1].trim())
+          .filter(Boolean);
+
+        actors = (content.match(/<actor>[\s\S]*?<\/actor>/gi) || [])
+          .map(block => {
+            const m = block.match(/<name>([\s\S]*?)<\/name>/i);
+            return m ? m[1].trim() : null;
+          })
+          .filter(Boolean);
+      } catch (_) {}
+      return { id: item.id, title, genres, actors };
+    });
+  }
+  return _searchIndex;
+}
+
+/**
+ * Matches the search index against a lowercase, trimmed query.
+ * Shared by /search (dropdown) and /filter (navigation).
+ */
+function matchSearchIndex(q) {
+  const index = getSearchIndex();
+  return index.filter(item =>
+    item.id.toLowerCase().includes(q) ||
+    item.title.toLowerCase().includes(q) ||
+    item.genres.some(g => g.toLowerCase().includes(q)) ||
+    item.actors.some(a => a.toLowerCase().includes(q))
+  );
+}
+
+router.get("/search", (req, res) => {
+  const q = (req.query.q || '').toLowerCase().trim();
+  if (q.length < 1) return res.json({ ok: true, results: [], total: 0 });
+
+  const matches = matchSearchIndex(q);
+
+  res.json({ ok: true, results: matches.slice(0, 50), total: matches.length });
+});
+
+// ─────────────────────────────
+// POST /filter
+// Restrict /item/next and /item/previous to items matching the query
+// ─────────────────────────────
+router.post("/filter", async (req, res) => {
+  try {
+    const q = (req.body.q || '').toLowerCase().trim();
+    if (!q) return res.json(fail('Query required'));
+
+    const matches = matchSearchIndex(q);
+    if (matches.length === 0) return res.json({ ok: true, count: 0, item: null });
+
+    libraryReader.setFilter(matches.map(m => m.id));
+    const current = libraryReader.getCurrent();
+    const model = current ? await buildItem(current) : null;
+    res.json({ ok: true, count: matches.length, item: model });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// ─────────────────────────────
+// POST /filter/clear
+// ─────────────────────────────
+router.post("/filter/clear", (req, res) => {
+  libraryReader.clearFilter();
+  res.json({ ok: true });
 });
 
 // ─────────────────────────────
@@ -440,6 +537,22 @@ router.post("/save", async (req, res) => {
     }
 
     await saveNfoPatch(item.nfo, changes);
+
+    const saveCfg = loadConfig();
+    if (saveCfg.scrapers?.actors?.copyToMovieFolder) {
+      try {
+        const { readNfo } = require('../core/readNfo');
+        const { mapNfoToModel } = require('../core/nfoMapper');
+        const parsed = await readNfo(item.nfo);
+        const model = mapNfoToModel(parsed);
+        if (model?.actor?.length) {
+          const { copied, skipped } = await copyActorsToFolder(item.path, model.actor);
+          console.error(`[Routes] Auto copy actors to folder: copied=${copied.length}, skipped=${skipped.length}`);
+        }
+      } catch (copyErr) {
+        console.error('[Routes] Auto copy actors failed:', copyErr.message);
+      }
+    }
 
     res.json({ ok: true });
   } catch (err) {
@@ -559,21 +672,25 @@ router.post("/edit-rescrape", async (req, res) => {
         checkAllTasksComplete(mergedData);
 
         // Start actor scraping if enabled
-        if (actorsEnabled && mergedData.actor && mergedData.actor.length > 0) {
-          broadcast('progress', { message: '🎭 Starting automatic actor scraping...' });
-          setTimeout(async () => {
-            try {
-              const { enrichActorArray } = require('../core/actorScraperManager');
-              const summary = await enrichActorArray(mergedData.actor, emitter);
-              broadcast('progress', {
-                message: `✅ Actor scraping completed: ${summary.total} actors (${summary.scraped} new, ${summary.cached} cached, ${summary.failed} failed)`
-              });
-            } catch (actorErr) {
-              broadcast('progress', { message: `❌ Actor scraping failed: ${actorErr.message}` });
-            }
-            // Always complete even on actor error
+        if (actorsEnabled) {
+          if (mergedData.actor && mergedData.actor.length > 0) {
+            broadcast('progress', { message: '🎭 Starting automatic actor scraping...' });
+            setTimeout(async () => {
+              try {
+                const { enrichActorArray } = require('../core/actorScraperManager');
+                const summary = await enrichActorArray(mergedData.actor, emitter);
+                broadcast('progress', {
+                  message: `✅ Actor scraping completed: ${summary.total} actors (${summary.scraped} new, ${summary.cached} cached, ${summary.failed} failed)`
+                });
+              } catch (actorErr) {
+                broadcast('progress', { message: `❌ Actor scraping failed: ${actorErr.message}` });
+              }
+              checkAllTasksComplete(mergedData);
+            }, 500);
+          } else {
+            // No actors to scrape — still need to complete the actor task
             checkAllTasksComplete(mergedData);
-          }, 500);
+          }
         }
       })
       .catch((err) => {
@@ -739,8 +856,18 @@ router.get("/scrape/by-id/:id", (req, res) => {
 // Returns list of all scrape item IDs for navigation
 router.get("/scrape/list", (req, res) => {
   try {
-    const items = scrapeReader.items.map(item => item.id);
-    res.json({ ok: true, items });
+    scrapeReader.loadScrapeItems();
+    const currentId = scrapeReader.getCurrent()?.id || null;
+    const items = scrapeReader.items.map(item => {
+      let scraped = false;
+      try {
+        const raw = fs.readFileSync(item.jsonPath, 'utf8');
+        const data = JSON.parse(raw);
+        scraped = !!(data.sources && data.sources.length > 0);
+      } catch (_) {}
+      return { id: item.id, scraped };
+    });
+    res.json({ ok: true, items, currentId });
   } catch (err) {
     res.json(fail(err.message));
   }
@@ -854,7 +981,7 @@ router.get("/scrape-list", async (req, res) => {
         videoFile: parsed.videoFile,
         title: parsed.data?.title || '',
         coverUrl: parsed.data?.coverUrl || '',
-        genre: parsed.data?.genre || [],
+        genre: parsed.data?.genres || [],
         actor: parsed.data?.actor || [],
         matched: hasMeaningfulData
       };
@@ -874,23 +1001,35 @@ router.get("/library-list", async (req, res) => {
       libraryReader.loadLibrary();
     }
 
-    const items = await Promise.all(
+    // A stale cache entry (nfo renamed/removed since the last full scan) must not
+    // take down the whole list — skip just that item and self-heal it out of
+    // libraryReader.items so it doesn't keep failing on every subsequent request.
+    const built = await Promise.all(
       libraryReader.items.map(async item => {
-        const builtItem = await buildItem(item);
-        // Use local cover image via endpoint, fallback to remote coverUrl
-        const localCoverUrl = `/item/library-cover/${encodeURIComponent(builtItem.folderId)}`;
-        return {
-          id: builtItem.id,
-          folderId: builtItem.folderId,
-          filename: builtItem.filename,
-          title: builtItem.title,
-          coverUrl: localCoverUrl, // Prefer local cover
-          remoteCoverUrl: builtItem.coverUrl, // Keep remote as fallback
-          genre: builtItem.genre,
-          actor: builtItem.actor
-        };
+        try {
+          const builtItem = await buildItem(item);
+          if (!builtItem) return null;
+          // Use local cover image via endpoint, fallback to remote coverUrl
+          const localCoverUrl = `/item/library-cover/${encodeURIComponent(builtItem.folderId)}`;
+          return {
+            id: builtItem.id,
+            folderId: builtItem.folderId,
+            filename: builtItem.filename,
+            title: builtItem.title,
+            coverUrl: localCoverUrl, // Prefer local cover
+            remoteCoverUrl: builtItem.coverUrl, // Keep remote as fallback
+            genre: builtItem.genres,
+            actor: builtItem.actor
+          };
+        } catch (err) {
+          console.error(`[library-list] Skipping stale item ${item.id}:`, err.message);
+          const idx = libraryReader.items.indexOf(item);
+          if (idx !== -1) libraryReader.items.splice(idx, 1);
+          return null;
+        }
       })
     );
+    const items = built.filter(Boolean);
 
     res.json({ ok: true, items });
   } catch (err) {
@@ -928,6 +1067,7 @@ router.post("/library-index", (req, res) => {
       return res.json(fail('Invalid index'));
     }
     libraryReader.currentIndex = index;
+    libraryReader.getCurrent(); // also persists the position for the next server restart
 
     // Only change mode if explicitly requested
     if (setMode) {
@@ -1122,8 +1262,9 @@ router.post("/scrape/save", async (req, res) => {
 
     // Create a currentScrapeItem object compatible with ScrapeSaver
     // ScrapeSaver expects: { videoFile, scrapedAt, sources, data }
+    // Use modifiedData.id (may be uppercase) for folder/NFO, itemId for file lookup only
     const currentScrapeItem = {
-      id: itemId,
+      id: modifiedData?.id || itemId,
       jsonPath: jsonPath,
       videoFile: originalJson.videoFile,  // Keep videoFile from original JSON
       scrapedAt: originalJson.scrapedAt,
@@ -1836,15 +1977,10 @@ router.post("/scrape/clear-cache", async (req, res) => {
       }
     }
 
-    // Clear internal actors cache (data/actors/)
-    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
-    const actorsCachePath = getActorsCachePath();
-    if (fs.existsSync(actorsCachePath)) {
-      fs.rmSync(actorsCachePath, { recursive: true, force: true });
-      fs.mkdirSync(actorsCachePath, { recursive: true });
-      clearedCount++;
-      console.error(`[ClearCache] Cleared actors cache: ${actorsCachePath}`);
-    }
+    // NOTE: data/actors/ is NOT cleared here — it is persistent actor storage
+    // (NFO + photos), not a disposable scraper cache. Actors not yet promoted
+    // to the external library live there exclusively; wiping it would delete
+    // their data permanently.
 
     res.json({
       ok: true,
@@ -2127,8 +2263,11 @@ router.post("/actors/save", async (req, res) => {
       }
     }
 
-    // Priority 1: Check for uploadedFile field (new clean approach)
-    // Priority 2: Check if thumb is a temporary uploaded file (starts with /media/temp_) - for backward compatibility
+    const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+    const { actorToNFO } = require('../../scrapers/actors/schema');
+    const imageExtensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+
+    // Handle uploaded image: move temp file to actors cache
     const uploadedPath = actorData.uploadedFile || (actorData.thumb && actorData.thumb.startsWith('/media/temp_') ? actorData.thumb : null);
 
     if (uploadedPath) {
@@ -2136,35 +2275,19 @@ router.post("/actors/save", async (req, res) => {
       const tempPath = path.join(__dirname, '../../data/temp', tempFilename);
 
       if (fs.existsSync(tempPath)) {
-        // Get actors cache path
-        const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
         const actorsPath = getActorsCachePath();
+        if (!fs.existsSync(actorsPath)) fs.mkdirSync(actorsPath, { recursive: true });
 
-        // Ensure actors directory exists
-        if (!fs.existsSync(actorsPath)) {
-          fs.mkdirSync(actorsPath, { recursive: true });
-        }
-
-        // Generate new filename using actor ID and original extension
         const ext = path.extname(tempFilename);
         const newFilename = `${actorData.id}${ext}`;
         const newPath = path.join(actorsPath, newFilename);
 
-        // Cleanup: remove ANY existing image files for this actor ID
-        // This prevents having both .jpg and .png for the same actor
-        const extensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
-        extensions.forEach(e => {
-          const oldPath = path.join(actorsPath, `${actorData.id}${e}`);
-          if (fs.existsSync(oldPath)) {
-            try {
-              fs.unlinkSync(oldPath);
-            } catch (err) {
-              console.error(`[ActorSave] Failed to delete old image ${oldPath}: ${err.message}`);
-            }
-          }
+        // Remove all existing image files for this actor ID in cache
+        imageExtensions.forEach(e => {
+          const old = path.join(actorsPath, `${actorData.id}${e}`);
+          if (fs.existsSync(old)) { try { fs.unlinkSync(old); } catch (_) {} }
         });
 
-        // Move file from temp to actors cache
         const fsPromises = require('fs').promises;
         try {
           await fsPromises.copyFile(tempPath, newPath);
@@ -2174,54 +2297,86 @@ router.post("/actors/save", async (req, res) => {
           return res.json({ ok: false, error: `Failed to move uploaded image: ${moveErr.message}` });
         }
 
-        // Update actor meta to use the new filename
         actorData.thumbLocal = newFilename;
-
-        // Clear the thumb field as it's now local
         actorData.thumb = '';
+
+        // Sync new photo to externalPath if actor exists there (regardless of context)
+        // Soft-delete old photos by moving them to old-pics/ subfolder
+        const extPath = getExternalActorsPath();
+        if (extPath && fs.existsSync(extPath)) {
+          const actorNfoInExt = path.join(extPath, `${actorData.id}.nfo`);
+          if (fs.existsSync(actorNfoInExt)) {
+            const oldPicsDir = path.join(extPath, 'old-pics');
+            if (!fs.existsSync(oldPicsDir)) fs.mkdirSync(oldPicsDir, { recursive: true });
+
+            const ts = Date.now();
+            imageExtensions.forEach(e => {
+              const oldImg = path.join(extPath, `${actorData.id}${e}`);
+              if (fs.existsSync(oldImg)) {
+                try { fs.renameSync(oldImg, path.join(oldPicsDir, `${ts}_${actorData.id}${e}`)); } catch (_) {}
+              }
+            });
+
+            try {
+              fs.copyFileSync(newPath, path.join(extPath, newFilename));
+              console.log(`[ActorSave] Synced new photo to externalPath: ${newFilename}`);
+            } catch (err) {
+              console.error('[ActorSave] Failed to sync photo to externalPath:', err.message);
+            }
+          }
+        }
       }
-    } else if (actorData.thumb && actorData.thumb.startsWith('/media/upload_')) {
-      // Handle legacy case
-      const filename = actorData.thumb.replace('/media/', '');
-      actorData.thumbLocal = filename;
-      actorData.thumb = '';
     }
 
     // Ensure meta object exists
     actorData.meta = actorData.meta || {};
     actorData.meta.lastUpdate = new Date().toISOString();
 
+    // If thumbLocal is missing from request, resolve it from cache so NFO is written correctly
+    if (!actorData.thumbLocal) {
+      const cacheDir = getActorsCachePath();
+      for (const e of ['.webp', '.jpg', '.jpeg', '.png', '.gif']) {
+        if (fs.existsSync(path.join(cacheDir, `${actorData.id}${e}`))) {
+          actorData.thumbLocal = `${actorData.id}${e}`;
+          break;
+        }
+      }
+    }
+
     // Save actor to internal cache always
     saveActorLocal(actorData);
 
-    // If called from library context, also save to externalPath
-    if (actorData.context === 'library') {
-      const { getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
-      const { actorToNFO } = require('../../scrapers/actors/schema');
-      const extPath = getExternalActorsPath();
-      if (extPath && fs.existsSync(extPath)) {
-        const nfoContent = actorToNFO(actorData);
-        fs.writeFileSync(path.join(extPath, `${actorData.id}.nfo`), nfoContent, 'utf-8');
+    // Save NFO (and photo) to externalPath when:
+    // a) explicitly called from library context, OR
+    // b) actor already exists in externalPath (keep it in sync)
+    const extPath = getExternalActorsPath();
+    if (extPath && fs.existsSync(extPath)) {
+      const actorNfoInExt = path.join(extPath, `${actorData.id}.nfo`);
+      const shouldSaveToExt = actorData.context === 'library' || fs.existsSync(actorNfoInExt);
 
-        // If a local image was just uploaded, copy it to externalPath too
-        // so it persists after cache is cleared
-        if (actorData.thumbLocal) {
-          const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
-          const cachedImagePath = path.join(getActorsCachePath(), actorData.thumbLocal);
-          const extImagePath = path.join(extPath, actorData.thumbLocal);
-          if (fs.existsSync(cachedImagePath)) {
-            // Remove any old images for this actor in externalPath before copying
-            const extensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
-            extensions.forEach(e => {
-              const oldExtImage = path.join(extPath, `${actorData.id}${e}`);
-              if (fs.existsSync(oldExtImage)) {
-                try { fs.unlinkSync(oldExtImage); } catch (_) {}
-              }
-            });
+      if (shouldSaveToExt) {
+        const nfoContent = actorToNFO(actorData);
+        fs.writeFileSync(actorNfoInExt, nfoContent, 'utf-8');
+
+        // Sync photo to externalPath if it's in cache but not already there.
+        // thumbLocal may be absent from request data — scan cache by actor ID as fallback.
+        let thumbLocalToSync = actorData.thumbLocal;
+        if (!thumbLocalToSync) {
+          const cacheDir = getActorsCachePath();
+          for (const e of imageExtensions) {
+            const candidate = path.join(cacheDir, `${actorData.id}${e}`);
+            if (fs.existsSync(candidate)) { thumbLocalToSync = `${actorData.id}${e}`; break; }
+          }
+        }
+        if (thumbLocalToSync) {
+          const cachedPhoto = path.join(getActorsCachePath(), thumbLocalToSync);
+          const extPhoto = path.join(extPath, thumbLocalToSync);
+          if (fs.existsSync(cachedPhoto) && !fs.existsSync(extPhoto)) {
             try {
-              fs.copyFileSync(cachedImagePath, extImagePath);
+              fs.copyFileSync(cachedPhoto, extPhoto);
+              console.log(`[ActorSave] Synced photo to externalPath: ${thumbLocalToSync}`);
             } catch (err) {
-              console.error('[ActorSave] Failed to copy image to externalPath:', err.message);
+              console.error('[ActorSave] Failed to sync photo to externalPath:', err.message);
             }
           }
         }
@@ -2332,36 +2487,42 @@ router.post("/actors/upload-image", upload.single('image'), async (req, res) => 
       return res.json({ ok: false, error: 'No file uploaded' });
     }
 
-    // Use temporary directory for uploaded images
-    const tempPath = path.join(__dirname, '../../data/temp');
+    const ext = path.extname(req.file.originalname) || '.jpg';
+    const actorName = req.body.actorName || '';
 
-    // Ensure temp directory exists
-    if (!fs.existsSync(tempPath)) {
-      fs.mkdirSync(tempPath, { recursive: true });
+    // If actor name provided, save directly to cache (skip temp)
+    if (actorName) {
+      const { normalizeActorName } = require('../../scrapers/actors/schema');
+      const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+      const actorId = normalizeActorName(actorName);
+      const actorsPath = getActorsCachePath();
+
+      if (!fs.existsSync(actorsPath)) fs.mkdirSync(actorsPath, { recursive: true });
+
+      // Remove any existing image for this actor before saving
+      ['.webp', '.jpg', '.jpeg', '.png', '.gif'].forEach(e => {
+        const old = path.join(actorsPath, `${actorId}${e}`);
+        if (fs.existsSync(old)) { try { fs.unlinkSync(old); } catch (_) {} }
+      });
+
+      const filename = `${actorId}${ext}`;
+      fs.writeFileSync(path.join(actorsPath, filename), req.file.buffer);
+      console.log(`[Upload] Saved directly to cache: ${filename}`);
+
+      return res.json({ ok: true, url: `/actors/${filename}`, filename, savedToCache: true });
     }
 
-    // Generate unique filename using hash of file content + timestamp
+    // No actor name: save to temp
+    const tempDir = path.join(__dirname, '../../data/temp');
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
     const hash = crypto.createHash('md5').update(req.file.buffer).digest('hex').substring(0, 8);
-    const timestamp = Date.now();
-    const ext = path.extname(req.file.originalname) || '.jpg';
-    const filename = `temp_${timestamp}_${hash}${ext}`;
-    const filepath = path.join(tempPath, filename);
+    const filename = `temp_${Date.now()}_${hash}${ext}`;
+    fs.writeFileSync(path.join(tempDir, filename), req.file.buffer);
 
-    // Save file
-    fs.writeFileSync(filepath, req.file.buffer);
-
-    // Return the URL path (relative to /media endpoint)
-    // For temporary files, we'll use a special identifier
-    const imageUrl = `/media/${filename}`;
-
-    // Lazy cleanup of old temp files (older than 24h)
     cleanupTempDirectory(24);
 
-    res.json({
-      ok: true,
-      url: imageUrl,
-      filename: filename
-    });
+    res.json({ ok: true, url: `/media/${filename}`, filename });
 
   } catch (err) {
     console.error('[Upload] Error:', err);
@@ -2455,6 +2616,49 @@ router.post("/play-video", async (req, res) => {
 
   } catch (err) {
     console.error('[PlayVideo] Error:', err);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /item/open-folder
+// Open the movie folder in the OS file manager
+// ─────────────────────────────
+router.post("/open-folder", async (req, res) => {
+  try {
+    const { folderPath } = req.body;
+
+    if (!folderPath) {
+      return res.json({ ok: false, error: 'Folder path is required' });
+    }
+
+    const resolvedPath = path.resolve(folderPath);
+    const cfg = loadConfig();
+    const libraryPath = cfg.libraryPath ? path.resolve(cfg.libraryPath) : null;
+
+    // Only allow opening folders inside the configured library path
+    if (!libraryPath || (resolvedPath !== libraryPath && !resolvedPath.startsWith(libraryPath + path.sep))) {
+      return res.json({ ok: false, error: 'Folder path is not inside the library path' });
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+      return res.json({ ok: false, error: `Folder does not exist: ${resolvedPath}` });
+    }
+
+    const { spawn } = require('child_process');
+    const command = process.platform === 'win32' ? 'explorer'
+      : process.platform === 'darwin' ? 'open'
+      : 'xdg-open';
+
+    const child = spawn(command, [resolvedPath], {
+      detached: true,
+      stdio: 'ignore'
+    });
+    child.unref();
+
+    res.json({ ok: true, message: 'Folder opened successfully' });
+  } catch (err) {
+    console.error('[OpenFolder] Error:', err);
     res.json({ ok: false, error: err.message });
   }
 });
@@ -2583,9 +2787,11 @@ router.get("/videos/:folderId", async (req, res) => {
 // Helper: copy actor thumbs to a movie folder's actors/ subfolder
 // ─────────────────────────────
 async function copyActorsToFolder(folderPath, actors) {
-  const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+  const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
+  const { actorToNFO } = require('../../scrapers/actors/schema');
   const actorsPath = getActorsCachePath();
+  const externalActorsPath = getExternalActorsPath();
   const destFolder = path.join(folderPath, 'actors');
 
   if (!fs.existsSync(destFolder)) fs.mkdirSync(destFolder, { recursive: true });
@@ -2597,31 +2803,45 @@ async function copyActorsToFolder(folderPath, actors) {
   for (const actor of actors) {
     if (!actor.name) continue;
     let found = false;
+    let savedExt = null;
 
     // 1. Find actor via NFO scan (externalPath first, then data/actors)
     const actorData = await scrapeLocal(actor.name).catch(() => null);
     const actorId = actorData && actorData.id;
     if (actorId) {
-      for (const ext of extensions) {
-        const srcPath = path.join(actorsPath, `${actorId}.${ext}`);
-        if (fs.existsSync(srcPath)) {
-          fs.copyFileSync(srcPath, path.join(destFolder, `${actor.name}.${ext}`));
-          copied.push(actor.name);
-          found = true;
-          break;
+      // Search in data/actors/ first, then externalPath (covers cache-cleared scenarios)
+      const searchDirs = [actorsPath];
+      if (externalActorsPath && fs.existsSync(externalActorsPath)) searchDirs.push(externalActorsPath);
+
+      for (const dir of searchDirs) {
+        if (found) break;
+        for (const ext of extensions) {
+          const srcPath = path.join(dir, `${actorId}.${ext}`);
+          if (fs.existsSync(srcPath)) {
+            fs.copyFileSync(srcPath, path.join(destFolder, `${actor.name}.${ext}`));
+            copied.push(actor.name);
+            found = true;
+            savedExt = ext;
+            break;
+          }
         }
       }
     }
 
     // 2. Fallback: download from remote thumb URL
-    if (!found && actor.thumb && actor.thumb.startsWith('http')) {
+    // Use actorData.thumbUrl (original URL) if actor.thumb is a local path
+    const thumbUrl = (actor.thumb && actor.thumb.startsWith('http'))
+      ? actor.thumb
+      : (actorData && actorData.thumbUrl && actorData.thumbUrl.startsWith('http') ? actorData.thumbUrl : null);
+
+    if (!found && thumbUrl) {
       try {
-        const imageUrl = new URL(actor.thumb);
+        const imageUrl = new URL(thumbUrl);
         const protocol = imageUrl.protocol === 'https:' ? https : http;
         const imageBuffer = await new Promise((resolve, reject) => {
-          const req2 = protocol.get(actor.thumb, { timeout: 15000 }, (response) => {
+          const req2 = protocol.get(thumbUrl, { timeout: 15000 }, (response) => {
             if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-              const redirectUrl = new URL(response.headers.location, actor.thumb);
+              const redirectUrl = new URL(response.headers.location, thumbUrl);
               const rp = redirectUrl.protocol === 'https:' ? https : http;
               const req3 = rp.get(redirectUrl.href, { timeout: 15000 }, (res2) => {
                 const chunks = [];
@@ -2643,8 +2863,21 @@ async function copyActorsToFolder(folderPath, actors) {
         fs.writeFileSync(path.join(destFolder, `${actor.name}${ext}`), imageBuffer);
         copied.push(actor.name);
         found = true;
+        savedExt = ext.replace(/^\./, '');
       } catch (dlErr) {
         console.error(`[copyActorsToFolder] Failed to download thumb for ${actor.name}:`, dlErr.message);
+      }
+    }
+
+    // 3. Write full actor .nfo alongside the photo (javinizer-js internal format,
+    // not Kodi-compliant, used by the "local" scraper to re-find actor details
+    // from movie folders after a cache reset)
+    if (found && actorData) {
+      try {
+        const nfoActor = savedExt ? { ...actorData, thumbLocal: `${actor.name}.${savedExt}` } : actorData;
+        fs.writeFileSync(path.join(destFolder, `${actor.name}.nfo`), actorToNFO(nfoActor), 'utf-8');
+      } catch (nfoErr) {
+        console.error(`[copyActorsToFolder] Failed to write nfo for ${actor.name}:`, nfoErr.message);
       }
     }
 

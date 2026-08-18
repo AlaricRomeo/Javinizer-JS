@@ -1,5 +1,60 @@
 # Release Notes
 
+## v1.8.0 (2026-08-18)
+
+### 🔍 Library search-as-filter
+
+- The navbar search (edit mode) can now either jump to a single result (click on it, or Enter — unchanged) or, via the new "Filter results (N)" option, constrain Next/Previous navigation to only the matching movies
+- Matches on ID, title, actor name and genre (partial, case-insensitive)
+- A filter badge shows the active query and result count, with a one-click clear
+- No new dependency: reuses the existing in-memory search index, extended with actor/genre extraction
+
+### 🎭 Local actor scraper: library fallback + richer "Copy actors to movie folder"
+
+- New third fallback tier for the `local` actor scraper: when preferiti (`externalPath`) and cache both miss, and "Copy actors to movie folder" is enabled, it now also searches every library movie folder's `actors/` subfolder
+- `copyActorsToFolder` now writes a full actor `.nfo` (javinizer-js's own actor schema, not Kodi's movie-actor tag) alongside the photo, so this fallback can recover complete actor data even after a cache reset — not just a name
+- Correctly bypassed when "Overwrite local data" is checked in the actor modal: the library-folder scan is skipped there so a stale photo can't be self-healed back into the cache while the user is deliberately forcing a fresh remote fetch
+
+### 🖼️ Actor photo serving fixes
+
+- `/actors/*` now searches `externalPath` (preferiti) fully — exact name, then any known extension — before falling back to the internal cache, instead of mixing the two per-extension
+- Actor thumbnail resolution self-heals when the cached file's extension no longer matches (e.g. after a re-upload) by locating the actual file for that actor ID instead of falling back to the remote URL
+
+### 🎬 New scrapers
+
+- **XCITY** (actor scraper, `xxx.xcity.jp`) replaces `xslist-fs` — same data (name, birthdate, height, measurements, photo), no FlareSolverr/Cloudflare workaround needed (plain `fetch` + `cheerio`)
+- **LibreDMM** (movie scraper, `libredmm.com`) — new JSON API-based source
+
+### 🔠 ID field always uppercase
+
+- The ID field in edit/scrape mode now normalizes to uppercase on load and as you type
+
+### ⛔ Cancel scraping button
+
+- The scraping modal now has a Cancel button while a scrape is in progress — closes the WebSocket and hides the modal immediately, instead of only being dismissible after completion
+
+### 🌐 Configurable browser path
+
+- New "Browser path" field in Config → General Settings, with a folder/file browser, for pointing Puppeteer at a specific Chromium/Chrome binary
+- Takes priority over the `PUPPETEER_EXECUTABLE_PATH` env var
+
+### 🏷️ Leaked / Decensored / Uncensored badges
+
+- Movies tagged with these genres now show a small badge overlay on the cover, in both grid view and the edit-mode detail panel
+- Fixed a collateral bug in `/scrape-list` and `/library-list` that read the wrong field name (`genre` instead of `genres`), which had also been silently breaking the existing genre tags
+
+### 📁 "Open folder" button (edit mode)
+
+- New button next to Play opens the movie's folder in the OS file manager
+- Path is validated to be inside the configured library path before opening
+
+### 🎭 Actor modal unification
+
+- Single actor modal implementation shared between the home/scrape view and the actors (preferiti) page, replacing two divergent code paths
+- Uploading a new actor photo now soft-deletes the previous one (moved to `old-pics/`) instead of leaving orphaned files behind
+
+---
+
 ## v1.7.0 (2026-05-29)
 
 ### 🔄 Edit Mode Re-scrape

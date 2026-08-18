@@ -217,6 +217,10 @@ function createItemCard(item) {
 
   const genres = item.genre || [];
   const genreText = Array.isArray(genres) ? genres.slice(0, 3).join(', ') : '';
+  const genresLower = Array.isArray(genres) ? genres.map(g => String(g).toLowerCase()) : [];
+  const isLeaked = genresLower.includes('leaked');
+  const isDecensored = genresLower.includes('decensored');
+  const isUncensored = genresLower.includes('uncensored');
 
   let statusBadge = '';
   if (item.mode === 'edit') {
@@ -235,6 +239,13 @@ function createItemCard(item) {
       ${hasCover
         ? `<img src="${coverUrl}" alt="${item.id || 'Cover'}" loading="lazy" ${imgErrorHandler}><span class="placeholder" style="display:none">📁</span>`
         : '<span class="placeholder">📁</span>'}
+      ${(isLeaked || isDecensored || isUncensored) ? `
+        <div class="item-cover-badges">
+          ${isLeaked ? '<img src="images/lk.png" alt="Leaked" title="Leaked">' : ''}
+          ${isDecensored ? '<img src="images/dc.png" alt="Decensored" title="Decensored">' : ''}
+          ${isUncensored ? '<img src="images/unc.png" alt="Uncensored" title="Uncensored">' : ''}
+        </div>
+      ` : ''}
     </div>
     <div class="item-info">
       <div class="item-header">

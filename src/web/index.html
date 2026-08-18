@@ -42,9 +42,15 @@
       <div class="fanart-image">
         <img id="fanartImage" src="" alt="Fanart" style="display: none;">
         <span id="fanartPlaceholder" data-i18n="placeholders.noImage">No image</span>
+        <div class="fanart-badges">
+          <img id="fanartBadgeLeaked" src="images/lk.png" alt="Leaked" title="Leaked" style="display: none;">
+          <img id="fanartBadgeDecensored" src="images/dc.png" alt="Decensored" title="Decensored" style="display: none;">
+          <img id="fanartBadgeUncensored" src="images/unc.png" alt="Uncensored" title="Uncensored" style="display: none;">
+        </div>
       </div>
-      <div class="play-button-container" style="margin-top: 10px; text-align: center; display: none;">
+      <div class="play-button-container" style="margin-top: 10px; display: none;">
         <button id="playVideo" class="play-button" data-i18n="buttons.play">▶ Play</button>
+        <button id="openFolder" class="open-folder-button" data-i18n="buttons.openFolder" style="display: none;">📁 Open Folder</button>
       </div>
     </div>
 
@@ -280,13 +286,16 @@
       </div>
 
       <div style="display: flex; gap: 10px; justify-content: flex-end;">
-        <button id="scrapingClose" type="button" style="background-color: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; display: none;" data-i18n="buttons.close">
-          Close
+        <button id="scrapingCancel" type="button" style="background-color: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px;" data-i18n="buttons.cancel">
+          Cancel
         </button>
       </div>
     </div>
   </div>
 </div>
+
+<!-- Scrape Queue Dropdown (body-level to avoid overflow clipping) -->
+<div id="scrapeQueueDropdown" class="scrape-queue-dropdown" style="display:none;"></div>
 
 </body>
 </html>

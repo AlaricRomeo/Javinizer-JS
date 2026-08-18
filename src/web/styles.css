@@ -63,10 +63,82 @@ body {
 }
 .nav-controls h2 {
   flex: 1;
+  min-width: 0;
   text-align: center;
   font-size: 18px;
   color: #667eea;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-controls h2.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.nav-controls h2.clickable::after {
+  content: ' ▾';
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.scrape-queue-dropdown {
+  position: fixed;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  z-index: 2000;
+}
+
+.sqd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+}
+
+.sqd-item:last-child {
+  border-bottom: none;
+}
+
+.sqd-item:hover {
+  background: #f0f4ff;
+}
+
+.sqd-item.current {
+  background: #eef0ff;
+  color: #667eea;
+}
+
+.sqd-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.sqd-dot.scraped  { background: #28a745; }
+.sqd-dot.pending  { background: #adb5bd; }
+
+.sqd-label {
+  color: #333;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: monospace;
 }
 /* Fanart */
 .fanart-container {
@@ -106,6 +178,22 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.fanart-badges {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+}
+.fanart-badges img {
+  position: static;
+  width: 40px;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6));
 }
 /* Config panel */
 .config-panel {
@@ -503,13 +591,36 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 .play-button:hover {
   background: #218838;
 }
 .play-button-container {
   margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+.open-folder-button {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.open-folder-button:hover {
+  background: #556cd6;
 }
 #addActor {
   background-color: #17a2b8;

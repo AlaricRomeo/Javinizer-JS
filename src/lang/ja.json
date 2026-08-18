@@ -7,7 +7,11 @@
     "grid": "グリッド",
     "actors": "女優",
     "config": "設定",
-    "about": "情報"
+    "about": "情報",
+    "search": "検索...",
+    "filterResults": "結果を絞り込む ({count})",
+    "clearFilter": "フィルターを解除",
+    "filterActive": "フィルター: \"{query}\" ({count})"
   },
   "sections": {
     "fanart": "ファンアート",
@@ -72,6 +76,7 @@
     "deleteLocalPhoto": "ローカル写真を削除",
     "copyActorsToFolder": "動画フォルダに女優をコピー",
     "play": "▶ 再生",
+    "openFolder": "📁 フォルダーを開く",
     "selectScraper": "-- スクレイパーを選択 --"
   },
   "placeholders": {
@@ -85,6 +90,7 @@
     "defaultOrder": "デフォルト順"
   },
   "messages": {
+    "noResultsFound": "結果が見つかりません",
     "libraryPathHelp": "ボタンをクリックしてライブラリフォルダーを選択してください",
     "selectDirectory": "ディレクトリを選択",
     "upDirectory": "⬆ 上へ",
@@ -94,6 +100,8 @@
     "saving": "⏳ 保存中...",
     "noChanges": "保存する変更はありません",
     "saved": "✓ アイテムが正常に保存されました",
+    "folderNotFound": "フォルダーが見つかりません",
+    "errorOpeningFolder": "フォルダーを開く際にエラーが発生しました",
     "removeActor": "削除",
     "confirmDeletePhoto": "ローカル写真を削除してもよろしいですか？",
     "missingName": "名前がありません",
@@ -153,7 +161,11 @@
     "editRescrapeApplied": "スクレイプデータをフォームに読み込みました。確認して保存してください。",
     "editRescrapeSaved": "✓ スクレイプデータでフォルダを更新しました",
     "videoPlayerNotConfigured": "ビデオプレーヤーのパスが設定されていません",
-    "videoNotFound": "動画ファイルが見つかりません"
+    "videoNotFound": "動画ファイルが見つかりません",
+    "selectFileFirst": "まずファイルを選択してください",
+    "fileTooLarge": "ファイルが大きすぎます（最大5MB）",
+    "uploading": "アップロード中...",
+    "imageUploadedSuccess": "✓ 画像をアップロードしました！"
   },
   "actorModal": {
     "title": "女優を編集",
@@ -221,6 +233,8 @@
     "loadFailed": "設定の読み込みに失敗しました",
     "videoPlayerPath": "ビデオプレーヤーパス",
     "videoPlayerPathHelp": "ビデオプレーヤーの実行ファイルパス。ビデオ再生機能を無効にするには空のままにしてください。",
+    "browserPath": "ブラウザパス (JavLibrary)",
+    "browserPathHelp": "JavLibraryスクレーパーが使用するブラウザの実行ファイルパス。空のままにするとPuppeteerの内蔵ブラウザを使用します。",
     "scrapeFolderPattern": "スクレイプモードフォルダーパターン",
     "scrapeFolderPatternHelp": "スクレイプされた動画のフォルダー名パターンをカスタマイズします。プレースホルダーを使用: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}。例: {id} - {title} ({maker} - {year})",
     "scrapeFolderPatternPlaceholder": "{id} - {title}",

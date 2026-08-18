@@ -10,6 +10,8 @@ config.json
 # Data directory (runtime data, not version controlled)
 data/scrape/
 data/actors/
+data/library-cache.json
+data/library-position.json
 !data/scrape/.gitkeep
 !data/actors/.gitkeep
 

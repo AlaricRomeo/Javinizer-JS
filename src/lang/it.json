@@ -7,7 +7,11 @@
     "grid": "Vista Griglia",
     "actors": "Attori",
     "config": "Configurazione",
-    "about": "Info"
+    "about": "Info",
+    "search": "Cerca...",
+    "filterResults": "Filtra risultati ({count})",
+    "filterActive": "Filtro: \"{query}\" ({count})",
+    "clearFilter": "Rimuovi filtro"
   },
   "sections": {
     "fanart": "Fanart",
@@ -74,6 +78,7 @@
     "deleteLocalPhoto": "Elimina Foto Locale",
     "copyActorsToFolder": "Copia attori nella cartella del film",
     "play": "▶ Riproduci",
+    "openFolder": "📁 Apri cartella",
     "selectScraper": "-- Seleziona Scraper --"
   },
   "placeholders": {
@@ -87,6 +92,7 @@
     "defaultOrder": "Ordine predefinito"
   },
   "messages": {
+    "noResultsFound": "Nessun risultato trovato",
     "errorLoadingLanguage": "Errore nel caricamento della lingua",
     "translationMissing": "Traduzione mancante",
     "errorSavingLanguageToConfig": "Errore nel salvare la lingua nella configurazione",
@@ -113,6 +119,8 @@
     "saving": "⏳ Salvataggio...",
     "noChanges": "Nessuna modifica da salvare",
     "saved": "✓ Item salvato con successo",
+    "folderNotFound": "Cartella non trovata",
+    "errorOpeningFolder": "Errore nell'apertura della cartella",
     "removeActor": "Rimuovi",
     "confirmDeletePhoto": "Sei sicuro di voler eliminare la foto locale?",
     "missingName": "Nome mancante",
@@ -173,7 +181,11 @@
     "editRescrapeApplied": "Dati estratti caricati nel modulo. Rivedi e salva per applicare.",
     "editRescrapeSaved": "✓ Cartella aggiornata con i dati estratti",
     "videoPlayerNotConfigured": "Percorso del video player non configurato",
-    "videoNotFound": "File video non trovato"
+    "videoNotFound": "File video non trovato",
+    "selectFileFirst": "Seleziona prima un file",
+    "fileTooLarge": "File troppo grande (max 5MB)",
+    "uploading": "Caricamento...",
+    "imageUploadedSuccess": "✓ Immagine caricata!"
   },
   "actorModal": {
     "title": "Modifica Attore",
@@ -243,6 +255,8 @@
     "loadFailed": "Errore nel caricamento della configurazione",
     "videoPlayerPath": "Percorso Player Video",
     "videoPlayerPathHelp": "Percorso all'eseguibile del lettore video. Lasciare vuoto per disabilitare la funzione di riproduzione video.",
+    "browserPath": "Percorso Browser (JavLibrary)",
+    "browserPathHelp": "Percorso all'eseguibile del browser usato dallo scraper JavLibrary. Lasciare vuoto per usare il browser incluso in Puppeteer.",
     "scrapeFolderPattern": "Pattern Cartella Modalità Scrape",
     "scrapeFolderPatternHelp": "Personalizza il pattern del nome cartella per i video scaricati. Usa placeholder: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Esempio: {id} - {title} ({maker} - {year})",
     "scrapeFolderPatternPlaceholder": "{id} - {title}",

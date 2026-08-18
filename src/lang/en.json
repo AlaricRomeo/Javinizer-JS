@@ -7,7 +7,11 @@
     "grid": "Grid View",
     "actors": "Actors",
     "config": "Config",
-    "about": "About"
+    "about": "About",
+    "search": "Search...",
+    "filterResults": "Filter results ({count})",
+    "filterActive": "Filter: \"{query}\" ({count})",
+    "clearFilter": "Clear filter"
   },
   "sections": {
     "fanart": "Fanart",
@@ -49,6 +53,7 @@
     "deleteLocalPhoto": "Delete Local Photo",
     "copyActorsToFolder": "Copy actors in movie folder",
     "play": "▶ Play",
+    "openFolder": "📁 Open Folder",
     "selectScraper": "-- Select Scraper --"
   },
   "fields": {
@@ -87,6 +92,7 @@
     "defaultOrder": "Default order"
   },
   "messages": {
+    "noResultsFound": "No results found",
     "errorLoadingLanguage": "Error loading language",
     "translationMissing": "Translation missing",
     "errorSavingLanguageToConfig": "Error saving language to config",
@@ -113,6 +119,8 @@
     "saving": "⏳ Saving...",
     "noChanges": "No changes to save",
     "saved": "✓ Item saved successfully",
+    "folderNotFound": "Folder not found",
+    "errorOpeningFolder": "Error opening folder",
     "removeActor": "Remove",
     "confirmDeletePhoto": "Are you sure you want to delete the local photo?",
     "missingName": "Missing name",
@@ -172,7 +180,11 @@
     "editRescrapeApplied": "Scraped data loaded into form. Review and save to apply.",
     "editRescrapeSaved": "✓ Folder updated with scraped data",
     "videoPlayerNotConfigured": "Video player path not configured",
-    "videoNotFound": "Video file not found"
+    "videoNotFound": "Video file not found",
+    "selectFileFirst": "Please select a file first",
+    "fileTooLarge": "File too large (max 5MB)",
+    "uploading": "Uploading...",
+    "imageUploadedSuccess": "✓ Image uploaded!"
   },
   "actorModal": {
     "title": "Edit Actor",
@@ -242,6 +254,8 @@
     "loadFailed": "Failed to load configuration",
     "videoPlayerPath": "Video Player Path",
     "videoPlayerPathHelp": "Path to your video player executable. Leave empty to disable video playback feature.",
+    "browserPath": "Browser Path (JavLibrary)",
+    "browserPathHelp": "Path to the browser executable used by the JavLibrary scraper. Leave empty to use the Puppeteer bundled browser.",
     "scrapeFolderPattern": "Scrape Mode Folder Pattern",
     "scrapeFolderPatternHelp": "Customize the folder name pattern for scraped videos. Use placeholders: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Example: {id} - {title} ({maker} - {year})",
     "scrapeFolderPatternPlaceholder": "{id} - {title}",

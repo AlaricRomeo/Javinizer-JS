@@ -79,4 +79,20 @@ function getScrapePath() {
   return path.join(process.cwd(), 'data', 'scrape');
 }
 
-module.exports = { loadConfig, saveConfig, getScrapePath };
+/**
+ * Get path to the persisted library index cache
+ * Used to avoid a full folder rescan on every server restart
+ */
+function getLibraryCachePath() {
+  return path.join(process.cwd(), 'data', 'library-cache.json');
+}
+
+/**
+ * Get path to the persisted "last viewed item" pointer
+ * Used to resume edit-mode navigation where the user left off after a server restart
+ */
+function getLibraryPositionPath() {
+  return path.join(process.cwd(), 'data', 'library-position.json');
+}
+
+module.exports = { loadConfig, saveConfig, getScrapePath, getLibraryCachePath, getLibraryPositionPath };

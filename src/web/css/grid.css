@@ -126,6 +126,23 @@ body {
   color: #ccc;
 }
 
+.item-cover-badges {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+}
+
+.item-cover-badges img {
+  width: 32px;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6));
+}
+
 .item-info {
   padding: 15px;
   display: flex;

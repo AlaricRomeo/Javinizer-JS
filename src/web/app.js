@@ -3,6 +3,25 @@ console.log('🚀 app.js v5 loaded!');
 let currentItem = null;
 let currentMode = null; // "edit" or "scrape" - will be set in initializeApp
 
+// Exposed for navbar universal search (edit mode only)
+window.navigateToSearchResult = async (item) => {
+  await loadItem(`/item/by-id/${encodeURIComponent(item.id)}`);
+};
+
+// Exposed for navbar filter action (edit mode only): constrains Next/Previous
+// to items matching the query instead of jumping to a single result.
+window.applySearchFilter = async (q) => {
+  return await loadItem("/item/filter", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q })
+  });
+};
+
+window.clearSearchFilter = async () => {
+  await fetch("/item/filter/clear", { method: "POST" });
+};
+
 // ─────────────────────────────
 // Sistema Dirty Tracking
 // ─────────────────────────────
@@ -445,6 +464,9 @@ async function switchMode(newMode) {
     // Edit mode
     editBtn.classList.add("active");
     scrapeBtn.classList.remove("active");
+    if (window.showNavbarSearch) window.showNavbarSearch(true);
+    closeScrapeQueueDropdown();
+    document.getElementById('current-id')?.classList.remove('clickable');
 
     // In edit mode: show panel, hide scrape-only controls
     if (scrapePanel) {
@@ -480,6 +502,8 @@ async function switchMode(newMode) {
     // Scrape mode
     editBtn.classList.remove("active");
     scrapeBtn.classList.add("active");
+    if (window.showNavbarSearch) window.showNavbarSearch(false);
+    document.getElementById('current-id')?.classList.add('clickable');
 
     // In scrape mode: show panel and restore scrape-only controls
     if (scrapePanel) {
@@ -643,11 +667,11 @@ async function getNextScrapeIndex(currentFileId) {
     const data = await res.json();
     if (!data.ok || !data.items) return null;
 
-    const currentIdx = data.items.findIndex(item => item === currentFileId);
+    const currentIdx = data.items.findIndex(item => item.id === currentFileId);
     if (currentIdx === -1) return null;
 
     const nextIdx = (currentIdx + 1) % data.items.length;
-    return data.items[nextIdx];
+    return data.items[nextIdx].id;
   } catch (err) {
     console.error('Error getting next scrape index:', err);
     return null;
@@ -660,11 +684,11 @@ async function getPrevScrapeIndex(currentFileId) {
     const data = await res.json();
     if (!data.ok || !data.items) return null;
 
-    const currentIdx = data.items.findIndex(item => item === currentFileId);
+    const currentIdx = data.items.findIndex(item => item.id === currentFileId);
     if (currentIdx === -1) return null;
 
     const prevIdx = (currentIdx - 1 + data.items.length) % data.items.length;
-    return data.items[prevIdx];
+    return data.items[prevIdx].id;
   } catch (err) {
     console.error('Error getting prev scrape index:', err);
     return null;
@@ -702,7 +726,7 @@ function getSavedItemId(mode) {
 // ─────────────────────────────
 // Load Item
 // ─────────────────────────────
-async function loadItem(url) {
+async function loadItem(url, fetchOptions = {}) {
   try {
     // IMPORTANT: Check for unsaved changes before loading a new item
     if (dirtyFields.size > 0) {
@@ -715,7 +739,7 @@ async function loadItem(url) {
     }
 
     // Use retry logic for fetching
-    const res = await retryFetch(() => fetch(url), 2, 200);
+    const res = await retryFetch(() => fetch(url, fetchOptions), 2, 200);
 
     // Check if response is ok
     if (!res.ok) {
@@ -764,7 +788,7 @@ async function loadItem(url) {
     }
 
     renderItem(currentItem);
-    return true;
+    return data;
   } catch (err) {
     // Silent failure after retries - normal if no items exist
     console.error("Error loading item:", err);
@@ -840,6 +864,18 @@ function bindArrayField(fieldId, itemKey) {
   };
 }
 
+function updateFanartBadges() {
+  const badgeLeaked = document.getElementById("fanartBadgeLeaked");
+  const badgeDecensored = document.getElementById("fanartBadgeDecensored");
+  const badgeUncensored = document.getElementById("fanartBadgeUncensored");
+  if (!badgeLeaked || !badgeDecensored || !badgeUncensored) return;
+
+  const genresLower = (currentItem.genres || []).map(g => String(g).toLowerCase());
+  badgeLeaked.style.display = genresLower.includes("leaked") ? "block" : "none";
+  badgeDecensored.style.display = genresLower.includes("decensored") ? "block" : "none";
+  badgeUncensored.style.display = genresLower.includes("uncensored") ? "block" : "none";
+}
+
 function updateDebugJson() {
   const debugEl = document.getElementById("debug-json");
   if (debugEl) {
@@ -881,49 +917,52 @@ function createActorThumbnail(thumbUrl, actorName) {
   thumbnailDiv.className = 'thumbnail';
 
   if (actorName) {
-    // Normalize actor name to match the ID format used for files
-    const normalizedActorName = normalizeActorNameForFile(actorName);
-
-    // First, try to load from local actors cache
-    const localImageUrl = `/actors/${normalizedActorName}.jpg`;
+    const actorId = normalizeActorNameForFile(actorName);
+    const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
+    const ts = Date.now();
 
     const img = document.createElement('img');
-    img.alt = actorName || 'Actor';
+    img.alt = actorName;
 
-    // Set up error handler for when local image doesn't exist
-    img.onerror = () => {
-      // If local image fails, try the original thumb URL
-      if (thumbUrl && thumbUrl !== localImageUrl) {
-        img.src = thumbUrl;
-        img.removeAttribute('data-src');
+    // Store fallback data for onerror chain
+    img.dataset.actorId = actorId;
+    img.dataset.extIndex = '0';
+    img.dataset.ts = String(ts);
+    img.dataset.thumbUrl = thumbUrl || '';
+
+    img.onerror = function () {
+      const nextExt = parseInt(this.dataset.extIndex);
+      if (nextExt < extensions.length) {
+        this.dataset.extIndex = String(nextExt + 1);
+        this.src = `/actors/${this.dataset.actorId}.${extensions[nextExt]}?t=${this.dataset.ts}`;
+      } else if (this.dataset.thumbUrl) {
+        const fallback = this.dataset.thumbUrl;
+        this.onerror = () => { thumbnailDiv.innerHTML = '👤'; };
+        this.src = fallback;
       } else {
         thumbnailDiv.innerHTML = '👤';
       }
     };
 
-    // Use lazy loading with Intersection Observer
-    img.dataset.src = localImageUrl;
-    img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3C/svg%3E'; // Transparent placeholder
+    // Use lazy loading: data-src triggers the first extension attempt on intersect
+    img.dataset.src = `/actors/${actorId}.${extensions[0]}?t=${ts}`;
+    img.dataset.extIndex = '1'; // next index after the first attempt
+    img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3C/svg%3E';
 
-    // Initialize observer if needed
     initLazyLoadObserver();
     lazyLoadObserver.observe(img);
 
     thumbnailDiv.appendChild(img);
   } else if (thumbUrl) {
-    // If no actor name but thumb URL exists, use the thumb URL with lazy loading
     const img = document.createElement('img');
-    img.alt = actorName || 'Actor';
+    img.alt = 'Actor';
     img.dataset.src = thumbUrl;
     img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3C/svg%3E';
     img.onerror = () => { thumbnailDiv.innerHTML = '👤'; };
-
     initLazyLoadObserver();
     lazyLoadObserver.observe(img);
-
     thumbnailDiv.appendChild(img);
   } else {
-    // No actor name and no thumb URL
     thumbnailDiv.innerHTML = '👤';
   }
 
@@ -1119,19 +1158,11 @@ function renderActors() {
 let editingActorIndex = null;
 
 function openActorModal(index = null) {
-  // Set the modal mode to 'movie' for index.html context and use unified system
   ActorModal.setActorModalMode('movie');
-  // Store the index for later use in save/remove operations
   editingActorIndex = index;
-  ActorModal.openActorModal(index);
-
-  // Update the visibility of the remove button after the modal is opened
-  setTimeout(() => {
-    const removeBtn = document.getElementById("actorEditRemove");
-    if (removeBtn) {
-      removeBtn.style.display = index === null ? "none" : "block";
-    }
-  }, 100); // Small delay to ensure modal is fully loaded
+  // Pass actor object (not index) to the unified modal
+  const actor = index !== null ? (currentItem.actor?.[index] || null) : null;
+  ActorModal.openActorModal(actor);
 }
 
 function closeActorModal() {
@@ -1157,8 +1188,40 @@ function editActor(index) {
 function renderItem(item) {
   document.getElementById("current-id").textContent = item.id || "";
 
+  // Path del film / .nfo (solo edit mode)
+  const pathEl = document.getElementById("currentItemPath");
+  if (pathEl) {
+    const nfoPath = item.local?.nfo || "";
+    if (currentMode === "edit" && nfoPath) {
+      pathEl.textContent = nfoPath;
+      pathEl.title = `${nfoPath}\n${window.i18n ? window.i18n.t("messages.clickToCopyPath") : "Click to copy"}`;
+      pathEl.style.display = "block";
+      pathEl.onclick = () => {
+        navigator.clipboard.writeText(nfoPath).then(() => {
+          showNotification(window.i18n ? window.i18n.t("messages.pathCopied") : "Path copied to clipboard", "info", 2000);
+        });
+      };
+    } else {
+      pathEl.style.display = "none";
+      pathEl.onclick = null;
+    }
+  }
+
   // Informazioni di base
   bindField("id", "id");
+  // ID must always be uppercase — update both display and model
+  const idEl = document.getElementById("id");
+  if (idEl) {
+    const uppercasedId = (currentItem.id || "").toUpperCase();
+    idEl.value = uppercasedId;
+    currentItem.id = uppercasedId;
+    idEl.oninput = () => {
+      idEl.value = idEl.value.toUpperCase();
+      currentItem.id = idEl.value;
+      markFieldDirty("id", "id");
+      updateDebugJson();
+    };
+  }
   bindField("contentId", "contentId");
   bindField("title", "title");
   bindField("alternateTitle", "originalTitle"); // alternateTitle maps to originalTitle
@@ -1189,6 +1252,7 @@ function renderItem(item) {
   // Array
   bindArrayField("genres", "genres");
   bindArrayField("tags", "tags");
+  document.getElementById("genres")?.addEventListener("input", updateFanartBadges);
 
   // Media URLs
   bindField("coverUrl", "coverUrl");
@@ -1237,6 +1301,9 @@ function renderItem(item) {
     }
   }
 
+  // Cover badges (leaked / decensored)
+  updateFanartBadges();
+
   // Actors
   renderActors();
 
@@ -1253,8 +1320,88 @@ function renderItem(item) {
 
   // Debug JSON
   updateDebugJson();
+
+  // Show/hide play + open folder buttons based on current item/config
+  updatePlayButtonVisibility();
 }
 
+
+// ─────────────────────────────
+// Scrape Queue Dropdown
+// ─────────────────────────────
+let scrapeQueueDropdownOpen = false;
+
+function initScrapeQueueDropdown() {
+  const trigger = document.getElementById('current-id');
+  const dropdown = document.getElementById('scrapeQueueDropdown');
+  if (!trigger || !dropdown) return;
+
+  trigger.addEventListener('click', async () => {
+    if (currentMode !== 'scrape') return;
+    if (scrapeQueueDropdownOpen) {
+      closeScrapeQueueDropdown();
+      return;
+    }
+    await openScrapeQueueDropdown();
+  });
+
+  document.addEventListener('click', (e) => {
+    const trigger = document.getElementById('current-id');
+    const dropdown = document.getElementById('scrapeQueueDropdown');
+    if (trigger && !trigger.contains(e.target) && dropdown && !dropdown.contains(e.target)) {
+      closeScrapeQueueDropdown();
+    }
+  });
+}
+
+async function openScrapeQueueDropdown() {
+  const dropdown = document.getElementById('scrapeQueueDropdown');
+  if (!dropdown) return;
+
+  try {
+    const res = await fetch('/item/scrape/list');
+    const data = await res.json();
+    console.log('[ScrapeQueue] response:', JSON.stringify(data).substring(0, 300));
+    if (!data.ok) return;
+
+    dropdown.innerHTML = '';
+    (data.items || []).forEach(item => {
+      const isCurrent = item.id === data.currentId;
+      const div = document.createElement('div');
+      div.className = 'sqd-item' + (isCurrent ? ' current' : '');
+      div.innerHTML = `<span class="sqd-dot ${item.scraped ? 'scraped' : 'pending'}"></span><span class="sqd-label">${item.id || '?'}</span>`;
+      div.addEventListener('click', async () => {
+        closeScrapeQueueDropdown();
+        await loadItem(`/item/scrape/by-id/${encodeURIComponent(item.id)}`);
+      });
+      dropdown.appendChild(div);
+    });
+
+    // Position using fixed coords to escape overflow clipping
+    const trigger = document.getElementById('current-id');
+    if (trigger) {
+      const rect = trigger.getBoundingClientRect();
+      dropdown.style.top = (rect.bottom + 4) + 'px';
+      const left = rect.left + rect.width / 2 - 110; // center under trigger (half of min-width 220)
+      dropdown.style.left = Math.max(4, left) + 'px';
+    }
+
+    dropdown.style.display = 'block';
+    scrapeQueueDropdownOpen = true;
+
+    // Scroll to current item
+    const currentEl = dropdown.querySelector('.sqd-item.current');
+    if (currentEl) currentEl.scrollIntoView({ block: 'nearest' });
+  } catch (err) {
+    console.error('[ScrapeQueue] Error:', err);
+  }
+}
+
+function closeScrapeQueueDropdown() {
+  const dropdown = document.getElementById('scrapeQueueDropdown');
+  if (dropdown) dropdown.style.display = 'none';
+  scrapeQueueDropdownOpen = false;
+}
 
 // ─────────────────────────────
 // Navigazione
@@ -1364,7 +1511,7 @@ function setupEventHandlers() {
       await editRescrapeCurrentMovie(selectedScraper, folderId);
     } else {
       // scrape mode
-      const movieId = currentItem?.id || currentItem?.data?.id;
+      const movieId = currentItem?.fileId || currentItem?.id || currentItem?.data?.id;
       if (!currentItem || !movieId) {
         console.error('[Re-scrape] No movie loaded. currentItem:', currentItem);
         showNotification(window.i18n ? window.i18n.t("messages.noMovieLoaded") : "No movie loaded", "error");
@@ -1398,7 +1545,7 @@ function setupEventHandlers() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ id: currentItem?.id })
+        body: JSON.stringify({ id: currentItem?.fileId || currentItem?.id })
       });
 
       const data = await res.json();
@@ -1492,7 +1639,7 @@ function setupEventHandlers() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            itemId: currentItem.id,  // Include JSON ID to identify which item to save
+            itemId: currentItem.fileId || currentItem.id,  // fileId = original JSON filename (case-sensitive)
             item: currentItem
           })
         });
@@ -1642,8 +1789,46 @@ function setupEventHandlers() {
     playVideoBtn.onclick = playVideo;
   }
 
-  // Setup Actor Modal Event Listeners (when modal is loaded)
-  setupActorModalEventListeners();
+  // Open folder button
+  const openFolderBtn = document.getElementById("openFolder");
+  if (openFolderBtn) {
+    openFolderBtn.onclick = openMovieFolder;
+  }
+
+  // Register movie context handlers and setup unified actor modal
+  ActorModal.registerMovieContextHandlers(
+    (actorData) => {
+      // Preserve meta if editing existing actor
+      if (editingActorIndex !== null && currentItem.actor[editingActorIndex]?.meta) {
+        actorData.meta = currentItem.actor[editingActorIndex].meta;
+      }
+      if (editingActorIndex === null) {
+        currentItem.actor.push(actorData);
+      } else {
+        currentItem.actor[editingActorIndex] = actorData;
+      }
+      markFieldDirty('actor');
+      renderActors();
+      updateDebugJson();
+      closeActorModal();
+    },
+    () => {
+      if (editingActorIndex !== null) {
+        const actorName = currentItem.actor[editingActorIndex].name || '';
+        const msg = window.i18n
+          ? window.i18n.t('messages.confirmRemoveActorPrompt', { name: actorName })
+          : `Remove ${actorName}?`;
+        if (confirm(msg)) {
+          currentItem.actor.splice(editingActorIndex, 1);
+          markFieldDirty('actor');
+          renderActors();
+          updateDebugJson();
+          closeActorModal();
+        }
+      }
+    }
+  );
+  ActorModal.setupActorModalEventListeners();
 }
 
 // Copy actors to movie folder functionality
@@ -1708,298 +1893,6 @@ async function copyActorsToMovieFolder() {
   }
 }
 
-// Setup event listeners for actor modal
-// Called after modal is loaded (either immediately or after async load)
-function setupActorModalEventListeners() {
-  console.log('[setupActorModalEventListeners] Called');
-
-  // Check if modal exists, if not wait for it
-  if (!document.getElementById("actorEditModal")) {
-    console.log('[setupActorModalEventListeners] Modal not found, waiting for actorModalLoaded event');
-    window.addEventListener('actorModalLoaded', () => {
-      setupActorModalEventListeners();
-    }, { once: true });
-    return;
-  }
-
-  console.log('[setupActorModalEventListeners] Modal found, setting up event listeners');
-
-  // Event listeners per Actor Edit Modal
-  document.getElementById("actorEditCancel").onclick = closeActorModal;
-
-  // Close button
-  const closeBtn = document.getElementById("actorEditModalClose");
-  if (closeBtn) {
-    closeBtn.onclick = closeActorModal;
-  }
-
-  // Save actor button
-  document.getElementById("actorEditSave").onclick = () => {
-    const name = document.getElementById("actorEditName").value;
-    const altName = document.getElementById("actorEditAltName").value;
-    const role = document.getElementById("actorEditRole").value || "Actress";
-    const thumb = document.getElementById("actorEditThumb").value;
-
-    // Raccogli campi estesi
-    const birthdate = document.getElementById("actorEditBirthdate").value;
-    const height = parseInt(document.getElementById("actorEditHeight").value) || 0;
-    const bust = parseInt(document.getElementById("actorEditBust").value) || 0;
-    const waist = parseInt(document.getElementById("actorEditWaist").value) || 0;
-    const hips = parseInt(document.getElementById("actorEditHips").value) || 0;
-
-    const actorData = {
-      name,
-      altName,
-      role,
-      thumb,
-      birthdate,
-      height,
-      bust,
-      waist,
-      hips
-    };
-
-    // Preserva meta se esiste (per editing)
-    if (editingActorIndex !== null && currentItem.actor[editingActorIndex].meta) {
-      actorData.meta = currentItem.actor[editingActorIndex].meta;
-    }
-
-    if (editingActorIndex === null) {
-      // Aggiungi nuovo attore
-      currentItem.actor.push(actorData);
-    } else {
-      // Modifica attore esistente
-      currentItem.actor[editingActorIndex] = actorData;
-    }
-
-    // Marca actors come modificato
-    markFieldDirty("actor");
-
-    renderActors();
-    updateDebugJson();
-    closeActorModal();
-  };
-
-  // Remove actor button
-  document.getElementById("actorEditRemove").onclick = () => {
-    if (editingActorIndex !== null) {
-      const actorName = currentItem.actor[editingActorIndex].name || "questo attore";
-      if (confirm(window.i18n ? window.i18n.t("messages.confirmRemoveActorPrompt", { name: actorName }) : `Rimuovere ${actorName}?`)) {
-        currentItem.actor.splice(editingActorIndex, 1);
-
-        // Marca actors come modificato
-        markFieldDirty("actor");
-
-        renderActors();
-        updateDebugJson();
-        closeActorModal();
-      }
-    }
-  };
-
-  // Chiudi modal cliccando sullo sfondo
-  const modal = document.getElementById("actorEditModal");
-  if (modal) {
-    modal.onclick = (e) => {
-      if (e.target === modal) {
-        closeActorModal();
-      }
-    };
-  }
-
-  // Update preview quando cambia thumb URL
-  document.getElementById("actorEditThumb").oninput = (e) => {
-    updateActorPreview(e.target.value);
-  };
-
-  // Search Actor button
-  document.getElementById("actorEditSearch").onclick = async () => {
-    const actorName = document.getElementById("actorEditName").value.trim();
-
-    if (!actorName) {
-      alert(window.i18n ? window.i18n.t("messages.enterActorNameFirstAlert") : "Inserisci il nome dell'attore prima di cercare");
-      return;
-    }
-
-    const searchBtn = document.getElementById("actorEditSearch");
-    const searchText = document.getElementById("actorEditSearchText");
-    const searchStatus = document.getElementById("actorEditSearchStatus");
-
-    // Disable button and show loading
-    searchBtn.disabled = true;
-    searchText.textContent = window.i18n ? window.i18n.t("messages.searchingActor") : "Ricerca in corso...";
-    searchStatus.style.display = "block";
-    searchStatus.style.color = "#666";
-    searchStatus.textContent = window.i18n ? window.i18n.t("messages.searchingActorData") : "Cercando dati dell'attore...";
-
-    const overwriteCheckbox = document.getElementById("actorEditOverwriteLocal");
-    const forceOverwrite = overwriteCheckbox ? overwriteCheckbox.checked : false;
-
-    try {
-      const response = await fetch("/item/actors/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: actorName, forceOverwrite })
-      });
-
-      const result = await response.json();
-
-      if (result.ok && result.actor) {
-        // Fill form with actor data
-        if (result.actor.name) {
-          document.getElementById("actorEditName").value = result.actor.name;
-        }
-        if (result.actor.altName) {
-          document.getElementById("actorEditAltName").value = result.actor.altName;
-        }
-        if (result.actor.birthdate) {
-          document.getElementById("actorEditBirthdate").value = result.actor.birthdate;
-        }
-        if (result.actor.height && result.actor.height > 0) {
-          document.getElementById("actorEditHeight").value = result.actor.height;
-        }
-        if (result.actor.bust && result.actor.bust > 0) {
-          document.getElementById("actorEditBust").value = result.actor.bust;
-        }
-        if (result.actor.waist && result.actor.waist > 0) {
-          document.getElementById("actorEditWaist").value = result.actor.waist;
-        }
-        if (result.actor.hips && result.actor.hips > 0) {
-          document.getElementById("actorEditHips").value = result.actor.hips;
-        }
-        if (result.actor.thumb) {
-          document.getElementById("actorEditThumb").value = result.actor.thumb;
-          updateActorPreview(result.actor.thumb);
-        }
-
-        // Show source info
-        const sourceInfo = document.getElementById("actorEditSourceInfo");
-        const sourceSpan = document.getElementById("actorEditSource");
-        if (result.actor.meta && result.actor.meta.sources && result.actor.meta.sources.length > 0) {
-          sourceSpan.textContent = result.actor.meta.sources.join(", ");
-          sourceInfo.style.display = "block";
-        }
-
-        // Success message
-        searchStatus.style.color = "#28a745";
-        searchStatus.textContent = "✓ Dati trovati e caricati!";
-
-        setTimeout(() => {
-          searchStatus.style.display = "none";
-        }, 3000);
-      } else {
-        // Not found
-        searchStatus.style.color = "#dc3545";
-        searchStatus.textContent = result.error || (window.i18n ? window.i18n.t("messages.actorNotFound") : "Attore non trovato");
-
-        setTimeout(() => {
-          searchStatus.style.display = "none";
-        }, 5000);
-      }
-    } catch (error) {
-      console.error("Error searching actor:", error);
-      searchStatus.style.color = "#dc3545";
-      searchStatus.textContent = window.i18n ? window.i18n.t("messages.errorSearchingActor") : "Errore durante la ricerca";
-
-      setTimeout(() => {
-        searchStatus.style.display = "none";
-      }, 5000);
-    } finally {
-      // Re-enable button
-      searchBtn.disabled = false;
-      searchText.textContent = "Cerca Attore";
-    }
-  };
-
-  // Upload Image button
-  const uploadBtn = document.getElementById("actorEditUploadBtn");
-  console.log('[setupActorModalEventListeners] Upload button:', uploadBtn);
-
-  if (!uploadBtn) {
-    console.error('[setupActorModalEventListeners] Upload button not found!');
-    return;
-  }
-
-  console.log('[setupActorModalEventListeners] Setting up upload button click handler');
-  uploadBtn.onclick = async () => {
-    console.log('[Upload] Button clicked!');
-    const fileInput = document.getElementById("actorEditUpload");
-    const uploadStatus = document.getElementById("actorEditUploadStatus");
-
-    if (!fileInput.files || fileInput.files.length === 0) {
-      uploadStatus.style.display = "block";
-      uploadStatus.style.color = "#dc3545";
-      uploadStatus.textContent = "Please select a file first";
-      setTimeout(() => {
-        uploadStatus.style.display = "none";
-      }, 3000);
-      return;
-    }
-
-    const file = fileInput.files[0];
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      uploadStatus.style.display = "block";
-      uploadStatus.style.color = "#dc3545";
-      uploadStatus.textContent = "File too large (max 5MB)";
-      setTimeout(() => {
-        uploadStatus.style.display = "none";
-      }, 3000);
-      return;
-    }
-
-    // Show uploading status
-    uploadBtn.disabled = true;
-    uploadStatus.style.display = "block";
-    uploadStatus.style.color = "#667eea";
-    uploadStatus.textContent = "Uploading...";
-
-    try {
-      // Create FormData for file upload
-      const formData = new FormData();
-      formData.append('image', file);
-
-      const response = await fetch('/item/actors/upload-image', {
-        method: 'POST',
-        body: formData
-      });
-
-      const result = await response.json();
-
-      if (result.ok && result.url) {
-        // Update thumb URL field with uploaded image URL
-        document.getElementById("actorEditThumb").value = result.url;
-
-        // Update preview
-        updateActorPreview(result.url);
-
-        // Show success
-        uploadStatus.style.color = "#28a745";
-        uploadStatus.textContent = "✓ Image uploaded successfully!";
-
-        // Clear file input
-        fileInput.value = "";
-
-        setTimeout(() => {
-          uploadStatus.style.display = "none";
-        }, 3000);
-      } else {
-        throw new Error(result.error || 'Upload failed');
-      }
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      uploadStatus.style.color = "#dc3545";
-      uploadStatus.textContent = error.message || "Upload failed";
-
-      setTimeout(() => {
-        uploadStatus.style.display = "none";
-      }, 5000);
-    } finally {
-      uploadBtn.disabled = false;
-    }
-  };
-}
 
 // ─────────────────────────────
 // Wait for server to be ready
@@ -2033,6 +1926,7 @@ async function initializeApp() {
 
   // Setup event handlers
   setupEventHandlers();
+  initScrapeQueueDropdown();
   // Carica config per ottenere la lingua
   const configRes = await fetch("/item/config");
   const configData = await configRes.json();
@@ -2116,14 +2010,15 @@ async function initializeApp() {
 async function updatePlayButtonVisibility() {
   const videoPlayerPath = await getVideoPlayerPath();
   const playButtonContainer = document.querySelector('.play-button-container');
+  const playVideoBtn = document.getElementById('playVideo');
+  const openFolderBtn = document.getElementById('openFolder');
 
-  if (playButtonContainer) {
-    if (videoPlayerPath && videoPlayerPath.trim() !== '') {
-      playButtonContainer.style.display = 'block';
-    } else {
-      playButtonContainer.style.display = 'none';
-    }
-  }
+  const showPlay = Boolean(videoPlayerPath && videoPlayerPath.trim() !== '');
+  const showOpenFolder = currentMode === 'edit' && Boolean(currentItem?.local?.path);
+
+  if (playVideoBtn) playVideoBtn.style.display = showPlay ? 'flex' : 'none';
+  if (openFolderBtn) openFolderBtn.style.display = showOpenFolder ? 'flex' : 'none';
+  if (playButtonContainer) playButtonContainer.style.display = (showPlay || showOpenFolder) ? 'flex' : 'none';
 }
 
 // ─────────────────────────────
@@ -2147,9 +2042,10 @@ async function playVideo() {
     let videoPath = null;
 
     if (currentMode === "scrape") {
-      // In scrape mode, get videoFile from the original JSON using the item ID
-      if (currentItem.id) {
-        const response = await fetch(`/item/scrape/video/${encodeURIComponent(currentItem.id)}`);
+      // In scrape mode, get videoFile from the original JSON using fileId (original filename, case-sensitive)
+      const scrapeVideoId = currentItem.fileId || currentItem.id;
+      if (scrapeVideoId) {
+        const response = await fetch(`/item/scrape/video/${encodeURIComponent(scrapeVideoId)}`);
         const data = await response.json();
 
         if (data.ok && data.videoFile) {
@@ -2200,6 +2096,35 @@ async function playVideo() {
 }
 
 // ─────────────────────────────
+// Open Movie Folder Functionality
+// ─────────────────────────────
+
+async function openMovieFolder() {
+  const folderPath = currentItem?.local?.path;
+  if (!folderPath) {
+    showNotification(window.i18n ? window.i18n.t("messages.folderNotFound") : "Folder not found", "error");
+    return;
+  }
+
+  try {
+    const response = await fetch('/item/open-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderPath })
+    });
+
+    const result = await response.json();
+
+    if (!result.ok) {
+      showNotification(result.error || (window.i18n ? window.i18n.t("messages.errorOpeningFolder") : "Error opening folder"), "error");
+    }
+  } catch (error) {
+    console.error("Error opening folder:", error);
+    showNotification(window.i18n ? window.i18n.t("messages.errorOpeningFolder") : "Error opening folder", "error");
+  }
+}
+
+// ─────────────────────────────
 // Scraping Functions
 // ─────────────────────────────
 
@@ -2218,18 +2143,39 @@ function populateScraperDropdown(scrapers) {
   });
 }
 
+function switchToCloseButton(btn, modal) {
+  console.log('[Modal] switchToCloseButton btn=', btn?.id, 'modal=', modal?.id, 'text before=', btn?.textContent?.trim());
+  if (!btn) return;
+  btn.style.backgroundColor = '#6c757d';
+  btn.textContent = window.i18n ? window.i18n.t('buttons.close') : 'Close';
+  btn.removeAttribute('data-i18n');
+  btn.onclick = () => { modal.style.display = 'none'; };
+  console.log('[Modal] switchToCloseButton text after=', btn.textContent.trim());
+}
+
+function resetToCancelButton(btn, modal) {
+  if (!btn) return;
+  btn.style.backgroundColor = '#dc3545';
+  btn.textContent = window.i18n ? window.i18n.t('buttons.cancel') : 'Cancel';
+  btn.setAttribute('data-i18n', 'buttons.cancel');
+  btn.onclick = () => {
+    if (scrapingWebSocket) scrapingWebSocket.close();
+    modal.style.display = 'none';
+  };
+}
+
 /**
  * Re-scrape current movie with selected scraper
  */
 async function rescrapeCurrentMovie(scraperName, movieId) {
   const modal = document.getElementById('scrapingModal');
   const progressDiv = document.getElementById('scrapingProgress');
-  const closeBtn = document.getElementById('scrapingClose');
+  const cancelBtn = document.getElementById('scrapingCancel');
 
   // Show modal
   modal.style.display = 'block';
   progressDiv.innerHTML = `<div style="color: #667eea;">🔍 Re-scraping with ${scraperName}...</div>`;
-  closeBtn.style.display = 'none';
+  resetToCancelButton(cancelBtn, modal);
 
   try {
     // Connect to WebSocket if not already connected
@@ -2258,7 +2204,7 @@ async function rescrapeCurrentMovie(scraperName, movieId) {
         const message = JSON.parse(event.data);
         const { event: eventType, data } = message;
 
-        handleScrapingEvent(progressDiv, closeBtn, eventType, data);
+        handleScrapingEvent(progressDiv, modal, eventType, data);
       } catch (error) {
         console.error('[WebSocket] Error parsing message:', error);
       }
@@ -2291,13 +2237,8 @@ async function rescrapeCurrentMovie(scraperName, movieId) {
   } catch (error) {
     console.error('[Re-scraping] Error:', error);
     appendProgress(progressDiv, `❌ Error: ${error.message}`, 'error');
-    closeBtn.style.display = 'block';
+    switchToCloseButton(cancelBtn, modal);
   }
-
-  // Close button handler
-  closeBtn.onclick = () => {
-    modal.style.display = 'none';
-  };
 }
 
 /**
@@ -2306,11 +2247,11 @@ async function rescrapeCurrentMovie(scraperName, movieId) {
 async function editRescrapeCurrentMovie(scraperName, folderId) {
   const modal = document.getElementById('scrapingModal');
   const progressDiv = document.getElementById('scrapingProgress');
-  const closeBtn = document.getElementById('scrapingClose');
+  const cancelBtn = document.getElementById('scrapingCancel');
 
   modal.style.display = 'block';
   progressDiv.innerHTML = `<div style="color: #667eea;">🔍 Re-scraping with ${scraperName}...</div>`;
-  closeBtn.style.display = 'none';
+  resetToCancelButton(cancelBtn, modal);
 
   try {
     if (!scrapingWebSocket || scrapingWebSocket.readyState !== WebSocket.OPEN) {
@@ -2327,7 +2268,7 @@ async function editRescrapeCurrentMovie(scraperName, folderId) {
       try {
         const message = JSON.parse(event.data);
         const { event: eventType, data } = message;
-        handleScrapingEvent(progressDiv, closeBtn, eventType, data);
+        handleScrapingEvent(progressDiv, modal, eventType, data);
       } catch (error) {
         console.error('[WebSocket] Error parsing message:', error);
       }
@@ -2347,10 +2288,8 @@ async function editRescrapeCurrentMovie(scraperName, folderId) {
   } catch (error) {
     console.error('[Edit-Rescrape] Error:', error);
     appendProgress(progressDiv, `❌ Error: ${error.message}`, 'error');
-    closeBtn.style.display = 'block';
+    switchToCloseButton(cancelBtn, modal);
   }
-
-  closeBtn.onclick = () => { modal.style.display = 'none'; };
 }
 
 /**
@@ -2389,12 +2328,12 @@ let scrapingWebSocket = null;
 async function startScraping() {
   const modal = document.getElementById('scrapingModal');
   const progressDiv = document.getElementById('scrapingProgress');
-  const closeBtn = document.getElementById('scrapingClose');
+  const cancelBtn = document.getElementById('scrapingCancel');
 
   // Show modal
   modal.style.display = 'block';
   progressDiv.innerHTML = '<div style="color: #667eea;">🚀 Starting scraping...</div>';
-  closeBtn.style.display = 'none';
+  resetToCancelButton(cancelBtn, modal);
 
   try {
     // Connect to WebSocket if not already connected
@@ -2410,7 +2349,7 @@ async function startScraping() {
       scrapingWebSocket.onerror = (error) => {
         console.error('[WebSocket] Error:', error);
         appendProgress(progressDiv, '❌ WebSocket connection error', 'error');
-        closeBtn.style.display = 'block';
+        switchToCloseButton(cancelBtn, modal);
       };
 
       scrapingWebSocket.onclose = () => {
@@ -2437,7 +2376,7 @@ async function startScraping() {
         const message = JSON.parse(event.data);
         const { event: eventType, data } = message;
 
-        handleScrapingEvent(progressDiv, closeBtn, eventType, data);
+        handleScrapingEvent(progressDiv, modal, eventType, data);
       } catch (error) {
         console.error('[WebSocket] Error parsing message:', error);
       }
@@ -2465,19 +2404,15 @@ async function startScraping() {
 
   } catch (error) {
     appendProgress(progressDiv, '❌ Error: ' + error.message, 'error');
-    closeBtn.style.display = 'block';
+    switchToCloseButton(cancelBtn, modal);
   }
-
-  // Close button handler
-  closeBtn.onclick = () => {
-    modal.style.display = 'none';
-  };
 }
 
 /**
  * Handle scraping event
  */
-async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
+async function handleScrapingEvent(progressDiv, modal, eventType, data) {
+  const cancelBtn = document.getElementById('scrapingCancel');
   switch (eventType) {
     case 'start':
       appendProgress(progressDiv, data.message, 'info');
@@ -2506,21 +2441,18 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       appendProgress(progressDiv, message, type);
       break;
 
-    case 'scraperError':
-      // Show scraper error and ask user if they want to continue
+    case 'scraperError': {
       const errorMsg = `❌ Scraper "${data.scraperName}" failed: ${data.message}`;
       appendProgress(progressDiv, errorMsg, 'error');
 
-      // Ask user if they want to continue with next scraper
       const continueNext = await showConfirmDialog(
         'Scraper Error',
         `Scraper "${data.scraperName}" failed.\n\nError: ${data.message}\n\nDo you want to continue with the next scraper?`,
         'Continue',
         'Stop',
-        true  // destructiveCancel = true per rendere "Stop" rosso
+        true
       );
 
-      // Send response back via WebSocket
       if (scrapingWebSocket && scrapingWebSocket.readyState === WebSocket.OPEN) {
         scrapingWebSocket.send(JSON.stringify({
           type: 'scraperErrorResponse',
@@ -2530,15 +2462,14 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
 
       if (!continueNext) {
         appendProgress(progressDiv, '⚠️ Scraping stopped by user', 'info');
-        closeBtn.style.display = 'block';
+        switchToCloseButton(cancelBtn, modal);
       }
       break;
+    }
 
     case 'complete':
       appendProgress(progressDiv, '✅ ' + data.message, 'success');
-
-      // Show Close button - complete is only sent when ALL scraping is done
-      closeBtn.style.display = 'block';
+      switchToCloseButton(cancelBtn, modal);
 
       // Edit mode rescrape: apply merged data into the form (no server reload)
       if (data.editMode && data.mergedData) {
@@ -2569,7 +2500,7 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
 
     case 'error':
       appendProgress(progressDiv, '❌ ' + data.message, 'error');
-      closeBtn.style.display = 'block';
+      switchToCloseButton(cancelBtn, modal);
       break;
 
     case 'actorsUpdated':
@@ -2597,9 +2528,7 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       // Note: Close button will be shown by subsequent 'complete' event
       break;
 
-    case 'prompt':
-      // Interactive prompt from scraper
-      // Check if message is an i18n key or plain text
+    case 'prompt': {
       const translatedMessage = window.i18n && window.i18n.t(`messages.${data.message}`) !== `messages.${data.message}`
         ? window.i18n.t(`messages.${data.message}`)
         : data.message;
@@ -2607,22 +2536,12 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
       const promptMsg = `⏸️ ${data.scraperName}: ${translatedMessage}`;
       appendProgress(progressDiv, promptMsg, 'prompt');
 
-      // Translate dialog title and buttons if available
-      const dialogTitle = window.i18n
-        ? window.i18n.t('messages.actionRequired')
-        : 'User Action Required';
+      const dialogTitle = window.i18n ? window.i18n.t('messages.actionRequired') : 'User Action Required';
       const continueBtn = window.i18n ? window.i18n.t('buttons.continue') : 'Continue';
-      const cancelBtn = window.i18n ? window.i18n.t('buttons.cancel') : 'Cancel';
+      const promptCancelBtn = window.i18n ? window.i18n.t('buttons.cancel') : 'Cancel';
 
-      // Show confirm dialog
-      const userResponse = await showConfirmDialog(
-        dialogTitle,
-        translatedMessage,
-        continueBtn,
-        cancelBtn
-      );
+      const userResponse = await showConfirmDialog(dialogTitle, translatedMessage, continueBtn, promptCancelBtn);
 
-      // Send response back via WebSocket
       if (scrapingWebSocket && scrapingWebSocket.readyState === WebSocket.OPEN) {
         scrapingWebSocket.send(JSON.stringify({
           type: 'promptResponse',
@@ -2637,6 +2556,7 @@ async function handleScrapingEvent(progressDiv, closeBtn, eventType, data) {
         appendProgress(progressDiv, '⚠️ User canceled', 'info');
       }
       break;
+    }
   }
 }
 

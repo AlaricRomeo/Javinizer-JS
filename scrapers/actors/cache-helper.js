@@ -33,6 +33,21 @@ function getActorsCachePath() {
 }
 
 /**
+ * Find the actual local photo file for an actor ID in a directory,
+ * trying all known extensions. Returns the filename (e.g. "id.webp") or null.
+ * Used to self-heal thumbLocal references that point to a deleted/renamed file
+ * (e.g. after a re-upload changed the extension).
+ */
+function findLocalPhoto(dirPath, actorId) {
+  const extensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+  for (const ext of extensions) {
+    const filename = `${actorId}${ext}`;
+    if (fs.existsSync(path.join(dirPath, filename))) return filename;
+  }
+  return null;
+}
+
+/**
  * Get external actors path (user-curated, used only by "local" scraper)
  * Returns null if not configured
  */
@@ -228,6 +243,7 @@ module.exports = {
   loadConfig,
   getActorsCachePath,
   getExternalActorsPath,
+  findLocalPhoto,
   loadFromCache,
   isActorComplete,
   mergeActorData,

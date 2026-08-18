@@ -105,17 +105,6 @@ function handleSearch(e) {
   renderActors();
 }
 
-// Helper function to normalize actor name for file lookup (similar to backend normalizeActorName)
-function normalizeActorNameForFile(name) {
-  if (!name) return '';
-
-  // Convert to lowercase and replace spaces and special characters with hyphens
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')  // Replace special characters with spaces
-    .trim()
-    .replace(/\s+/g, '-');         // Replace spaces with hyphens
-}
 
 // ============================================
 // Load Actors
@@ -185,13 +174,13 @@ function createActorCard(actor) {
   thumb.className = 'actor-thumb';
 
   // Thumbnail loading strategy:
-  // 1. Try local file in actors cache: /actors/{actor.id}.{ext} (try .webp, .jpg, .png)
+  // 1. Try local file in actors cache: /actors/{actor.id}.{ext}
   // 2. Fallback to actor.thumb URL
   // 3. Fallback to placeholder
 
   if (actor.id) {
     // Try to load local file with common extensions
-    const extensions = ['webp', 'jpg', 'png'];
+    const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
     const img = document.createElement('img');
     // Se c'è il nome usa il nome
     if (actor.name) {
@@ -347,59 +336,3 @@ async function searchActor() {
   await ActorModal.searchActor();
 }
 
-// ============================================
-// Delete Actor Image
-// ============================================
-
-async function deleteActorImage() {
-  // Use the unified system's current actor variable
-  const currentActor = window.ActorModal.unifiedCurrentActor;
-  if (!currentActor || !currentActor.id) return;
-
-  const msg = window.i18n ? window.i18n.t('messages.confirmDeletePhoto') : 'Are you sure you want to delete the local photo?';
-
-  if (!confirm(msg)) {
-    return;
-  }
-
-  try {
-    const response = await fetch('/api/actors/delete-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: currentActor.id })
-    });
-
-    const result = await response.json();
-
-    if (!result.ok) {
-      alert('Failed to delete image: ' + (result.error || 'Unknown error'));
-      return;
-    }
-
-    // Success! Update UI
-    // Force preview update to use thumbnail URL or placeholder
-    // We pass the remote URL (if any) so the preview falls back to it
-    const thumbField = document.getElementById('actorEditThumb');
-    updatePreview(thumbField.value.trim());
-
-    // Refresh main grid
-    await loadActors();
-
-    // Hide delete button
-    document.getElementById('actorEditDeletePhoto').style.display = 'none';
-
-  } catch (error) {
-    console.error('Failed to delete image:', error);
-    alert('Error deleting image');
-  }
-}
-
-// Wire up events
-document.addEventListener('DOMContentLoaded', () => {
-  // Other event listeners are set up via onclick in HTML or main app initialization
-  // Specifically for the new delete photo button:
-  const deletePhotoBtn = document.getElementById('actorEditDeletePhoto');
-  if (deletePhotoBtn) {
-    deletePhotoBtn.onclick = deleteActorImage;
-  }
-});

@@ -1,4 +1,34 @@
 {
   "libraryPath": "/path/to/your/library",
-  "language": "en"
+  "mode": "edit",
+  "language": "en",
+  "videoPlayerPath": "",
+  "browserPath": "",
+  "scrapeFolderPattern": "{id} [{maker}] - ({year})",
+  "genreRules": "",
+
+  "_comment_scrapers": "scrapers.video: enabled movie scrapers in priority order. scrapers.actors.scrapers: enabled actor scrapers ('local' scans your library/externalPath first, before any online source).",
+  "scrapers": {
+    "video": [
+      "javlibrary-fs",
+      "r18dev"
+    ],
+    "actors": {
+      "enabled": true,
+      "scrapers": [
+        "local",
+        "javdb",
+        "xcity"
+      ],
+      "externalPath": "",
+      "copyToMovieFolder": false
+    }
+  },
+
+  "_comment_fieldPriorities": "Optional: override the global scraper order for specific fields (first = highest priority). Fields not listed here fall back to scrapers.video order.",
+  "fieldPriorities": {
+    "title": ["r18dev", "javlibrary-fs"],
+    "description": ["r18dev", "javlibrary-fs"],
+    "actor": ["r18dev", "javlibrary-fs"]
+  }
 }

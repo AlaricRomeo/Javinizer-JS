@@ -14,7 +14,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { normalizeActorName, actorToNFO, nfoToActor } = require('../../scrapers/actors/schema');
-const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+const { getActorsCachePath, findLocalPhoto } = require('../../scrapers/actors/cache-helper');
 const { loadConfig, getScrapePath } = require('./config');
 
 // ─────────────────────────────
@@ -84,8 +84,7 @@ function executeActorScraper(scraperName, actorName, nameVariants = []) {
         : null;
 
       if (typeof fn === 'function') {
-        // FlareSolverr-based scrapers (xslist) need more time
-        const timeoutMs = ['xslist'].includes(scraperName) ? 120000 : 30000;
+        const timeoutMs = 30000;
 
         // Build unique list: original + inverted + all variants + their inverted forms
         const invert = n => { const p = n.trim().split(/\s+/); return p.length === 2 ? `${p[1]} ${p[0]}` : n; };
@@ -150,7 +149,19 @@ function resolveActorThumb(actorData) {
 
   // Priority 2: local saved file — always prefer over online URL
   if (actorData.thumbLocal) {
-    return `/actors/${actorData.thumbLocal}`;
+    const cachePath = getActorsCachePath();
+    if (fs.existsSync(path.join(cachePath, actorData.thumbLocal))) {
+      return `/actors/${actorData.thumbLocal}`;
+    }
+
+    // Named file is missing (e.g. extension changed after a re-upload) —
+    // self-heal by looking for any current file for this actor id before
+    // giving up and falling back to the remote URL.
+    const found = findLocalPhoto(cachePath, actorData.id);
+    if (found) {
+      actorData.thumbLocal = found;
+      return `/actors/${found}`;
+    }
   }
 
   // Priority 3: online URL (thumbUrl or thumb)
@@ -481,9 +492,11 @@ async function scrapeActorExcludingLocal(actorName, emitter = null) {
   const enabledScrapers = (config.scrapers?.actors?.scrapers || ['javdb']).filter(s => s !== 'local');
   console.log(`[ActorScraperManager] Scraping actor (excluding local): ${actorName}, scrapers: ${enabledScrapers.join(', ')}`);
 
-  // Collect name variants from local/externalPath without using it as a scraper source
+  // Collect name variants from local/externalPath without using it as a scraper source.
+  // includeLibraryFallback: false — skip the library actors/ folder scan here, since its
+  // self-heal (copying a photo back into cache) would fight the "force fresh data" intent.
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
-  const localData = await scrapeLocal(actorName).catch(() => null);
+  const localData = await scrapeLocal(actorName, { includeLibraryFallback: false }).catch(() => null);
   const actorId = (localData && localData.id) ? localData.id : normalizeActorName(actorName);
   const initialVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
   if (initialVariants.length > 0) {

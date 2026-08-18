@@ -42,6 +42,17 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="browserPath" data-i18n="config.browserPath">Browser Path (JavLibrary)</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="browserPath" name="browserPath" placeholder="e.g. /usr/bin/chromium-browser" style="flex: 1;">
+                            <button type="button" id="browseBrowserPath" style="white-space: nowrap;">📁 <span data-i18n="buttons.browse">Browse</span></button>
+                        </div>
+                        <div class="info-text" data-i18n="config.browserPathHelp">
+                            Path to the browser executable used by the JavLibrary scraper. Leave empty to use the Puppeteer bundled browser.
+                        </div>
+                    </div>
+
+                    <div class="form-group">
                         <label for="scrapeFolderPattern" data-i18n="config.scrapeFolderPattern">Scrape Mode Folder Pattern</label>
                         <input type="text" id="scrapeFolderPattern" name="scrapeFolderPattern" data-i18n-placeholder="config.scrapeFolderPatternPlaceholder">
                         <div class="info-text" data-i18n="config.scrapeFolderPatternHelp">
@@ -246,6 +257,9 @@
             // Collect video player path
             const videoPlayerPath = document.getElementById('videoPlayerPath').value.trim();
 
+            // Collect browser path
+            const browserPath = document.getElementById('browserPath').value.trim();
+
             // Collect scrape folder pattern
             const scrapeFolderPattern = document.getElementById('scrapeFolderPattern').value.trim();
 
@@ -256,7 +270,8 @@
                 libraryPath: currentConfig.libraryPath || '',  // Preserve existing libraryPath
                 mode: currentConfig.mode || 'scrape',  // Preserve current mode
                 language: currentConfig.language || 'en',  // Preserve language
-                videoPlayerPath: videoPlayerPath || '',  // New video player path
+                videoPlayerPath: videoPlayerPath || '',
+                browserPath: browserPath || '',
                 scrapeFolderPattern: scrapeFolderPattern || '{id}',  // Folder pattern for scrape mode
                 genreRules: genreRules,
                 scrapers: {
@@ -346,6 +361,9 @@
                 // Load video player path
                 const videoPlayerPath = config.videoPlayerPath || '';
 
+                // Load browser path
+                const browserPath = config.browserPath || '';
+
                 // Load scrape folder pattern
                 const scrapeFolderPattern = config.scrapeFolderPattern || '{id}';
 
@@ -357,6 +375,7 @@
                 document.getElementById('actorsScrapers').value = actorsScrapersArray.join(', ');
                 document.getElementById('copyActorsToMovieFolder').checked = copyActorsToMovieFolderValue;
                 document.getElementById('videoPlayerPath').value = videoPlayerPath;
+                document.getElementById('browserPath').value = browserPath;
                 document.getElementById('scrapeFolderPattern').value = scrapeFolderPattern;
                 document.getElementById('genreRules').value = genreRules;
 
@@ -406,6 +425,90 @@
         } else {
             init();
         }
+
+        // ── File Browser (for browser executable path) ──
+        let fileBrowserCurrentPath = '';
+        let fileBrowserCallback = null;
+
+        async function openFileBrowser(initialPath, callback) {
+            fileBrowserCallback = callback;
+            document.getElementById('fileBrowserModal').style.display = 'flex';
+            await loadFileBrowserDir(initialPath || '/usr/bin');
+        }
+
+        async function loadFileBrowserDir(dirPath) {
+            const res = await fetch(`/item/browse?path=${encodeURIComponent(dirPath)}&files=1`);
+            const data = await res.json();
+            if (!data.ok) { alert(data.error); return; }
+
+            fileBrowserCurrentPath = data.current;
+            document.getElementById('fileBrowserPath').value = data.current;
+            document.getElementById('fileBrowserUp').disabled = data.parent === null;
+
+            const list = document.getElementById('fileBrowserList');
+            list.innerHTML = '';
+
+            data.directories.forEach(dir => {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eee;';
+                div.innerHTML = `📁 ${dir.name}`;
+                div.onmouseover = () => div.style.backgroundColor = '#e9ecef';
+                div.onmouseout = () => div.style.backgroundColor = 'transparent';
+                div.onclick = () => loadFileBrowserDir(dir.path);
+                list.appendChild(div);
+            });
+
+            data.files.forEach(file => {
+                const div = document.createElement('div');
+                div.style.cssText = 'padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eee; color: #333;';
+                div.innerHTML = `⚙️ ${file.name}`;
+                div.onmouseover = () => div.style.backgroundColor = '#dff0d8';
+                div.onmouseout = () => div.style.backgroundColor = 'transparent';
+                div.onclick = () => {
+                    if (fileBrowserCallback) fileBrowserCallback(file.path);
+                    document.getElementById('fileBrowserModal').style.display = 'none';
+                };
+                list.appendChild(div);
+            });
+
+            if (data.directories.length === 0 && data.files.length === 0) {
+                list.innerHTML = '<div style="color:#999;text-align:center;padding:20px;">Empty folder</div>';
+            }
+        }
+
+        document.getElementById('fileBrowserUp').addEventListener('click', async () => {
+            const res = await fetch(`/item/browse?path=${encodeURIComponent(fileBrowserCurrentPath)}&files=1`);
+            const data = await res.json();
+            if (data.ok && data.parent) await loadFileBrowserDir(data.parent);
+        });
+
+        document.getElementById('fileBrowserCancel').addEventListener('click', () => {
+            document.getElementById('fileBrowserModal').style.display = 'none';
+        });
+
+        document.getElementById('browseBrowserPath').addEventListener('click', () => {
+            const current = document.getElementById('browserPath').value || '/usr/bin';
+            const dir = current.includes('/') ? current.substring(0, current.lastIndexOf('/')) || '/' : current;
+            openFileBrowser(dir, (selectedPath) => {
+                document.getElementById('browserPath').value = selectedPath;
+            });
+        });
     </script>
+
+<!-- File Browser Modal -->
+<div id="fileBrowserModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; padding:20px; border-radius:8px; max-width:600px; width:90%; max-height:80vh; display:flex; flex-direction:column;">
+        <h3 style="margin-top:0;" data-i18n="messages.selectFile">Select Executable</h3>
+        <div style="display:flex; gap:10px; margin-bottom:15px; align-items:center;">
+            <button id="fileBrowserUp" type="button">⬆ Up</button>
+            <input id="fileBrowserPath" type="text" readonly style="flex:1; background:#f0f0f0;">
+        </div>
+        <div id="fileBrowserList" style="flex:1; overflow-y:auto; border:1px solid #ddd; padding:10px; border-radius:4px; margin-bottom:15px; max-height:400px;"></div>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button id="fileBrowserCancel" type="button" style="background-color:#6c757d;">Cancel</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>

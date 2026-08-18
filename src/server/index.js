@@ -214,34 +214,28 @@ app.use("/actors", (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     let filename = decodeURIComponent(url.pathname.substring(1));
 
-    // /actors/external/file.jpg → serve from externalPath
+    // /actors/external/file.jpg → serve from externalPath explicitly
+    let filePath;
     if (filename.startsWith('external/') && externalActorsPath) {
       const extFilename = filename.slice('external/'.length);
-      const filePath = path.join(externalActorsPath, extFilename);
+      filePath = path.join(externalActorsPath, extFilename);
       if (!fs.existsSync(filePath)) {
         return res.status(404).send("Actor thumbnail not found");
       }
       filename = extFilename;
-      var actorsPath = externalActorsPath;
     } else {
-      // Try internal cache first, fallback to externalPath
-      const internalPath = path.join(internalActorsPath, filename);
-      const externalPath = externalActorsPath ? path.join(externalActorsPath, filename) : null;
-
-      var actorsPath = internalActorsPath;
-      if (!fs.existsSync(internalPath) && externalPath && fs.existsSync(externalPath)) {
-        var actorsPath = externalActorsPath;
-      }
-    }
-
-    var filePath = path.join(actorsPath, filename);
-
-    // If not found by exact filename, try all extensions + inverted ID
-    if (!fs.existsSync(filePath)) {
+      // Priority: externalPath (.actors, user-curated) first, then internal cache.
+      // Search each directory fully (exact filename, then any known extension for
+      // the same actor id) before moving to the next — a stale file in the internal
+      // cache must never win over a photo that exists in externalPath under a
+      // different extension.
       const nameWithoutExt = path.basename(filename, path.extname(filename));
+      const requestedExt = path.extname(filename);
       const exts = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+      const orderedExts = requestedExt
+        ? [requestedExt, ...exts.filter(e => e !== requestedExt)]
+        : exts;
 
-      // Also try inverted slug: "asamiya-rei" → "rei-asamiya"
       const parts = nameWithoutExt.split('-');
       const invertedId = parts.length >= 2
         ? [...parts.slice(Math.ceil(parts.length / 2)), ...parts.slice(0, Math.ceil(parts.length / 2))].join('-')
@@ -250,19 +244,25 @@ app.use("/actors", (req, res) => {
       const idsToTry = [nameWithoutExt];
       if (invertedId && invertedId !== nameWithoutExt) idsToTry.push(invertedId);
 
-      outer: for (const id of idsToTry) {
-        for (const e of exts) {
-          const candidate = path.join(internalActorsPath, `${id}${e}`);
-          if (fs.existsSync(candidate)) {
-            filePath = candidate;
-            filename = `${id}${e}`;
-            break outer;
+      const searchDirs = externalActorsPath
+        ? [externalActorsPath, internalActorsPath]
+        : [internalActorsPath];
+
+      outer: for (const dir of searchDirs) {
+        for (const id of idsToTry) {
+          for (const e of orderedExts) {
+            const candidate = path.join(dir, `${id}${e}`);
+            if (fs.existsSync(candidate)) {
+              filePath = candidate;
+              filename = `${id}${e}`;
+              break outer;
+            }
           }
         }
       }
     }
 
-    if (!fs.existsSync(filePath)) {
+    if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).send("Actor thumbnail not found");
     }
 
