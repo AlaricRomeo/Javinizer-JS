@@ -264,10 +264,15 @@ NFO files are compatible with Jellyfin, Plex, and Kodi:
 
 ### Video Metadata Scrapers
 - **javlibrary** - Scrapes javlibrary.com (interactive, Cloudflare protected)
+- **javlibrary-fs** - Same as javlibrary, but via FlareSolverr instead of an interactive browser window
 - **r18dev** - Scrapes r18.dev (automatic, fast)
+- **libredmm** - Scrapes libredmm.com (automatic)
 
 ### Actor Data Scrapers
-- **javdatabase** - Scrapes javdatabase.com (automatic, with built-in caching)
+- **local** - Looks up actors purely from the local actor index (`data/actors`) — no network request
+- **javdb** - Scrapes javdatabase.com (automatic, with built-in caching)
+- **xcity** - Scrapes xxx.xcity.jp (automatic)
+- **xslist-fs** - Scrapes xslist.org, via FlareSolverr (Cloudflare protected)
 
 ## Web Interface
 
