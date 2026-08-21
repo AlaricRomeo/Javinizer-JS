@@ -1,5 +1,39 @@
 # Release Notes
 
+## v2.1.0 (2026-08-20)
+
+### ⭐ Real actor favorites
+
+- Actors now have an actual `favorite` flag (persisted in the NFO and in the SQLite actor index), replacing the old "add to library" concept
+- Star toggle on every actor card, both on the movie edit/scrape page (replaces the old "+" button) and on `actors.html`
+- New All/Favorites filter on `actors.html`
+- A scraper can never clear this flag: `actorDb.upsertActor()` deliberately never touches the `favorite` column
+
+### 🔀 Duplicate actor merge
+
+- `actors.html` now surfaces the same duplicate-name check already logged at startup (`[actorDb] N name(s) shared by multiple actor records`) as a review banner
+- Review modal shows each candidate pair side by side (photo, name, movie count) — pick which one to keep, the other is merged into it and removed
+- Same engine as `node bin/merge-actors.js` (`actorDb.findDuplicateNames()` / `mergeActors()`), now with a `findDuplicateGroups()` helper reused by both
+- Not every match is really the same person: the review banner also offers "Not the same person — remove from: X / Y" per shared name, dropping just that alias from one record instead of merging (`POST /actors/remove-name`)
+
+### 👤 Single "Alt Names" field
+
+- Merged `altName` and `otherNames` into one field — an actor's names are now just **Primary** + **Alt Names** (comma-separated), both in the NFO (`<altname>`, no more `<othername>`) and in the SQLite index (`actor_names.kind` is now only `primary`/`alt`)
+- `otherNames` had no field of its own in the actor edit form, so aliases scrapers found (often the exact string causing a false duplicate-name warning) were invisible and impossible to remove — they're now all in the same visible, editable Alt Names field
+- Fixed a real bug in the process: saving an actor from `actors.html` could never actually remove an alt name once added — the index only ever appended, never replaced
+- All existing actors (NFOs + SQLite index) were migrated automatically; scrapers that still separate out aliases internally (`xcity`, `xslist-fs`) are unaffected — their output is folded into Alt Names at save time
+
+### 📁 `data/actors` is now the single actor library
+
+- `GET /actors` (the `actors.html` grid) and every scraper — `local` included — now read only from the internal cache (`data/actors`); confirmed via audit that `local` never actually depended on the external path to begin with
+- "External Actors Path" is renamed **"Copy favorite actors to"**: it's no longer a library location, only an optional mirror (NFO + photo) for actors marked favorite — written when favorited, kept in sync on edit, removed when unfavorited
+- Existing external-path actors were migrated to favorites automatically when this shipped, including a few that only existed there and not yet in `data/actors`
+
+### 🏷️ Configurable title pattern + badge visibility
+
+- New "Title Field Pattern" setting (Config → General), alongside the existing folder pattern — same placeholders (`{id}`, `{contentid}`, `{title}`, `{alternatetitle}`, `{label}`, `{maker}`, `{year}`), applied after merge so it's independent of which scraper provided the title
+- New checkboxes to individually show/hide the Uncensored / Decensored / Leaked cover badges
+
 ## v2.0.0 (2026-08-18)
 
 ### 🔍 Library search-as-filter

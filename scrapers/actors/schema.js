@@ -6,6 +6,18 @@
  */
 
 /**
+ * Title-case a name: first letter of each word uppercase, rest lowercase
+ * (e.g. "RISA tachibana" -> "Risa Tachibana"). No-op on non-Latin scripts
+ * (kanji/kana aren't \w, so this only ever touches ASCII words).
+ *
+ * @param {string} str
+ * @returns {string}
+ */
+function toTitleCase(str) {
+  return str ? str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : str;
+}
+
+/**
  * Normalize actor name to slug ID format
  * - Converts to lowercase
  * - Removes special characters
@@ -67,8 +79,7 @@ function createEmptyActor(name) {
     // ─────────────────────────────
     id: id,                    // Slug normalized ID (e.g., "hayami-remu")
     name: name,                // Main name (English or romanized)
-    altName: '',               // Japanese/alternative name
-    otherNames: [],            // Array of name variants
+    altName: '',               // Comma-separated alternate names/aliases (Japanese name, former stage names, etc.)
 
     // ─────────────────────────────
     // Physical attributes
@@ -85,6 +96,11 @@ function createEmptyActor(name) {
     thumbUrl: '',              // Original URL from scraper (always preserved)
     thumbLocal: '',            // Local path if actorsPath configured (e.g., "hayami-remu.jpg")
     thumb: '',                 // Final thumb to use in NFO (URL or relative path)
+
+    // ─────────────────────────────
+    // User curation
+    // ─────────────────────────────
+    favorite: false,           // Manually starred by the user; never set by a scraper
 
     // ─────────────────────────────
     // Metadata
@@ -216,8 +232,6 @@ function removeEmptyFields(actor) {
  * @returns {string} - XML string in Kodi NFO format
  */
 function actorToNFO(actor) {
-  const ucFirst = str => str ? str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : str;
-
   const escapeXml = (str) => {
     if (!str) return '';
     return String(str)
@@ -238,18 +252,11 @@ function actorToNFO(actor) {
 
   // Basic info
   if (actor.name) {
-    xml += `  <name>${escapeXml(ucFirst(actor.name))}</name>\n`;
+    xml += `  <name>${escapeXml(toTitleCase(actor.name))}</name>\n`;
   }
 
   if (actor.altName) {
-    xml += `  <altname>${escapeXml(ucFirst(actor.altName))}</altname>\n`;
-  }
-
-  // Other names
-  if (actor.otherNames && Array.isArray(actor.otherNames) && actor.otherNames.length > 0) {
-    actor.otherNames.forEach(name => {
-      xml += `  <othername>${escapeXml(name)}</othername>\n`;
-    });
+    xml += `  <altname>${escapeXml(toTitleCase(actor.altName))}</altname>\n`;
   }
 
   // Physical attributes
@@ -286,6 +293,10 @@ function actorToNFO(actor) {
     xml += `  <thumb>${escapeXml(actor.thumb)}</thumb>\n`;
   }
 
+  if (actor.favorite) {
+    xml += `  <favorite>true</favorite>\n`;
+  }
+
   // Metadata
   if (actor.meta) {
     if (actor.meta.sources && Array.isArray(actor.meta.sources) && actor.meta.sources.length > 0) {
@@ -317,7 +328,6 @@ function nfoToActor(nfoContent) {
     id: '',
     name: '',
     altName: '',
-    otherNames: [],
     birthdate: '',
     height: 0,
     bust: 0,
@@ -326,6 +336,7 @@ function nfoToActor(nfoContent) {
     thumbUrl: '',
     thumbLocal: '',
     thumb: '',
+    favorite: false,
     meta: {
       sources: [],
       lastUpdate: ''
@@ -368,10 +379,6 @@ function nfoToActor(nfoContent) {
   actor.altName = unescapeXml(getTagValue('altname'));
   actor.birthdate = unescapeXml(getTagValue('birthdate'));
 
-  // Parse other names
-  const otherNames = getAllTagValues('othername');
-  actor.otherNames = otherNames.map(n => unescapeXml(n));
-
   // Parse numeric fields
   const height = getTagValue('height');
   actor.height = height ? parseInt(height, 10) : 0;
@@ -390,6 +397,8 @@ function nfoToActor(nfoContent) {
   actor.thumbLocal = unescapeXml(getTagValue('thumblocal'));
   actor.thumb = unescapeXml(getTagValue('thumb'));
 
+  actor.favorite = getTagValue('favorite').toLowerCase() === 'true';
+
   // Parse metadata
   const sources = getAllTagValues('source');
   actor.meta.sources = sources.map(s => unescapeXml(s));
@@ -403,6 +412,7 @@ module.exports = {
   validateActor,
   removeEmptyFields,
   normalizeActorName,
+  toTitleCase,
   actorToNFO,
   nfoToActor
 };

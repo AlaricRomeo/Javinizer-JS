@@ -27,6 +27,26 @@ const scrapeReader = new ScrapeReader();
 
 // Initial load happens lazily on first request (non-blocking startup)
 
+/**
+ * Resolve which actorDb id a movie-actor edit should be saved under.
+ *
+ * A movie's own NFO never stores the actor's central-index id (only
+ * name/altname/role/thumb), but the edit-page model attaches the real id at
+ * load time (see localMediaMapper.js) and the client round-trips it
+ * unchanged through the edit form. Trusting that known id here — instead of
+ * re-deriving one from whatever name/altName text is in the payload — is
+ * what actually matters for a primary-name rename: if the id had to be
+ * re-discovered from text, renaming an actor without also remembering to
+ * carry the old name into the alt-names field would fail to match the
+ * existing record and silently spawn a second, photo-less duplicate.
+ * Falls back to name-based resolution only when there's no id to trust yet
+ * (a brand new actor added this session, or older cached data).
+ */
+function resolveActorSaveId(actor, actorDb, normalizeActorName) {
+  if (actor.id && actorDb.getActor(actor.id)) return actor.id;
+  return actorDb.resolveId(actor.name, actor.altName) || normalizeActorName(actor.name);
+}
+
 // ─────────────────────────────
 // standard response helper
 // ─────────────────────────────
@@ -50,7 +70,18 @@ router.get("/current", async (req, res) => {
 
     let item = libraryReader.getCurrent();
 
-    // If no current item but items exist, get the first one
+    // No current item yet: either nothing to restore (fresh library, land on
+    // item 0), or a position from before a server restart is still pending —
+    // it's only found once the folder holding it has actually been scanned,
+    // which a single batch may not cover on a cold cache. loadAll() finishes
+    // the scan (using the disk cache when warm, so normally near-instant) and
+    // leaves loadLibrary()'s own restore logic to pick the right index —
+    // forcing index 0 here instead would silently overwrite the saved
+    // position with item 0 before the real target was ever looked for.
+    if (!item && libraryReader.items.length > 0 && !libraryReader.fullyLoaded) {
+      libraryReader.loadAll();
+      item = libraryReader.getCurrent();
+    }
     if (!item && libraryReader.items.length > 0) {
       libraryReader.currentIndex = 0;
       item = libraryReader.getCurrent();
@@ -122,22 +153,30 @@ router.get("/by-id/:id", async (req, res) => {
     }
 
     // Find item by ID - try exact match first, then partial match
-    let itemIndex = libraryReader.items.findIndex(item => item.id === id);
+    const findId = () => {
+      let idx = libraryReader.items.findIndex(item => item.id === id);
+      if (idx === -1) idx = libraryReader.items.findIndex(item => item.id.includes(id));
+      if (idx === -1) idx = libraryReader.items.findIndex(item => item.id.toLowerCase().includes(id.toLowerCase()));
+      return idx;
+    };
 
-    // If exact match fails, try to find item where ID is contained in the folder name
-    if (itemIndex === -1) {
-      itemIndex = libraryReader.items.findIndex(item => item.id.includes(id));
+    let itemIndex = findId();
+
+    // A cold cache only scans one batch per loadLibrary() call (see its own
+    // comments) — a requested id can genuinely just not be in the library yet
+    // at this point instead of not existing at all, most commonly right after
+    // a server restart when this route is resuming a saved session item.
+    // Finish the scan before concluding it's missing (loadAll() is
+    // near-instant once the disk cache is warm, which it is after the first
+    // full scan of a run).
+    if (itemIndex === -1 && !libraryReader.fullyLoaded) {
+      libraryReader.loadAll();
+      itemIndex = findId();
     }
 
-    // If still not found, try case-insensitive search
     if (itemIndex === -1) {
-      itemIndex = libraryReader.items.findIndex(item =>
-        item.id.toLowerCase().includes(id.toLowerCase())
-      );
-    }
-
-    if (itemIndex === -1) {
-      // Item not found, return current item instead
+      // Genuinely not found (or the id is stale, e.g. a deleted item saved
+      // in a previous session) — fall back to whatever's current instead.
       let item = libraryReader.getCurrent();
       if (!item && libraryReader.items.length > 0) {
         libraryReader.currentIndex = 0;
@@ -381,9 +420,16 @@ router.get("/browse", (req, res) => {
 let _searchIndex = null;
 
 function getSearchIndex() {
-  if (libraryReader.items.length === 0) libraryReader.loadLibrary();
+  // A partial scan (the incremental per-batch loadLibrary() used elsewhere
+  // for responsiveness) would make this index silently miss whatever hasn't
+  // been scanned yet on a cold cache — searching/filtering would then look
+  // like it found nothing for a movie that's actually there. loadAll()
+  // finishes the scan (near-instant once the disk cache is warm) first.
+  if (!libraryReader.fullyLoaded) libraryReader.loadAll();
   // Rebuild if library changed
   if (!_searchIndex || _searchIndex.length !== libraryReader.items.length) {
+    const actorDb = require('../../scrapers/actors/actorDb');
+    const aliasCache = new Map();
     _searchIndex = libraryReader.items.map(item => {
       let title = '';
       let genres = [];
@@ -397,12 +443,30 @@ function getSearchIndex() {
           .map(m => m[1].trim())
           .filter(Boolean);
 
-        actors = (content.match(/<actor>[\s\S]*?<\/actor>/gi) || [])
+        const actorNames = (content.match(/<actor>[\s\S]*?<\/actor>/gi) || [])
           .map(block => {
             const m = block.match(/<name>([\s\S]*?)<\/name>/i);
             return m ? m[1].trim() : null;
           })
           .filter(Boolean);
+
+        // Resolve through the actor index so every known alias is searchable
+        // here, not just whichever name variant happens to be literally
+        // written into this specific movie's own NFO (see actorDb.resolveAliases).
+        // aliasCache memoizes per rebuild — the same actor recurs across many
+        // movies, so this keeps a full-library rebuild from doing one SQLite
+        // round trip per (movie, actor) pair instead of per unique actor.
+        const aliasSet = new Set();
+        actorNames.forEach(n => {
+          const key = n.toLowerCase();
+          let aliases = aliasCache.get(key);
+          if (!aliases) {
+            aliases = actorDb.resolveAliases(n);
+            aliasCache.set(key, aliases);
+          }
+          aliases.forEach(a => aliasSet.add(a));
+        });
+        actors = Array.from(aliasSet);
       } catch (_) {}
       return { id: item.id, title, genres, actors };
     });
@@ -431,6 +495,57 @@ router.get("/search", (req, res) => {
   const matches = matchSearchIndex(q);
 
   res.json({ ok: true, results: matches.slice(0, 50), total: matches.length });
+});
+
+// ─────────────────────────────
+// GET /library-search
+// Full grid-card data (cover, actors, aliases) for library items matching a
+// query — the search counterpart to the paginated /library-list. Grid view
+// can't filter client-side once browsing is paginated (it no longer holds
+// the whole library), so a search re-queries the server instead; this stays
+// fast even on a huge library because getSearchIndex()'s matching is cheap
+// (regex over cached NFO text) and buildItem() only runs for the — typically
+// small — set of matches, not the whole library.
+// ─────────────────────────────
+router.get("/library-search", async (req, res) => {
+  try {
+    const q = (req.query.q || '').toLowerCase().trim();
+    if (!q) return res.json({ ok: true, items: [] });
+
+    const matches = matchSearchIndex(q);
+    const matchIds = new Set(matches.map(m => m.id));
+    const matchedItems = libraryReader.items.filter(item => matchIds.has(item.id));
+
+    const aliasCache = new Map();
+    const actorCache = new Map();
+    const built = await Promise.all(
+      matchedItems.map(async item => {
+        try {
+          const builtItem = await buildItem(item, actorCache);
+          if (!builtItem) return null;
+          const localCoverUrl = `/item/library-cover/${encodeURIComponent(builtItem.folderId)}`;
+          return {
+            id: builtItem.id,
+            folderId: builtItem.folderId,
+            filename: builtItem.filename,
+            title: builtItem.title,
+            coverUrl: localCoverUrl,
+            remoteCoverUrl: builtItem.coverUrl,
+            genre: builtItem.genres,
+            actor: builtItem.actor,
+            actorSearchNames: resolveActorSearchNames(builtItem.actor, aliasCache)
+          };
+        } catch (err) {
+          console.error(`[library-search] Skipping stale item ${item.id}:`, err.message);
+          return null;
+        }
+      })
+    );
+
+    res.json({ ok: true, items: built.filter(Boolean) });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
 });
 
 // ─────────────────────────────
@@ -538,6 +653,26 @@ router.post("/save", async (req, res) => {
 
     await saveNfoPatch(item.nfo, changes);
 
+    // Persist any actor edits (name, alt name, birthdate, measurements, ...) into
+    // the persistent index — the movie's own NFO only ever stores name/altname/
+    // role/thumb per actor (that's all Kodi's <actor> tag has room for), so
+    // without this, anything else typed in the modal is silently dropped.
+    if (Array.isArray(changes.actor)) {
+      const { saveActorLocal } = require('../core/actorScraperManager');
+      const { normalizeActorName } = require('../../scrapers/actors/schema');
+      const actorDb = require('../../scrapers/actors/actorDb');
+
+      for (const actor of changes.actor) {
+        if (!actor.name) continue;
+        try {
+          const resolvedId = resolveActorSaveId(actor, actorDb, normalizeActorName);
+          saveActorLocal({ ...actor, id: resolvedId, meta: { sources: ['manual'] } }, { replaceNames: true });
+        } catch (err) {
+          console.error(`[Routes] Failed to persist actor ${actor.name}:`, err.message);
+        }
+      }
+    }
+
     const saveCfg = loadConfig();
     if (saveCfg.scrapers?.actors?.copyToMovieFolder) {
       try {
@@ -566,7 +701,7 @@ router.post("/save", async (req, res) => {
 // ─────────────────────────────
 router.post("/edit-rescrape", async (req, res) => {
   const { EventEmitter } = require('events');
-  const { executeScraper } = require('../core/scraperManager');
+  const { executeScraper, formatTitle } = require('../core/scraperManager');
 
   try {
     const { folderId, scraper } = req.body;
@@ -668,6 +803,13 @@ router.post("/edit-rescrape", async (req, res) => {
           mergedData.genres = applyGenreRules(mergedData.genres, editRescrapeCfg.genreRules);
         }
 
+        // Compose title field using configured pattern, independent of the scraper used.
+        // Only reformat when this scraper actually returned a fresh raw title — otherwise
+        // mergedData.title still holds an already-composed title from a previous scrape.
+        if (newData.title) {
+          mergedData.title = formatTitle(mergedData, editRescrapeCfg);
+        }
+
         // Video scraping done
         checkAllTasksComplete(mergedData);
 
@@ -724,6 +866,24 @@ router.post("/edit-rescrape/save", async (req, res) => {
 
     const { saveNfoFull } = require('../core/saveNfo');
     await saveNfoFull(libraryItem.nfo, item);
+
+    // Persist any actor edits into the persistent index — see the analogous
+    // comment in POST /save for why this can't be skipped.
+    if (Array.isArray(item.actor)) {
+      const { saveActorLocal } = require('../core/actorScraperManager');
+      const { normalizeActorName } = require('../../scrapers/actors/schema');
+      const actorDb = require('../../scrapers/actors/actorDb');
+
+      for (const actor of item.actor) {
+        if (!actor.name) continue;
+        try {
+          const resolvedId = resolveActorSaveId(actor, actorDb, normalizeActorName);
+          saveActorLocal({ ...actor, id: resolvedId, meta: { sources: ['manual'] } }, { replaceNames: true });
+        } catch (err) {
+          console.error(`[Routes] Failed to persist actor ${actor.name}:`, err.message);
+        }
+      }
+    }
 
     if (item.coverUrl) {
       const saver = new ScrapeSaver(loadConfig());
@@ -942,11 +1102,38 @@ router.get("/scrape/count", (req, res) => {
 });
 
 // GET /scrape-list - Get full list of scrape items for grid view
+// Every known alias (per actorDb.resolveAliases) for each actor's `name` in
+// the given movie actor array, deduped — so grid.js's search can match any
+// alias for an actor regardless of which name variant this particular
+// movie's own NFO happens to hold.
+// `cache` is a Map the caller creates once per request and passes to every
+// call — the same handful of actors recur across hundreds of movies in a
+// real library, so memoizing resolveAliases() for the request's lifetime
+// turns O(total actor appearances) SQLite lookups into O(unique actors),
+// which is what keeps /scrape-list and /library-list fast on a large library.
+function resolveActorSearchNames(actorArray, cache) {
+  const actorDb = require('../../scrapers/actors/actorDb');
+  const set = new Set();
+  (actorArray || []).forEach(a => {
+    const n = a && a.name;
+    if (!n) return;
+    const key = n.toLowerCase();
+    let aliases = cache.get(key);
+    if (!aliases) {
+      aliases = actorDb.resolveAliases(n);
+      cache.set(key, aliases);
+    }
+    aliases.forEach(alias => set.add(alias));
+  });
+  return Array.from(set);
+}
+
 router.get("/scrape-list", async (req, res) => {
   try {
     // Load scrape items first
     scrapeReader.loadScrapeItems();
 
+    const aliasCache = new Map();
     const scrapedItems = scrapeReader.items.map(item => {
       const jsonData = fs.readFileSync(item.jsonPath, 'utf8');
       const parsed = JSON.parse(jsonData);
@@ -983,6 +1170,7 @@ router.get("/scrape-list", async (req, res) => {
         coverUrl: parsed.data?.coverUrl || '',
         genre: parsed.data?.genres || [],
         actor: parsed.data?.actor || [],
+        actorSearchNames: resolveActorSearchNames(parsed.data?.actor, aliasCache),
         matched: hasMeaningfulData
       };
     });
@@ -994,20 +1182,33 @@ router.get("/scrape-list", async (req, res) => {
   }
 });
 
-// GET /library-list - Get full list of library items for grid view
+// GET /library-list - Paginated library items for grid view
+// ?offset=0&limit=60 — building the full card shape (NFO parse + actor
+// resolution + local media check) for the whole library on every call was
+// the actual cause of grid view hanging: on a cold cache, scanning every
+// folder with fs.readdirSync is fine locally but can take minutes over
+// slow/network storage, and Node is single-threaded — the whole server sits
+// blocked for that entire scan, not just this one request. Paginating
+// bounds the blocking work to roughly one page (ensureLoadedUpTo), so the
+// first page — and the server — stay responsive regardless of library size.
 router.get("/library-list", async (req, res) => {
   try {
-    if (libraryReader.items.length === 0 && !libraryReader.fullyLoaded) {
-      libraryReader.loadLibrary();
-    }
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 60));
+
+    libraryReader.ensureLoadedUpTo(offset + limit);
+
+    const pageItems = libraryReader.items.slice(offset, offset + limit);
 
     // A stale cache entry (nfo renamed/removed since the last full scan) must not
     // take down the whole list — skip just that item and self-heal it out of
     // libraryReader.items so it doesn't keep failing on every subsequent request.
+    const aliasCache = new Map();
+    const actorCache = new Map();
     const built = await Promise.all(
-      libraryReader.items.map(async item => {
+      pageItems.map(async item => {
         try {
-          const builtItem = await buildItem(item);
+          const builtItem = await buildItem(item, actorCache);
           if (!builtItem) return null;
           // Use local cover image via endpoint, fallback to remote coverUrl
           const localCoverUrl = `/item/library-cover/${encodeURIComponent(builtItem.folderId)}`;
@@ -1019,7 +1220,8 @@ router.get("/library-list", async (req, res) => {
             coverUrl: localCoverUrl, // Prefer local cover
             remoteCoverUrl: builtItem.coverUrl, // Keep remote as fallback
             genre: builtItem.genres,
-            actor: builtItem.actor
+            actor: builtItem.actor,
+            actorSearchNames: resolveActorSearchNames(builtItem.actor, aliasCache)
           };
         } catch (err) {
           console.error(`[library-list] Skipping stale item ${item.id}:`, err.message);
@@ -1031,7 +1233,16 @@ router.get("/library-list", async (req, res) => {
     );
     const items = built.filter(Boolean);
 
-    res.json({ ok: true, items });
+    res.json({
+      ok: true,
+      items,
+      offset,
+      limit,
+      loadedCount: libraryReader.items.length,
+      folderTotal: libraryReader.allFolders.length,
+      fullyLoaded: libraryReader.fullyLoaded,
+      hasMore: (offset + limit) < libraryReader.items.length || !libraryReader.fullyLoaded
+    });
   } catch (err) {
     res.json(fail(err.message));
   }
@@ -1284,15 +1495,26 @@ router.post("/scrape/save", async (req, res) => {
       const actorResults = { scraped: 0, failed: 0 };
 
       if (currentConfig.actorsEnabled && itemToSave.actor && Array.isArray(itemToSave.actor)) {
-        const { getActor } = require('../core/actorScraperManager');
+        const { getActor, saveActorLocal } = require('../core/actorScraperManager');
+        const { normalizeActorName } = require('../../scrapers/actors/schema');
+        const actorDb = require('../../scrapers/actors/actorDb');
 
         console.error(`[Routes] Scraping ${itemToSave.actor.length} actors from saved movie`);
 
         for (const actor of itemToSave.actor) {
           if (actor.name) {
             try {
+              // Persist whatever is in the form right now — a manual edit
+              // (e.g. a corrected name, or name/alt name swapped) — before
+              // falling through to auto-fill. getActor() below only fills
+              // fields that are still empty, so without this an edit to an
+              // already-"complete" actor would otherwise be silently
+              // discarded instead of updating the index.
+              const resolvedId = resolveActorSaveId(actor, actorDb, normalizeActorName);
+              saveActorLocal({ ...actor, id: resolvedId, meta: { sources: ['manual'] } }, { replaceNames: true });
+
               console.error(`[Routes] Scraping actor: ${actor.name}`);
-              await getActor(actor.name);
+              await getActor(actor.name, false, actor.altName || []);
               actorResults.scraped++;
             } catch (error) {
               console.error(`[Routes] Failed to scrape actor ${actor.name}:`, error.message);
@@ -1619,16 +1841,16 @@ router.post("/actors/search", async (req, res) => {
   const { getActor } = require('../core/actorScraperManager');
 
   try {
-    const { name, forceOverwrite } = req.body;
+    const { name, altName, forceOverwrite } = req.body;
 
     if (!name) {
       return res.json({ ok: false, error: 'Actor name is required' });
     }
 
-    console.error(`[Routes] Searching for actor: ${name}${forceOverwrite ? ' (force overwrite)' : ''}`);
+    console.error(`[Routes] Searching for actor: ${name}${altName ? ` (alt: ${altName})` : ''}${forceOverwrite ? ' (force overwrite)' : ''}`);
 
-    // Search/scrape actor
-    const actorData = await getActor(name, forceOverwrite || false);
+    // Search/scrape actor — altName is passed as extra name candidates for online scrapers
+    const actorData = await getActor(name, forceOverwrite || false, altName || []);
 
     if (actorData) {
       res.json({
@@ -1654,7 +1876,7 @@ router.post("/actors/search", async (req, res) => {
 // ─────────────────────────────
 router.post("/scrape/rescrape", async (req, res) => {
   const { EventEmitter } = require('events');
-  const { executeScraper, mergeResults } = require('../core/scraperManager');
+  const { executeScraper, mergeResults, formatTitle } = require('../core/scraperManager');
 
   try {
     const { movieId, scraper } = req.body;
@@ -1824,6 +2046,14 @@ router.post("/scrape/rescrape", async (req, res) => {
         const rescrapeConfig = loadConfig();
         if (mergedData.genres && rescrapeConfig.genreRules) {
           mergedData.genres = applyGenreRules(mergedData.genres, rescrapeConfig.genreRules);
+        }
+
+        // Compose title field using configured pattern, independent of the scraper used.
+        // Only reformat when this scraper actually returned a fresh raw title —
+        // mergedData.title otherwise still holds the already-composed title from
+        // a previous scrape, and reformatting it again would double up placeholders like {id}.
+        if (newData.title) {
+          mergedData.title = formatTitle(mergedData, rescrapeConfig);
         }
 
         // Update wrapper with new data and metadata
@@ -2104,12 +2334,14 @@ const {
 
 
 // ─────────────────────────────
-// GET /actors - List all actors from externalPath only
+// GET /actors - List all actors from the internal cache (data/actors)
 router.get("/actors", async (req, res) => {
   try {
-    const { getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+    // The internal cache (data/actors) is the single library all actors are
+    // read from — externalPath is only ever a copy destination for favorites.
+    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
     const { nfoToActor } = require('../../scrapers/actors/schema');
-    const actorsPath = getExternalActorsPath();
+    const actorsPath = getActorsCachePath();
 
     if (!actorsPath || !fs.existsSync(actorsPath)) {
       return res.json({ ok: true, actors: [] });
@@ -2157,44 +2389,15 @@ router.post("/actors/save", async (req, res) => {
     const { normalizeActorName } = require('../../scrapers/actors/schema');
     const actorData = req.body;
 
-    // Track original ID to handle renames
-    const originalId = actorData.id;
-    const newId = normalizeActorName(actorData.name);
-
-    // Generate ID from name if not provided
+    // The id is stable once assigned — it's an internal slug, not required
+    // to match a fresh normalize of the current name (many ids were
+    // established in inverted order by a scraper, e.g. "shina-sara" for
+    // "Sara Shina"). Only derive a fresh id when the actor truly has none
+    // yet; recomputing it from the current name on every save used to
+    // mistake "id isn't derivable from the name" for "actor was renamed"
+    // and delete the real NFO/photo out from under an unrelated fresh id.
     if (!actorData.id) {
-      actorData.id = newId;
-    } else if (originalId !== newId) {
-      // Name changed - need to cleanup old files
-      actorData.id = newId;
-
-      // Remove old NFO file
-      const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
-      const actorsPath = getActorsCachePath();
-      const oldNfoPath = path.join(actorsPath, `${originalId}.nfo`);
-      if (fs.existsSync(oldNfoPath)) {
-        try {
-          fs.unlinkSync(oldNfoPath);
-          console.log(`[ActorSave] Removed old NFO file: ${originalId}.nfo`);
-        } catch (err) {
-          console.error(`[ActorSave] Failed to remove old NFO: ${err.message}`);
-        }
-      }
-
-      // Remove old image files
-      const extensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
-      extensions.forEach(ext => {
-        const oldImagePath = path.join(actorsPath, `${originalId}${ext}`);
-        if (fs.existsSync(oldImagePath)) {
-          try {
-            fs.unlinkSync(oldImagePath);
-            console.log(`[ActorSave] Removed old image: ${originalId}${ext}`);
-          } catch (err) {
-            console.error(`[ActorSave] Failed to remove old image: ${err.message}`);
-          }
-        }
-      });
-
+      actorData.id = normalizeActorName(actorData.name);
     }
 
     // Update thumbUrl if thumb is a remote URL
@@ -2300,29 +2503,30 @@ router.post("/actors/save", async (req, res) => {
         actorData.thumbLocal = newFilename;
         actorData.thumb = '';
 
-        // Sync new photo to externalPath if actor exists there (regardless of context)
+        // Sync new photo to externalPath when this actor is a favorite — that
+        // path is now purely a "copy of favorites" destination, not the library.
         // Soft-delete old photos by moving them to old-pics/ subfolder
         const extPath = getExternalActorsPath();
-        if (extPath && fs.existsSync(extPath)) {
-          const actorNfoInExt = path.join(extPath, `${actorData.id}.nfo`);
-          if (fs.existsSync(actorNfoInExt)) {
-            const oldPicsDir = path.join(extPath, 'old-pics');
-            if (!fs.existsSync(oldPicsDir)) fs.mkdirSync(oldPicsDir, { recursive: true });
+        if (actorData.favorite && extPath) {
+          if (!fs.existsSync(extPath)) fs.mkdirSync(extPath, { recursive: true });
 
-            const ts = Date.now();
-            imageExtensions.forEach(e => {
-              const oldImg = path.join(extPath, `${actorData.id}${e}`);
-              if (fs.existsSync(oldImg)) {
-                try { fs.renameSync(oldImg, path.join(oldPicsDir, `${ts}_${actorData.id}${e}`)); } catch (_) {}
-              }
-            });
+          const oldPicsDir = path.join(extPath, 'old-pics');
+          if (!fs.existsSync(oldPicsDir)) fs.mkdirSync(oldPicsDir, { recursive: true });
 
-            try {
-              fs.copyFileSync(newPath, path.join(extPath, newFilename));
-              console.log(`[ActorSave] Synced new photo to externalPath: ${newFilename}`);
-            } catch (err) {
-              console.error('[ActorSave] Failed to sync photo to externalPath:', err.message);
+          const ts = Date.now();
+          imageExtensions.forEach(e => {
+            const oldImg = path.join(extPath, `${actorData.id}${e}`);
+            if (fs.existsSync(oldImg)) {
+              try { fs.renameSync(oldImg, path.join(oldPicsDir, `${ts}_${actorData.id}${e}`)); } catch (_) {}
             }
+          });
+
+          try {
+            fs.copyFileSync(newPath, path.join(extPath, newFilename));
+            console.log(`[ActorSave] Synced new photo to externalPath (favorite): ${newFilename}`);
+            require('../../scrapers/actors/actorDb').touchExternalFile(actorData.id, newFilename);
+          } catch (err) {
+            console.error('[ActorSave] Failed to sync photo to externalPath:', err.message);
           }
         }
       }
@@ -2343,42 +2547,47 @@ router.post("/actors/save", async (req, res) => {
       }
     }
 
-    // Save actor to internal cache always
-    saveActorLocal(actorData);
+    // Save actor to internal cache always — this is the single library all
+    // actors are read from (see GET /actors); externalPath is only ever a
+    // copy destination for favorites, never the source of truth.
+    // replaceNames: true so an alt name removed in the form is actually
+    // dropped from the index instead of lingering forever (insertNameIfNew
+    // only ever adds).
+    saveActorLocal(actorData, { replaceNames: true });
 
-    // Save NFO (and photo) to externalPath when:
-    // a) explicitly called from library context, OR
-    // b) actor already exists in externalPath (keep it in sync)
+    // Copy NFO (and photo) to externalPath when this actor is a favorite,
+    // overwriting any previous copy so edits stay in sync.
     const extPath = getExternalActorsPath();
-    if (extPath && fs.existsSync(extPath)) {
+    if (actorData.favorite && extPath) {
+      if (!fs.existsSync(extPath)) fs.mkdirSync(extPath, { recursive: true });
       const actorNfoInExt = path.join(extPath, `${actorData.id}.nfo`);
-      const shouldSaveToExt = actorData.context === 'library' || fs.existsSync(actorNfoInExt);
 
-      if (shouldSaveToExt) {
-        const nfoContent = actorToNFO(actorData);
-        fs.writeFileSync(actorNfoInExt, nfoContent, 'utf-8');
+      const nfoContent = actorToNFO(actorData);
+      fs.writeFileSync(actorNfoInExt, nfoContent, 'utf-8');
 
-        // Sync photo to externalPath if it's in cache but not already there.
-        // thumbLocal may be absent from request data — scan cache by actor ID as fallback.
-        let thumbLocalToSync = actorData.thumbLocal;
-        if (!thumbLocalToSync) {
-          const cacheDir = getActorsCachePath();
-          for (const e of imageExtensions) {
-            const candidate = path.join(cacheDir, `${actorData.id}${e}`);
-            if (fs.existsSync(candidate)) { thumbLocalToSync = `${actorData.id}${e}`; break; }
+      // Sync photo to externalPath if it's in cache but not already there.
+      // thumbLocal may be absent from request data — scan cache by actor ID as fallback.
+      let thumbLocalToSync = actorData.thumbLocal;
+      if (!thumbLocalToSync) {
+        const cacheDir = getActorsCachePath();
+        for (const e of imageExtensions) {
+          const candidate = path.join(cacheDir, `${actorData.id}${e}`);
+          if (fs.existsSync(candidate)) { thumbLocalToSync = `${actorData.id}${e}`; break; }
+        }
+      }
+      if (thumbLocalToSync) {
+        const cachedPhoto = path.join(getActorsCachePath(), thumbLocalToSync);
+        const extPhoto = path.join(extPath, thumbLocalToSync);
+        if (fs.existsSync(cachedPhoto) && !fs.existsSync(extPhoto)) {
+          try {
+            fs.copyFileSync(cachedPhoto, extPhoto);
+            console.log(`[ActorSave] Synced photo to externalPath: ${thumbLocalToSync}`);
+          } catch (err) {
+            console.error('[ActorSave] Failed to sync photo to externalPath:', err.message);
           }
         }
-        if (thumbLocalToSync) {
-          const cachedPhoto = path.join(getActorsCachePath(), thumbLocalToSync);
-          const extPhoto = path.join(extPath, thumbLocalToSync);
-          if (fs.existsSync(cachedPhoto) && !fs.existsSync(extPhoto)) {
-            try {
-              fs.copyFileSync(cachedPhoto, extPhoto);
-              console.log(`[ActorSave] Synced photo to externalPath: ${thumbLocalToSync}`);
-            } catch (err) {
-              console.error('[ActorSave] Failed to sync photo to externalPath:', err.message);
-            }
-          }
+        if (fs.existsSync(extPhoto)) {
+          require('../../scrapers/actors/actorDb').touchExternalFile(actorData.id, thumbLocalToSync);
         }
       }
     }
@@ -2395,22 +2604,235 @@ router.post("/actors/delete", async (req, res) => {
     const { id } = req.body;
     if (!id) return res.json({ ok: false, error: 'Actor ID required' });
 
-    const { getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
-    const actorsPath = getExternalActorsPath();
+    const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
 
-    if (!actorsPath) return res.json({ ok: false, error: 'External library path not configured' });
+    // Delete from every copy: the internal library and any favorite copy in externalPath.
+    for (const dir of [getActorsCachePath(), getExternalActorsPath()].filter(Boolean)) {
+      const nfoPath = path.join(dir, `${id}.nfo`);
+      if (fs.existsSync(nfoPath)) fs.unlinkSync(nfoPath);
 
-    // Delete NFO file
-    const nfoPath = path.join(actorsPath, `${id}.nfo`);
-    if (fs.existsSync(nfoPath)) fs.unlinkSync(nfoPath);
-
-    // Delete image files (try all extensions)
-    for (const ext of ['webp', 'jpg', 'jpeg', 'png', 'gif']) {
-      const imgPath = path.join(actorsPath, `${id}.${ext}`);
-      if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+      for (const ext of ['webp', 'jpg', 'jpeg', 'png', 'gif']) {
+        const imgPath = path.join(dir, `${id}.${ext}`);
+        if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+      }
     }
 
+    // Explicit user action — the one and only place a persistent index row is removed
+    require('../../scrapers/actors/actorDb').deleteActor(id);
+
     res.json({ ok: true });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// Copies (or removes) an actor's NFO+photo between the internal cache and
+// externalPath — externalPath is purely a "copy of favorites" destination,
+// never the source of truth, so this only ever mirrors the cache's record.
+function syncFavoriteCopy(actorId, isFavorite) {
+  const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+  const extPath = getExternalActorsPath();
+  if (!extPath) return;
+
+  const cachePath = getActorsCachePath();
+  const imageExts = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
+
+  if (isFavorite) {
+    if (!fs.existsSync(extPath)) fs.mkdirSync(extPath, { recursive: true });
+
+    const cacheNfo = path.join(cachePath, `${actorId}.nfo`);
+    if (fs.existsSync(cacheNfo)) fs.copyFileSync(cacheNfo, path.join(extPath, `${actorId}.nfo`));
+
+    for (const ext of imageExts) {
+      const src = path.join(cachePath, `${actorId}.${ext}`);
+      if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(extPath, `${actorId}.${ext}`)); break; }
+    }
+  } else {
+    const extNfo = path.join(extPath, `${actorId}.nfo`);
+    if (fs.existsSync(extNfo)) fs.unlinkSync(extNfo);
+
+    for (const ext of imageExts) {
+      const extImg = path.join(extPath, `${actorId}.${ext}`);
+      if (fs.existsSync(extImg)) fs.unlinkSync(extImg);
+    }
+  }
+}
+
+// ─────────────────────────────
+// POST /actors/favorite
+// Mark/unmark an actor as favorite in the internal cache (the single
+// library), then mirror the change to externalPath if configured — copying
+// the NFO+photo there when favorited, deleting the copy when unfavorited.
+// Also accepts name/altName/thumb/role so the movie page's favorite button
+// can favorite an actor that isn't cached yet (e.g. actor scraping is
+// disabled), creating a minimal record from the movie's own actor data.
+// ─────────────────────────────
+router.post("/actors/favorite", async (req, res) => {
+  try {
+    const { id, favorite, name, altName, thumb, role } = req.body;
+    if (!id && !name) return res.json({ ok: false, error: 'Actor ID or name required' });
+
+    const { normalizeActorName, nfoToActor, actorToNFO } = require('../../scrapers/actors/schema');
+    const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
+    const actorDb = require('../../scrapers/actors/actorDb');
+
+    const isFavorite = !!favorite;
+    const cachePath = getActorsCachePath();
+    if (!fs.existsSync(cachePath)) fs.mkdirSync(cachePath, { recursive: true });
+
+    // Resolve to an already-cached actor: explicit id, else look up by name via the index.
+    let actorId = (id && fs.existsSync(path.join(cachePath, `${id}.nfo`))) ? id : null;
+    if (!actorId && name) {
+      const dbActor = actorDb.findActorByName(name);
+      if (dbActor && fs.existsSync(path.join(cachePath, `${dbActor.id}.nfo`))) actorId = dbActor.id;
+    }
+
+    if (!actorId) {
+      // Not cached yet — create a minimal record from the movie's own actor data.
+      if (!name) return res.json({ ok: false, error: `Actor not found: ${id}` });
+      actorId = normalizeActorName(name);
+
+      let thumbLocal = '';
+      if (thumb && thumb.startsWith('http')) {
+        const urlExtension = thumb.match(/\.(webp|jpg|jpeg|png)(\?|$)/i);
+        const ext = urlExtension ? urlExtension[1].toLowerCase() : 'jpg';
+        const destPath = path.join(cachePath, `${actorId}.${ext}`);
+        try {
+          await new ScrapeSaver(loadConfig()).downloadImage(thumb, destPath);
+          thumbLocal = `${actorId}.${ext}`;
+        } catch (dlErr) {
+          console.error('[actors/favorite] Failed to download thumb:', dlErr.message);
+        }
+      }
+
+      saveActorLocal({
+        id: actorId,
+        name,
+        altName: altName || '',
+        role: role || 'Actress',
+        thumbUrl: (thumb && thumb.startsWith('http')) ? thumb : '',
+        thumbLocal,
+        meta: { sources: ['manual'] }
+      });
+    }
+
+    // actorDb.upsertActor() (inside saveActorLocal above) never touches the
+    // favorite column, so it's set here — after the row is guaranteed to
+    // exist — then patched into the on-disk NFO, which is what actually
+    // drives display everywhere (GET /actors reads NFOs, not the DB).
+    actorDb.setFavorite(actorId, isFavorite);
+
+    const nfoPath = path.join(cachePath, `${actorId}.nfo`);
+    const diskActor = nfoToActor(fs.readFileSync(nfoPath, 'utf-8'));
+    diskActor.id = actorId;
+    diskActor.favorite = isFavorite;
+    fs.writeFileSync(nfoPath, actorToNFO(diskActor), 'utf-8');
+
+    syncFavoriteCopy(actorId, isFavorite);
+
+    res.json({ ok: true, id: actorId, favorite: isFavorite });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// GET /actors/duplicates
+// Candidate actor pairs sharing a name — surfaces the same check logged at
+// startup (see index.js) so the merge UI can offer to review them.
+// ─────────────────────────────
+router.get("/actors/duplicates", async (req, res) => {
+  try {
+    const actorDb = require('../../scrapers/actors/actorDb');
+    res.json({ ok: true, groups: actorDb.findDuplicateGroups() });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /actors/merge
+// Merge loserId into winnerId (identity index + external/internal NFO
+// copies) and delete the loser's record. Physical-field conflicts are
+// resolved automatically by actorDb.mergeActors (winner wins, empty fields
+// filled from loser) — no interactive per-field override from this endpoint.
+// ─────────────────────────────
+router.post("/actors/merge", async (req, res) => {
+  try {
+    const { winnerId, loserId } = req.body;
+    if (!winnerId || !loserId || winnerId === loserId) {
+      return res.json({ ok: false, error: 'winnerId and loserId (distinct) are required' });
+    }
+
+    const actorDb = require('../../scrapers/actors/actorDb');
+    if (!actorDb.getActor(winnerId)) return res.json({ ok: false, error: `Actor not found: ${winnerId}` });
+    if (!actorDb.getActor(loserId)) return res.json({ ok: false, error: `Actor not found: ${loserId}` });
+
+    const merged = actorDb.mergeActors(winnerId, loserId);
+
+    const { actorToNFO } = require('../../scrapers/actors/schema');
+    const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+    const nfoDirs = [getExternalActorsPath(), getActorsCachePath()].filter(Boolean);
+
+    const nfoContent = actorToNFO(merged);
+    for (const dir of nfoDirs) {
+      // Update the winner's record wherever it already exists.
+      const winnerNfoPath = path.join(dir, `${winnerId}.nfo`);
+      if (fs.existsSync(winnerNfoPath)) fs.writeFileSync(winnerNfoPath, nfoContent, 'utf-8');
+
+      // Remove the loser's NFO + photo so it stops appearing as a separate actor.
+      // Photo files are intentionally left in place (see actorDb.mergeActors doc).
+      const loserNfoPath = path.join(dir, `${loserId}.nfo`);
+      if (fs.existsSync(loserNfoPath)) fs.unlinkSync(loserNfoPath);
+    }
+
+    res.json({ ok: true, actor: merged });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// POST /actors/remove-name
+// Removes a single alt name from an actor — the alternative to
+// /actors/merge when a duplicate-name match (GET /actors/duplicates) turns
+// out to be a real name collision between two different people rather than
+// the same person: instead of merging, drop the shared name from whichever
+// one it doesn't actually belong to.
+// ─────────────────────────────
+router.post("/actors/remove-name", async (req, res) => {
+  try {
+    const { id, name } = req.body;
+    if (!id || !name) return res.json({ ok: false, error: 'id and name are required' });
+
+    const actorDb = require('../../scrapers/actors/actorDb');
+    const names = actorDb.getActorNames(id);
+    if (!names.primary) return res.json({ ok: false, error: `Actor not found: ${id}` });
+    if (names.primary.toLowerCase() === String(name).toLowerCase()) {
+      return res.json({ ok: false, error: `"${name}" is ${id}'s primary name — can't remove it here` });
+    }
+
+    const removed = actorDb.removeName(id, name);
+    if (!removed) return res.json({ ok: false, error: `Name "${name}" not found on ${id}` });
+
+    // Patch every NFO copy (internal cache + external favorite copy) so the
+    // removed name also disappears from what's actually displayed/edited —
+    // GET /actors reads NFOs directly, not the name index.
+    const updatedNames = actorDb.getActorNames(id);
+    const { nfoToActor, actorToNFO } = require('../../scrapers/actors/schema');
+    const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+
+    for (const dir of [getActorsCachePath(), getExternalActorsPath()].filter(Boolean)) {
+      const nfoPath = path.join(dir, `${id}.nfo`);
+      if (!fs.existsSync(nfoPath)) continue;
+      const actor = nfoToActor(fs.readFileSync(nfoPath, 'utf-8'));
+      actor.id = id;
+      actor.altName = updatedNames.alt.join(', ');
+      fs.writeFileSync(nfoPath, actorToNFO(actor), 'utf-8');
+    }
+
+    res.json({ ok: true, id, names: updatedNames });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
@@ -2494,7 +2916,13 @@ router.post("/actors/upload-image", upload.single('image'), async (req, res) => 
     if (actorName) {
       const { normalizeActorName } = require('../../scrapers/actors/schema');
       const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
-      const actorId = normalizeActorName(actorName);
+      // Resolve the actor's real canonical id via the index first — a fresh
+      // normalizeActorName(actorName) can differ from the id already on
+      // record (e.g. ids established in inverted order by a scraper), which
+      // would silently save the upload under a new, unrelated filename that
+      // the index never looks at again.
+      const existingActor = require('../../scrapers/actors/actorDb').findActorRowByName(actorName);
+      const actorId = existingActor ? existingActor.id : normalizeActorName(actorName);
       const actorsPath = getActorsCachePath();
 
       if (!fs.existsSync(actorsPath)) fs.mkdirSync(actorsPath, { recursive: true });
@@ -2508,6 +2936,7 @@ router.post("/actors/upload-image", upload.single('image'), async (req, res) => 
       const filename = `${actorId}${ext}`;
       fs.writeFileSync(path.join(actorsPath, filename), req.file.buffer);
       console.log(`[Upload] Saved directly to cache: ${filename}`);
+      require('../../scrapers/actors/actorDb').touchCacheFile(actorId, filename);
 
       return res.json({ ok: true, url: `/actors/${filename}`, filename, savedToCache: true });
     }
@@ -2787,11 +3216,11 @@ router.get("/videos/:folderId", async (req, res) => {
 // Helper: copy actor thumbs to a movie folder's actors/ subfolder
 // ─────────────────────────────
 async function copyActorsToFolder(folderPath, actors) {
-  const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+  const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const { actorToNFO } = require('../../scrapers/actors/schema');
+  const actorDb = require('../../scrapers/actors/actorDb');
   const actorsPath = getActorsCachePath();
-  const externalActorsPath = getExternalActorsPath();
   const destFolder = path.join(folderPath, 'actors');
 
   if (!fs.existsSync(destFolder)) fs.mkdirSync(destFolder, { recursive: true });
@@ -2805,26 +3234,42 @@ async function copyActorsToFolder(folderPath, actors) {
     let found = false;
     let savedExt = null;
 
-    // 1. Find actor via NFO scan (externalPath first, then data/actors)
+    // 1. Find actor via NFO scan (externalPath first, then data/actors) — used below
+    // both as a photo source (fallback) and for the .nfo metadata written alongside it.
     const actorData = await scrapeLocal(actor.name).catch(() => null);
     const actorId = actorData && actorData.id;
-    if (actorId) {
-      // Search in data/actors/ first, then externalPath (covers cache-cleared scenarios)
-      const searchDirs = [actorsPath];
-      if (externalActorsPath && fs.existsSync(externalActorsPath)) searchDirs.push(externalActorsPath);
 
-      for (const dir of searchDirs) {
-        if (found) break;
-        for (const ext of extensions) {
-          const srcPath = path.join(dir, `${actorId}.${ext}`);
-          if (fs.existsSync(srcPath)) {
-            fs.copyFileSync(srcPath, path.join(destFolder, `${actor.name}.${ext}`));
-            copied.push(actor.name);
-            found = true;
-            savedExt = ext;
-            break;
-          }
-        }
+    // 1a. Prefer the actor's own thumb when it already points into our internal cache
+    // (e.g. a photo just uploaded/edited in the actor modal, not yet reflected in the
+    // index's thumb_cache_file if this call races an upload). This is the freshest
+    // possible source — what the user just picked — so it wins over 1b below.
+    const ownCacheMatch = typeof actor.thumb === 'string' && actor.thumb.match(/^\/actors\/([^/\\]+)$/);
+    if (ownCacheMatch) {
+      const srcPath = path.join(actorsPath, ownCacheMatch[1]);
+      if (fs.existsSync(srcPath)) {
+        const ext = path.extname(ownCacheMatch[1]).replace(/^\./, '');
+        // Remove any stale photo left over from a previous copy under a different extension
+        extensions.filter(e => e !== ext).forEach(e => {
+          const stale = path.join(destFolder, `${actor.name}.${e}`);
+          if (fs.existsSync(stale)) { try { fs.unlinkSync(stale); } catch (_) {} }
+        });
+        fs.copyFileSync(srcPath, path.join(destFolder, `${actor.name}.${ext}`));
+        copied.push(actor.name);
+        found = true;
+        savedExt = ext;
+      }
+    }
+
+    if (!found && actorId) {
+      // Resolve via the persistent index — internal cache is the single
+      // source of truth (see resolvePhotoSource()). Also self-heals a stale
+      // reference if the file no longer exists.
+      const source = actorDb.resolvePhotoSource(actorId, { cachePath: actorsPath });
+      if (source) {
+        fs.copyFileSync(source.absolutePath, path.join(destFolder, `${actor.name}.${source.ext}`));
+        copied.push(actor.name);
+        found = true;
+        savedExt = source.ext;
       }
     }
 
@@ -2867,6 +3312,10 @@ async function copyActorsToFolder(folderPath, actors) {
       } catch (dlErr) {
         console.error(`[copyActorsToFolder] Failed to download thumb for ${actor.name}:`, dlErr.message);
       }
+    }
+
+    if (found && actorId) {
+      actorDb.linkMovie(actorId, path.basename(folderPath));
     }
 
     // 3. Write full actor .nfo alongside the photo (javinizer-js internal format,
@@ -2913,121 +3362,6 @@ router.post("/actors/copy-to-movie", async (req, res) => {
     res.json({ ok: true, copied, skipped });
   } catch (err) {
     console.error('[actors/copy-to-movie] Error:', err);
-    res.json({ ok: false, error: err.message });
-  }
-});
-
-// ─────────────────────────────
-// POST /actors/save-to-library
-// Copy actor from internal cache to externalPath
-// ─────────────────────────────
-router.post("/actors/save-to-library", async (req, res) => {
-  try {
-    const { id, name, altName, thumb, role } = req.body;
-    if (!id && !name) throw new Error("Missing actor ID or name");
-
-    const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
-    const { normalizeActorName, actorToNFO } = require('../../scrapers/actors/schema');
-    const cachePath = getActorsCachePath();
-    const externalPath = getExternalActorsPath();
-
-    if (!externalPath) {
-      return res.json({ ok: false, error: "External library path not configured" });
-    }
-
-    if (!fs.existsSync(externalPath)) {
-      fs.mkdirSync(externalPath, { recursive: true });
-    }
-
-    // Check for duplicates in externalPath via NFO scan
-    // Check name + all altnames of the incoming actor
-    const { searchInDirectory } = require('../../scrapers/actors/local/run');
-    if (fs.existsSync(externalPath)) {
-      const namesToCheck = [name, ...(altName ? altName.split(',').map(s => s.trim()).filter(Boolean) : [])];
-      console.log(`[save-to-library] duplicate check for: ${namesToCheck.join(', ')}`);
-      for (const n of namesToCheck) {
-        if (!n) continue;
-        const existing = searchInDirectory(externalPath, n);
-        if (existing) {
-          console.log(`[save-to-library] duplicate found: "${n}" matched actor "${existing.name}" (id: ${existing.id})`);
-          return res.json({ ok: false, error: `Actor "${n}" already in library`, duplicate: true });
-        }
-      }
-    }
-
-    // Find actor in internal cache only (data/actors) — do NOT search externalPath here
-    const cachedActor = fs.existsSync(cachePath) ? searchInDirectory(cachePath, name) : null;
-
-    console.log(`[save-to-library] name="${name}" cached=${cachedActor ? cachedActor.id : 'none'}`);
-
-    let copiedNfo = false;
-    let copiedImage = false;
-    let usedId = null;
-
-    if (cachedActor && cachedActor.id) {
-      const srcId = cachedActor.id;
-      const srcNfo = path.join(cachePath, `${srcId}.nfo`);
-      if (fs.existsSync(srcNfo)) {
-        fs.copyFileSync(srcNfo, path.join(externalPath, `${srcId}.nfo`));
-        copiedNfo = true;
-        usedId = srcId;
-      }
-
-      for (const ext of ['webp', 'jpg', 'jpeg', 'png']) {
-        const srcImg = path.join(cachePath, `${srcId}.${ext}`);
-        if (fs.existsSync(srcImg)) {
-          fs.copyFileSync(srcImg, path.join(externalPath, `${srcId}.${ext}`));
-          copiedImage = true;
-          break;
-        }
-      }
-    }
-
-    // Fallback: actor not in internal cache — create NFO from movie data + download thumb
-    if (!copiedNfo) {
-      if (!name) {
-        return res.json({ ok: false, error: `Actor not found in cache and no name provided` });
-      }
-
-      const canonicalId = normalizeActorName(name);
-      usedId = canonicalId;
-
-      // Write minimal NFO from movie actor data
-      const actorData = { id: canonicalId, name, altName: altName || '', role: role || 'Actress', thumb: thumb || '' };
-      const nfoContent = actorToNFO(actorData);
-      fs.writeFileSync(path.join(externalPath, `${canonicalId}.nfo`), nfoContent, 'utf-8');
-      copiedNfo = true;
-      console.log(`[save-to-library] Created NFO from movie data: ${canonicalId}.nfo`);
-
-      // Download thumb if it's a remote URL
-      if (thumb && thumb.startsWith('http')) {
-        const https = require('https');
-        const http = require('http');
-        const urlExtension = thumb.match(/\.(webp|jpg|jpeg|png)(\?|$)/i);
-        const ext = urlExtension ? urlExtension[1].toLowerCase() : 'jpg';
-        const imgPath = path.join(externalPath, `${canonicalId}.${ext}`);
-        try {
-          await new Promise((resolve, reject) => {
-            const protocol = thumb.startsWith('https') ? https : http;
-            protocol.get(thumb, response => {
-              if (response.statusCode !== 200) return reject(new Error(`HTTP ${response.statusCode}`));
-              const stream = fs.createWriteStream(imgPath);
-              response.pipe(stream);
-              stream.on('finish', () => { stream.close(); resolve(); });
-              stream.on('error', reject);
-            }).on('error', reject);
-          });
-          copiedImage = true;
-          console.log(`[save-to-library] Downloaded thumb: ${canonicalId}.${ext}`);
-        } catch (dlErr) {
-          console.error(`[save-to-library] Failed to download thumb:`, dlErr.message);
-        }
-      }
-    }
-
-    res.json({ ok: true, copiedNfo, copiedImage, id: usedId });
-  } catch (err) {
-    console.error('[save-to-library] Error:', err);
     res.json({ ok: false, error: err.message });
   }
 });

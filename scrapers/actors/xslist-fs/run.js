@@ -1,24 +1,26 @@
 #!/usr/bin/env node
 
 /**
- * XCITY Actor Scraper
+ * XSList Actor Scraper (xslist-fs, FlareSolverr-backed)
  *
- * Scrapes actor data from xxx.xcity.jp (English AV idol listing).
- * URL pattern: https://xxx.xcity.jp/idol/detail/{id}/
+ * Scrapes actor data from xslist.org (English AV model listing).
+ * Site is behind aggressive Cloudflare protection, so all requests go
+ * through FlareSolverr (see flaresolverr.js) instead of plain HTTP.
  *
  * Actors are looked up by name via the site's search endpoint
- * (https://xxx.xcity.jp/idol/?q={name}) since IDs are numeric and not
- * derivable from the name. The search matches tokens regardless of order,
- * so results are filtered down to an exact (normalized) name match.
+ * (https://xslist.org/search?query={name}&lg=en), since profile URLs use
+ * numeric, non-derivable IDs (https://xslist.org/en/model/{id}.html).
+ * Results are filtered down to an exact (normalized) name match, comparing
+ * against the English half of each result's "English - Kanji" title.
  *
  * Extracts:
- * - Name (from h1)
- * - Birthdate (from "Date of birth" profile row, e.g. "1988 May 24")
- * - Height (from "Height" profile row, e.g. "163cm")
- * - Measurements: Bust(cup)-Waist-Hips (from "Size" profile row, e.g. "B88(D) W59 H85")
- * - Photo (from .actressThumb)
- *
- * No FlareSolverr/Cloudflare challenge encountered - plain HTTP works.
+ * - Name (from itemprop="name")
+ * - Kanji name (from the "(...)" suffix on the h1, e.g. "Yui Hatano (波多野結衣)")
+ * - Aliases (from itemprop="additionalName", e.g. kana readings, stage name variants)
+ * - Birthdate (from "Born: May 23, 1988" in the profile paragraph)
+ * - Height (from itemprop="height", e.g. "163cm")
+ * - Measurements: Bust-Waist-Hips (from "Measurements: B88 / W59 / H85")
+ * - Photo (from img.profile_img - skipped when it's the site's anonymous placeholder)
  *
  * Fallback Strategy:
  * - If actor not found with original name, tries inverting name parts
@@ -31,9 +33,11 @@ const path = require('path');
 const https = require('https');
 const { createEmptyActor, removeEmptyFields, normalizeActorName } = require('../schema');
 const { getActorsCachePath } = require('../cache-helper');
+const { fetchWithFlareSolverr, getClearanceHeaders } = require('./flaresolverr');
 
-const BASE_URL = 'https://xxx.xcity.jp';
+const BASE_URL = 'https://xslist.org';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const PLACEHOLDER_PHOTO = 'anonymous2.png';
 
 const MONTHS = {
   january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
@@ -41,11 +45,17 @@ const MONTHS = {
 };
 
 /**
- * Download image from URL
+ * Download image from URL. xslist's image CDN sits on the same
+ * Cloudflare-protected domain as the pages, so a plain request 403s unless
+ * it replays the clearance cookies FlareSolverr obtained while solving the
+ * page challenge.
  */
 function downloadImage(url, destPath) {
+  const clearanceHeaders = getClearanceHeaders();
+  const headers = clearanceHeaders || { 'User-Agent': USER_AGENT };
+
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': USER_AGENT } }, (response) => {
+    https.get(url, { headers }, (response) => {
       if (response.statusCode !== 200) {
         reject(new Error(`Failed to download: ${response.statusCode}`));
         return;
@@ -83,13 +93,13 @@ function normalizeCompare(name) {
 }
 
 /**
- * Parse "1988 May 24" into "1988-05-24"
+ * Parse "Born: May 23, 1988" into "1988-05-23"
  */
 function parseBirthdate(text) {
-  const match = text.match(/(\d{4})\s+([A-Za-z]+)\s+(\d{1,2})/);
+  const match = text.match(/Born:\s*([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/);
   if (!match) return '';
 
-  const [, year, monthName, day] = match;
+  const [, monthName, day, year] = match;
   const month = MONTHS[monthName.toLowerCase()];
   if (!month) return '';
 
@@ -97,20 +107,14 @@ function parseBirthdate(text) {
 }
 
 /**
- * Search xcity for an actor by name, return the detail page URL of the
+ * Search xslist for an actor by name, return the profile page URL of the
  * exact (normalized) name match, or null if not found.
  */
 async function findActorUrl(actorName) {
-  const searchUrl = `${BASE_URL}/idol/?q=${encodeURIComponent(actorName)}&num=30`;
-  console.error(`[xcity] Searching: ${searchUrl}`);
+  const searchUrl = `${BASE_URL}/search?query=${encodeURIComponent(actorName)}&lg=en`;
+  console.error(`[xslist-fs] Searching: ${searchUrl}`);
 
-  const response = await fetch(searchUrl, { headers: { 'User-Agent': USER_AGENT } });
-  if (!response.ok) {
-    console.error(`[xcity] Search request failed: HTTP ${response.status}`);
-    return null;
-  }
-
-  const html = await response.text();
+  const html = await fetchWithFlareSolverr(searchUrl);
   const $ = cheerio.load(html);
 
   const target = normalizeCompare(actorName);
@@ -118,11 +122,13 @@ async function findActorUrl(actorName) {
 
   let matchedHref = null;
 
-  $('#avidol .itemBox .name a').each((_, el) => {
+  $('li.clearfix h3 a').each((_, el) => {
     if (matchedHref) return;
 
     const title = $(el).attr('title') || $(el).text();
-    const candidate = normalizeCompare(title);
+    // Titles look like "Yui Hatano - 波多野結衣" - compare only the English half
+    const englishName = title.split(' - ')[0];
+    const candidate = normalizeCompare(englishName);
 
     if (candidate === target || candidate === targetInverted) {
       matchedHref = $(el).attr('href');
@@ -130,89 +136,76 @@ async function findActorUrl(actorName) {
   });
 
   if (!matchedHref) {
-    console.error('[xcity] No exact name match in search results');
+    console.error('[xslist-fs] No exact name match in search results');
     return null;
   }
 
-  return new URL(matchedHref, `${BASE_URL}/idol/`).href;
+  return new URL(matchedHref, `${BASE_URL}/`).href;
 }
 
 /**
- * Scrape actor detail page into standard actor schema
+ * Scrape actor profile page into standard actor schema
  */
 async function scrapeDetailPage(detailUrl, actorName) {
-  console.error(`[xcity] Scraping: ${detailUrl}`);
+  console.error(`[xslist-fs] Scraping: ${detailUrl}`);
 
-  const response = await fetch(detailUrl, { headers: { 'User-Agent': USER_AGENT } });
-  if (!response.ok) {
-    console.error(`[xcity] Detail request failed: HTTP ${response.status}`);
-    return null;
-  }
-
-  const html = await response.text();
-
-  // The site can return HTTP 200 for a dead link (soft-404) — a search
-  // result pointing at a removed/renamed profile. Parsing that page would
-  // silently produce an actor with just a name and nothing else, which then
-  // gets saved as if it were real (but sparse) data instead of a failed
-  // lookup — permanently blocking birthdate/measurements from ever being
-  // filled in by a future search.
-  if (html.includes('Page not found')) {
-    console.error(`[xcity] Detail page is a soft-404: ${detailUrl}`);
-    return null;
-  }
-
+  const html = await fetchWithFlareSolverr(detailUrl);
   const $ = cheerio.load(html);
 
   const actor = createEmptyActor(actorName);
 
-  // The h1 sometimes appends a bracketed "aka" list after the primary name,
-  // e.g. "Rina Hatsume[Rin Momoi,Rin Momoi,Rina Hatsusaki,Hikari Mitsuki]" —
-  // split those out into otherNames instead of leaving them fused into name.
-  const rawTitle = $('h1').first().text().trim();
-  const bracketMatch = rawTitle.match(/^(.*?)\s*\[(.+)\]\s*$/);
-  if (bracketMatch) {
-    actor.name = bracketMatch[1].trim() || actorName;
-    actor.otherNames = Array.from(new Set(
-      bracketMatch[2].split(',').map(s => s.trim()).filter(Boolean)
-    ));
-  } else {
-    actor.name = rawTitle || actorName;
-  }
+  const siteName = $('[itemprop="name"]').first().text().trim();
+  actor.name = siteName || actorName;
 
-  // Derive id from the site's own canonical name, not the search query — the
+  // Derive id from the site's own canonical name, not the search query - the
   // same actress found via "First Last" one time and "Last First" another
   // would otherwise get two different ids for the same person.
   actor.id = normalizeActorName(actor.name);
 
-  $('dl.profile dd').each((_, el) => {
-    const $dd = $(el);
-    const label = $dd.find('.koumoku').text().trim();
-    if (!label) return;
+  // Kanji/kana name lives in the h1 right after the name span, e.g.
+  // "Yui Hatano (波多野結衣)" - it is not part of itemprop="additionalName".
+  // When the site has no distinct kanji name it shows the kana reading with
+  // an age suffix instead, e.g. "Shiho Hoshino (ほしのしほ/Age 29)" - strip
+  // that suffix since it's not part of the name.
+  const h1Text = $('h1').first().text().trim();
+  const kanjiMatch = h1Text.match(/\(([^)]+)\)\s*$/);
+  if (kanjiMatch) {
+    actor.altName = kanjiMatch[1].replace(/\s*\/\s*Age\s*\d+\s*$/i, '').trim();
+  }
 
-    const value = $dd.text().slice(label.length).trim();
-    if (!value) return;
+  // Aliases (kana readings, other stage names)
+  const aliases = $('[itemprop="additionalName"]')
+    .map((_, el) => $(el).text().trim())
+    .get()
+    .filter(Boolean);
+  if (aliases.length > 0) {
+    actor.otherNames = Array.from(new Set(aliases));
+  }
 
-    if (label === 'Date of birth') {
-      actor.birthdate = parseBirthdate(value);
-    } else if (label === 'Height') {
-      const heightMatch = value.match(/(\d+)\s*cm/i);
-      if (heightMatch) actor.height = parseInt(heightMatch[1], 10);
-    } else if (label === 'Size') {
-      const sizeMatch = value.match(/B(\d+)(?:\([^)]*\))?\s*W(\d+)\s*H(\d+)/i);
-      if (sizeMatch) {
-        actor.bust = parseInt(sizeMatch[1], 10);
-        actor.waist = parseInt(sizeMatch[2], 10);
-        actor.hips = parseInt(sizeMatch[3], 10);
-      }
-    }
-  });
+  const bodyText = $('body').text();
 
-  const photoSrc = $('.photo .actressThumb').attr('src');
-  const photoUrl = photoSrc ? new URL(photoSrc, `${BASE_URL}/`).href : null;
+  actor.birthdate = parseBirthdate(bodyText);
+
+  const measurementsMatch = bodyText.match(/Measurements:\s*B(\d{2,3})\s*\/\s*W(\d{2,3})\s*\/\s*H(\d{2,3})/i);
+  if (measurementsMatch) {
+    actor.bust = parseInt(measurementsMatch[1], 10);
+    actor.waist = parseInt(measurementsMatch[2], 10);
+    actor.hips = parseInt(measurementsMatch[3], 10);
+  }
+
+  const heightText = $('[itemprop="height"]').first().text().trim();
+  const heightMatch = heightText.match(/(\d+)\s*cm/i);
+  if (heightMatch) {
+    actor.height = parseInt(heightMatch[1], 10);
+  }
+
+  const photoSrc = $('img.profile_img').attr('src');
+  const photoUrl = (photoSrc && !photoSrc.includes(PLACEHOLDER_PHOTO))
+    ? new URL(photoSrc, `${BASE_URL}/`).href
+    : null;
 
   if (photoUrl) {
-    console.error(`[xcity] Downloading photo: ${photoUrl}`);
+    console.error(`[xslist-fs] Downloading photo: ${photoUrl}`);
 
     const actorsPath = getActorsCachePath();
     const urlExtension = photoUrl.match(/\.(webp|jpg|jpeg|png|gif)(\?|$)/i);
@@ -227,26 +220,26 @@ async function scrapeDetailPage(detailUrl, actorName) {
 
     try {
       await downloadImage(photoUrl, photoPath);
-      console.error(`[xcity] Photo saved: ${photoPath}`);
+      console.error(`[xslist-fs] Photo saved: ${photoPath}`);
 
       actor.thumbUrl = photoUrl;
       actor.thumbLocal = photoFilename;
       actor.thumb = `/actors/${photoFilename}`;
     } catch (error) {
-      console.error(`[xcity] Failed to download photo:`, error.message);
+      console.error(`[xslist-fs] Failed to download photo:`, error.message);
       actor.thumbUrl = photoUrl;
       actor.thumb = photoUrl;
     }
   }
 
-  actor.meta.sources = ['xcity'];
+  actor.meta.sources = ['xslist-fs'];
   actor.meta.lastUpdate = new Date().toISOString();
 
   return removeEmptyFields(actor);
 }
 
 /**
- * Scrape a single actor from xcity.jp, trying inverted name on failure
+ * Scrape a single actor from xslist.org, trying inverted name on failure
  */
 async function scrapeActor(actorName, tryInvertedName = false) {
   const searchName = tryInvertedName ? invertName(actorName) : actorName;
@@ -256,24 +249,23 @@ async function scrapeActor(actorName, tryInvertedName = false) {
 
     if (!detailUrl) {
       if (!tryInvertedName) {
-        console.error('[xcity] Trying inverted name...');
+        console.error('[xslist-fs] Trying inverted name...');
         return await scrapeActor(actorName, true);
       }
       return null;
     }
 
-    const actor = await scrapeDetailPage(detailUrl, actorName);
-    return actor;
+    return await scrapeDetailPage(detailUrl, actorName);
 
   } catch (error) {
-    console.error('[xcity] Error:', error.message);
+    console.error('[xslist-fs] Error:', error.message);
 
     if (!tryInvertedName) {
-      console.error('[xcity] Trying inverted name after error...');
+      console.error('[xslist-fs] Trying inverted name after error...');
       try {
         return await scrapeActor(actorName, true);
       } catch (retryError) {
-        console.error('[xcity] Error on retry:', retryError.message);
+        console.error('[xslist-fs] Error on retry:', retryError.message);
         return null;
       }
     }
@@ -302,7 +294,7 @@ async function scrapeActors(names) {
         });
       }
     } catch (error) {
-      console.error(`[xcity] Error processing ${name}:`, error.message);
+      console.error(`[xslist-fs] Error processing ${name}:`, error.message);
       results.push({
         id: normalizeActorName(name),
         name,
@@ -321,9 +313,9 @@ async function main() {
   const names = process.argv.slice(2);
 
   if (names.length === 0) {
-    console.error('[xcity] Usage: node run.js <NAME> [NAME2] [NAME3] ...');
-    console.error('[xcity] Example: node run.js "Yuzuka Miyoshi"');
-    console.error('[xcity] Example: node run.js "Yuzuka Miyoshi" "Yui Hatano"');
+    console.error('[xslist-fs] Usage: node run.js <NAME> [NAME2] [NAME3] ...');
+    console.error('[xslist-fs] Example: node run.js "Yui Hatano"');
+    console.error('[xslist-fs] Example: node run.js "Yui Hatano" "Mao Hamasaki"');
     process.exit(1);
   }
 
@@ -337,7 +329,7 @@ async function main() {
     process.exit(hasErrors ? 1 : 0);
 
   } catch (error) {
-    console.error('[xcity] Critical error:', error.message);
+    console.error('[xslist-fs] Critical error:', error.message);
 
     const errorResults = names.map(name => ({
       id: normalizeActorName(name),

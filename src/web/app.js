@@ -2,6 +2,7 @@ console.log('🚀 app.js v5 loaded!');
 
 let currentItem = null;
 let currentMode = null; // "edit" or "scrape" - will be set in initializeApp
+let appConfig = {};
 
 // Exposed for navbar universal search (edit mode only)
 window.navigateToSearchResult = async (item) => {
@@ -870,10 +871,11 @@ function updateFanartBadges() {
   const badgeUncensored = document.getElementById("fanartBadgeUncensored");
   if (!badgeLeaked || !badgeDecensored || !badgeUncensored) return;
 
+  const badges = appConfig.badges || {};
   const genresLower = (currentItem.genres || []).map(g => String(g).toLowerCase());
-  badgeLeaked.style.display = genresLower.includes("leaked") ? "block" : "none";
-  badgeDecensored.style.display = genresLower.includes("decensored") ? "block" : "none";
-  badgeUncensored.style.display = genresLower.includes("uncensored") ? "block" : "none";
+  badgeLeaked.style.display = (badges.leaked !== false && genresLower.includes("leaked")) ? "block" : "none";
+  badgeDecensored.style.display = (badges.decensored !== false && genresLower.includes("decensored")) ? "block" : "none";
+  badgeUncensored.style.display = (badges.uncensored !== false && genresLower.includes("uncensored")) ? "block" : "none";
 }
 
 function updateDebugJson() {
@@ -912,7 +914,7 @@ function initLazyLoadObserver() {
 // ─────────────────────────────
 // Gestione Actors (Grid Layout)
 // ─────────────────────────────
-function createActorThumbnail(thumbUrl, actorName) {
+function createActorThumbnail(thumbUrl, actorName, localThumb) {
   const thumbnailDiv = document.createElement('div');
   thumbnailDiv.className = 'thumbnail';
 
@@ -924,29 +926,31 @@ function createActorThumbnail(thumbUrl, actorName) {
     const img = document.createElement('img');
     img.alt = actorName;
 
-    // Store fallback data for onerror chain
-    img.dataset.actorId = actorId;
-    img.dataset.extIndex = '0';
-    img.dataset.ts = String(ts);
-    img.dataset.thumbUrl = thumbUrl || '';
+    // Candidate URLs in priority order: this movie's own actors/ folder copy
+    // (ground truth for this specific movie, if one exists — resolved server-side
+    // in localMediaMapper.js), then the centralized store (/actors/ route:
+    // externalPath then internal cache), then the remote thumb URL as a last resort.
+    const candidates = [];
+    if (localThumb) candidates.push(`/media/${encodeURIComponent(localThumb)}?t=${ts}`);
+    extensions.forEach(ext => candidates.push(`/actors/${actorId}.${ext}?t=${ts}`));
+    if (thumbUrl) candidates.push(thumbUrl);
+
+    img.dataset.candidates = JSON.stringify(candidates);
+    img.dataset.candidateIndex = '1';
 
     img.onerror = function () {
-      const nextExt = parseInt(this.dataset.extIndex);
-      if (nextExt < extensions.length) {
-        this.dataset.extIndex = String(nextExt + 1);
-        this.src = `/actors/${this.dataset.actorId}.${extensions[nextExt]}?t=${this.dataset.ts}`;
-      } else if (this.dataset.thumbUrl) {
-        const fallback = this.dataset.thumbUrl;
-        this.onerror = () => { thumbnailDiv.innerHTML = '👤'; };
-        this.src = fallback;
+      const idx = parseInt(this.dataset.candidateIndex, 10);
+      const list = JSON.parse(this.dataset.candidates);
+      if (idx < list.length) {
+        this.dataset.candidateIndex = String(idx + 1);
+        this.src = list[idx];
       } else {
         thumbnailDiv.innerHTML = '👤';
       }
     };
 
-    // Use lazy loading: data-src triggers the first extension attempt on intersect
-    img.dataset.src = `/actors/${actorId}.${extensions[0]}?t=${ts}`;
-    img.dataset.extIndex = '1'; // next index after the first attempt
+    // Use lazy loading: data-src triggers the first candidate attempt on intersect
+    img.dataset.src = candidates[0];
     img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3C/svg%3E';
 
     initLazyLoadObserver();
@@ -997,7 +1001,7 @@ function createActorCard(actor, index) {
   actorCard.dataset.actorIndex = index;
 
   // Crea thumbnail
-  const thumbnail = createActorThumbnail(actor.thumb, actor.name);
+  const thumbnail = createActorThumbnail(actor.thumb, actor.name, actor.localThumb);
   actorCard.appendChild(thumbnail);
 
   // Aggiungi nome e ruolo
@@ -1023,16 +1027,19 @@ function createActorCard(actor, index) {
   actorCard.appendChild(nameDiv);
   actorCard.appendChild(roleDiv);
 
-  // Bottone "+" per salvare in libreria
-  const addToLibBtn = document.createElement('button');
-  addToLibBtn.className = 'actor-add-to-lib-btn';
-  addToLibBtn.title = window.i18n ? window.i18n.t('buttons.addToLibrary') : 'Add to library';
-  addToLibBtn.textContent = '+';
-  addToLibBtn.onclick = (e) => {
+  // Bottone stella per aggiungere/rimuovere dai preferiti — riflette lo
+  // stato attuale (actor.favorite, risolto da localMediaMapper.js al carico)
+  const favoriteBtn = document.createElement('button');
+  favoriteBtn.className = 'actor-add-to-lib-btn' + (actor.favorite ? ' actor-add-to-lib-btn--favorite' : '');
+  favoriteBtn.title = actor.favorite
+    ? (window.i18n ? window.i18n.t('buttons.removeFromFavorites') : 'Remove from favorites')
+    : (window.i18n ? window.i18n.t('buttons.addToFavorites') : 'Add to favorites');
+  favoriteBtn.textContent = '★';
+  favoriteBtn.onclick = (e) => {
     e.stopPropagation();
-    saveActorToLibrary(currentItem.actor[index], addToLibBtn);
+    toggleActorFavorite(currentItem.actor[index], favoriteBtn);
   };
-  actorCard.appendChild(addToLibBtn);
+  actorCard.appendChild(favoriteBtn);
 
   // Click per aprire modal di editing
   actorCard.onclick = () => editActor(index);
@@ -1040,46 +1047,40 @@ function createActorCard(actor, index) {
   return actorCard;
 }
 
-async function saveActorToLibrary(actor, btn) {
-  const id = normalizeActorNameForFile(actor.name || actor.altName || '');
+async function toggleActorFavorite(actor, btn) {
+  // actor.id (resolved server-side at load time, see localMediaMapper.js) is
+  // the real central-index id — falling back to a fresh normalize would
+  // guess wrong for actors whose canonical id is family-name-first.
+  const id = actor.id || normalizeActorNameForFile(actor.name || actor.altName || '');
+  const newFavorite = !actor.favorite;
 
   btn.textContent = '…';
   btn.disabled = true;
 
   try {
-    const res = await fetch('/api/actors/save-to-library', {
+    const res = await fetch('/api/actors/favorite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, name: actor.name, altName: actor.altName, thumb: actor.thumb, role: actor.role }),
+      body: JSON.stringify({ id, favorite: newFavorite, name: actor.name, altName: actor.altName, thumb: actor.thumb, role: actor.role }),
     });
     const data = await res.json();
     if (data.ok) {
-      btn.textContent = '✓';
-      btn.classList.add('actor-add-to-lib-btn--done');
-      showNotification(`✓ ${actor.name || id} ${window.i18n ? window.i18n.t('messages.actorSavedToLibrary') : 'saved to library'}`, 'success');
-      setTimeout(() => {
-        btn.textContent = '+';
-        btn.classList.remove('actor-add-to-lib-btn--done');
-        btn.disabled = false;
-      }, 2000);
-    } else if (data.duplicate) {
-      btn.textContent = '✓';
-      btn.classList.add('actor-add-to-lib-btn--done');
-      showNotification(`${actor.name || id} ${window.i18n ? window.i18n.t('messages.actorAlreadyInLibrary') : 'already in library'}`, 'info');
-      setTimeout(() => {
-        btn.textContent = '+';
-        btn.classList.remove('actor-add-to-lib-btn--done');
-        btn.disabled = false;
-      }, 2000);
+      actor.favorite = newFavorite;
+      btn.classList.toggle('actor-add-to-lib-btn--favorite', newFavorite);
+      btn.title = newFavorite
+        ? (window.i18n ? window.i18n.t('buttons.removeFromFavorites') : 'Remove from favorites')
+        : (window.i18n ? window.i18n.t('buttons.addToFavorites') : 'Add to favorites');
+      const messageKey = newFavorite ? 'messages.actorAddedToFavorites' : 'messages.actorRemovedFromFavorites';
+      const fallback = newFavorite ? 'added to favorites' : 'removed from favorites';
+      showNotification(`✓ ${actor.name || id} ${window.i18n ? window.i18n.t(messageKey) : fallback}`, 'success');
     } else {
-      btn.textContent = '+';
-      btn.disabled = false;
       showNotification((window.i18n ? window.i18n.t('messages.errorPrefix') : 'Error: ') + data.error, 'error');
     }
   } catch (err) {
-    btn.textContent = '+';
-    btn.disabled = false;
     showNotification((window.i18n ? window.i18n.t('messages.errorPrefix') : 'Error: ') + err.message, 'error');
+  } finally {
+    btn.textContent = '★';
+    btn.disabled = false;
   }
 }
 
@@ -1089,7 +1090,7 @@ function updateActorCard(card, actor, index) {
   // Update thumbnail
   const thumbnail = card.querySelector('.thumbnail');
   if (thumbnail) {
-    const newThumbnail = createActorThumbnail(actor.thumb, actor.name);
+    const newThumbnail = createActorThumbnail(actor.thumb, actor.name, actor.localThumb);
     thumbnail.replaceWith(newThumbnail);
   }
 
@@ -1114,6 +1115,24 @@ function updateActorCard(card, actor, index) {
   const roleDiv = card.querySelector('.role');
   if (roleDiv) {
     roleDiv.textContent = actor.role || 'Actress';
+  }
+
+  // Update favorite star — this card's DOM node may be recycled from a
+  // different actor at this same index (renderActors() reuses cards by
+  // position when navigating between movies), so its lit/unlit class and
+  // tooltip must be refreshed here too, not just at initial creation.
+  const favoriteBtn = card.querySelector('.actor-add-to-lib-btn');
+  if (favoriteBtn) {
+    favoriteBtn.classList.toggle('actor-add-to-lib-btn--favorite', !!actor.favorite);
+    favoriteBtn.title = actor.favorite
+      ? (window.i18n ? window.i18n.t('buttons.removeFromFavorites') : 'Remove from favorites')
+      : (window.i18n ? window.i18n.t('buttons.addToFavorites') : 'Add to favorites');
+    favoriteBtn.disabled = false;
+    favoriteBtn.textContent = '★';
+    favoriteBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleActorFavorite(currentItem.actor[index], favoriteBtn);
+    };
   }
 
   // Update click handler
@@ -1932,6 +1951,7 @@ async function initializeApp() {
   const configData = await configRes.json();
 
   if (configData.ok) {
+    appConfig = configData.config;
     const lang = configData.config.language || "en";
 
     // Carica traduzioni

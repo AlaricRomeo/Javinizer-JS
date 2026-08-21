@@ -491,6 +491,14 @@ button:disabled {
 .actor-add-to-lib-btn--done {
   background: #28a745 !important;
 }
+.actor-add-to-lib-btn--favorite {
+  background: #ffcc33;
+  color: #7a5b00;
+  opacity: 1;
+}
+.actor-add-to-lib-btn--favorite:hover {
+  background: #ffc107;
+}
 .add-actor-btn {
   background: #28a745;
   width: 100%;

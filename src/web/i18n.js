@@ -20,6 +20,7 @@ async function loadLanguage(langCode) {
 
     translations = data.translations;
     currentLang = langCode;
+    window.dispatchEvent(new CustomEvent("i18nLoaded"));
     return true;
   } catch (err) {
     console.error(`[i18n] ${t("messages.errorLoadingLanguage")}:`, err);

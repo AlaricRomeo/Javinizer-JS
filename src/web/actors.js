@@ -7,6 +7,8 @@ let actors = [];
 let filteredActors = [];
 let currentActor = null;
 let isNewActor = false;
+let favoritesOnly = true;
+let duplicateGroups = [];
 
 // ============================================
 // Initialization
@@ -16,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize i18n
   initializeI18n().then(() => {
     loadActors();
+    loadDuplicates();
   });
 
   // Wait for modal to be loaded before setting up event listeners
@@ -80,27 +83,48 @@ function setupEventListeners() {
     searchInput.addEventListener('input', handleSearch);
   }
 
+  // Favorites / All filter toggle
+  document.getElementById('filterAllBtn').addEventListener('click', () => setFavoritesOnly(false));
+  document.getElementById('filterFavoritesBtn').addEventListener('click', () => setFavoritesOnly(true));
+
+  // Duplicate actors review modal
+  document.getElementById('reviewDuplicatesBtn').addEventListener('click', openMergeModal);
+  document.getElementById('mergeModalClose').addEventListener('click', closeMergeModal);
+  document.getElementById('mergeModal').addEventListener('click', (e) => {
+    if (e.target.id === 'mergeModal') closeMergeModal();
+  });
+
   // Event listeners are handled by the unified system
   // The unified system will handle all modal operations
 }
 
-function handleSearch(e) {
-  const query = e.target.value.toLowerCase().trim();
+function setFavoritesOnly(value) {
+  favoritesOnly = value;
+  document.getElementById('filterAllBtn').classList.toggle('active', !value);
+  document.getElementById('filterFavoritesBtn').classList.toggle('active', value);
+  applyFilters();
+}
 
-  if (!query) {
-    filteredActors = actors;
-  } else {
-    filteredActors = actors.filter(actor => {
-      const searchText = [
-        actor.id,
-        actor.name,
-        actor.altName,
-        ...(actor.otherNames || [])
-      ].filter(Boolean).join(' ').toLowerCase();
+function handleSearch() {
+  applyFilters();
+}
 
-      return searchText.includes(query);
-    });
-  }
+function applyFilters() {
+  const query = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+
+  filteredActors = actors.filter(actor => {
+    if (favoritesOnly && !actor.favorite) return false;
+
+    if (!query) return true;
+
+    const searchText = [
+      actor.id,
+      actor.name,
+      actor.altName
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return searchText.includes(query);
+  });
 
   renderActors();
 }
@@ -122,8 +146,7 @@ async function loadActors() {
     }
 
     actors = data.actors || [];
-    filteredActors = actors;
-    renderActors();
+    applyFilters();
 
   } catch (error) {
     console.error('Failed to load actors:', error);
@@ -243,6 +266,19 @@ function createActorCard(actor) {
     thumb.innerHTML = '👤';
   }
 
+  // Favorite star toggle
+  const star = document.createElement('div');
+  star.className = 'actor-favorite-star' + (actor.favorite ? ' active' : '');
+  star.innerHTML = '<i class="fas fa-star"></i>';
+  star.title = actor.favorite
+    ? (window.i18n ? window.i18n.t('actors.unmarkFavorite') : 'Remove from favorites')
+    : (window.i18n ? window.i18n.t('actors.markFavorite') : 'Mark as favorite');
+  star.onclick = (e) => {
+    e.stopPropagation();
+    toggleFavorite(actor, star);
+  };
+  thumb.appendChild(star);
+
   // Create info
   const info = document.createElement('div');
   info.className = 'actor-info';
@@ -282,6 +318,14 @@ function createActorCard(actor) {
   info.appendChild(name);
   if (actor.altName) info.appendChild(altName);
   if (statParts.length > 0) info.appendChild(stats);
+
+  // Movies link — jumps to the grid view, pre-filled with this actor's name
+  const moviesLink = document.createElement('a');
+  moviesLink.className = 'actor-movies-link';
+  moviesLink.href = `grid.html?search=${encodeURIComponent(actor.name || actor.altName || '')}`;
+  moviesLink.innerHTML = `<i class="fas fa-film"></i> <span data-i18n="actors.movies">movies</span>`;
+  moviesLink.onclick = (e) => e.stopPropagation();
+  info.appendChild(moviesLink);
 
   card.appendChild(thumb);
   card.appendChild(info);
@@ -334,5 +378,237 @@ async function deleteActor() {
 async function searchActor() {
   // Use unified system
   await ActorModal.searchActor();
+}
+
+// ============================================
+// Favorites
+// ============================================
+
+async function toggleFavorite(actor, starEl) {
+  const newValue = !actor.favorite;
+
+  try {
+    const response = await fetch('/api/actors/favorite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: actor.id, favorite: newValue })
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to update favorite');
+
+    actor.favorite = newValue;
+    starEl.classList.toggle('active', newValue);
+    starEl.title = newValue
+      ? (window.i18n ? window.i18n.t('actors.unmarkFavorite') : 'Remove from favorites')
+      : (window.i18n ? window.i18n.t('actors.markFavorite') : 'Mark as favorite');
+
+    // Drop the card immediately if we're viewing favorites-only and it was just unfavorited
+    if (favoritesOnly && !newValue) {
+      applyFilters();
+    }
+  } catch (error) {
+    console.error('Failed to toggle favorite:', error);
+    alert(window.i18n ? window.i18n.t('actors.favoriteError') : 'Failed to update favorite');
+  }
+}
+
+// ============================================
+// Duplicate Actors — Review & Merge
+// ============================================
+
+async function loadDuplicates() {
+  try {
+    const response = await fetch('/api/actors/duplicates');
+    const data = await response.json();
+    duplicateGroups = data.ok ? (data.groups || []) : [];
+    renderDuplicatesBanner();
+  } catch (error) {
+    console.error('Failed to load duplicate actors:', error);
+  }
+}
+
+function renderDuplicatesBanner() {
+  const banner = document.getElementById('duplicatesBanner');
+  if (duplicateGroups.length === 0) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  const text = window.i18n
+    ? window.i18n.t('actors.duplicatesWarning', { count: duplicateGroups.length })
+    : `${duplicateGroups.length} possible duplicate actor(s) found.`;
+  document.getElementById('duplicatesBannerText').textContent = text;
+  banner.style.display = 'flex';
+}
+
+function renderMergeCandidate(actor, otherId) {
+  const wrap = document.createElement('div');
+  wrap.className = 'merge-candidate';
+
+  if (actor.thumb) {
+    const img = document.createElement('img');
+    img.alt = actor.name || actor.id;
+    img.src = actor.thumb;
+    img.onerror = () => {
+      img.replaceWith(Object.assign(document.createElement('div'), {
+        className: 'merge-candidate-placeholder',
+        innerHTML: '👤'
+      }));
+    };
+    wrap.appendChild(img);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'merge-candidate-placeholder';
+    placeholder.innerHTML = '👤';
+    wrap.appendChild(placeholder);
+  }
+
+  const name = document.createElement('div');
+  name.className = 'merge-candidate-name';
+  name.textContent = actor.name || actor.id;
+  wrap.appendChild(name);
+
+  const meta = document.createElement('div');
+  meta.className = 'merge-candidate-meta';
+  const movieLabel = window.i18n ? window.i18n.t('actors.movies') : 'movies';
+  meta.textContent = `${actor.id} • ${actor.movieCount || 0} ${movieLabel}`;
+  wrap.appendChild(meta);
+
+  const keepBtn = document.createElement('button');
+  keepBtn.type = 'button';
+  keepBtn.className = 'btn btn-success';
+  keepBtn.textContent = window.i18n ? window.i18n.t('actors.keepThis') : 'Keep this one';
+  keepBtn.onclick = () => confirmMerge(actor, otherId);
+  wrap.appendChild(keepBtn);
+
+  return wrap;
+}
+
+function renderMergeModal() {
+  const body = document.getElementById('mergeModalBody');
+  body.innerHTML = '';
+
+  if (duplicateGroups.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'merge-empty';
+    empty.textContent = window.i18n ? window.i18n.t('actors.noDuplicates') : 'No duplicate actors found.';
+    body.appendChild(empty);
+    return;
+  }
+
+  duplicateGroups.forEach(group => {
+    const [a, b] = group.actors;
+    if (!a || !b) return;
+
+    const groupEl = document.createElement('div');
+    groupEl.className = 'merge-group';
+
+    const shared = document.createElement('div');
+    shared.className = 'merge-group-shared';
+    const sharedLabel = window.i18n ? window.i18n.t('actors.sharedNames') : 'Shared name(s)';
+    const sharedLabelEl = document.createElement('div');
+    sharedLabelEl.textContent = `${sharedLabel}: ${group.sharedNames.join(', ')}`;
+    shared.appendChild(sharedLabelEl);
+
+    const notSameLabel = window.i18n ? window.i18n.t('actors.notSamePerson') : 'Not the same person — remove from:';
+    group.sharedNames.forEach(sharedName => {
+      const row = document.createElement('div');
+      row.className = 'merge-shared-name-row';
+
+      const rowLabel = document.createElement('span');
+      rowLabel.className = 'merge-shared-name-label';
+      rowLabel.textContent = `"${sharedName}" — ${notSameLabel}`;
+      row.appendChild(rowLabel);
+
+      [a, b].forEach(actor => {
+        const isPrimary = (actor.name || '').toLowerCase() === sharedName.toLowerCase();
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn-link-remove';
+        btn.textContent = actor.name || actor.id;
+        btn.disabled = isPrimary;
+        if (isPrimary) {
+          btn.title = window.i18n ? window.i18n.t('actors.isPrimaryName') : "This is their primary name";
+        }
+        btn.onclick = () => removeSharedName(actor.id, sharedName, actor.name || actor.id);
+        row.appendChild(btn);
+      });
+
+      shared.appendChild(row);
+    });
+
+    groupEl.appendChild(shared);
+
+    const pair = document.createElement('div');
+    pair.className = 'merge-group-pair';
+    pair.appendChild(renderMergeCandidate(a, b.id));
+
+    const vs = document.createElement('div');
+    vs.className = 'merge-group-vs';
+    vs.textContent = window.i18n ? window.i18n.t('actors.mergeVs') : 'vs';
+    pair.appendChild(vs);
+
+    pair.appendChild(renderMergeCandidate(b, a.id));
+
+    groupEl.appendChild(pair);
+    body.appendChild(groupEl);
+  });
+}
+
+function openMergeModal() {
+  renderMergeModal();
+  document.getElementById('mergeModal').style.display = 'flex';
+}
+
+function closeMergeModal() {
+  document.getElementById('mergeModal').style.display = 'none';
+}
+
+async function confirmMerge(winnerActor, loserId) {
+  const confirmMsg = window.i18n
+    ? window.i18n.t('actors.confirmMerge', { winner: winnerActor.name || winnerActor.id, loser: loserId })
+    : `Merge "${loserId}" into "${winnerActor.name || winnerActor.id}"? This cannot be undone.`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const response = await fetch('/api/actors/merge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ winnerId: winnerActor.id, loserId })
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || 'Merge failed');
+
+    await loadDuplicates();
+    await loadActors();
+    renderMergeModal();
+  } catch (error) {
+    console.error('Failed to merge actors:', error);
+    alert(window.i18n ? window.i18n.t('actors.mergeError') : 'Failed to merge actors');
+  }
+}
+
+async function removeSharedName(actorId, name, actorLabel) {
+  const confirmMsg = window.i18n
+    ? window.i18n.t('actors.confirmRemoveName', { name, actor: actorLabel })
+    : `Remove "${name}" from ${actorLabel}? They won't be flagged as a duplicate for this name anymore.`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const response = await fetch('/api/actors/remove-name', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: actorId, name })
+    });
+    const data = await response.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to remove name');
+
+    await loadDuplicates();
+    await loadActors();
+    renderMergeModal();
+  } catch (error) {
+    console.error('Failed to remove name:', error);
+    alert(window.i18n ? window.i18n.t('actors.removeNameError') : 'Failed to remove name');
+  }
 }
 

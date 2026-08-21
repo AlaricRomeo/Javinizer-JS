@@ -120,9 +120,19 @@ function parseHTML(html, code) {
     $('.star a[href*="vl_star.php"]').each((i, el) => {
       const name = $(el).text().trim();
       if (name) {
+        // javlibrary lists alternate stage names as sibling spans next to the
+        // star link inside the shared .cast container, e.g.
+        // <span class="cast"><span class="star"><a>Hoshino Shiho</a></span> <span id="alias...">(Kujou Shizuku)</span> ...</span>
+        // Surface them as altName hints so actor scrapers can try them too.
+        const aliases = [];
+        $(el).closest('.cast').find('span[id^="alias"]').each((_, aliasEl) => {
+          const alias = $(aliasEl).text().trim().replace(/^\(|\)$/g, '').trim();
+          if (alias) aliases.push(alias);
+        });
+
         actors.push({
           name: name,
-          altName: '',
+          altName: aliases.join(', '),
           role: 'Actress',
           thumb: ''
         });

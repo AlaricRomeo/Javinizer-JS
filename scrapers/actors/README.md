@@ -72,8 +72,7 @@ Vedi [schema.js](./schema.js) per la definizione completa.
 Campi principali:
 - `id` - Slug normalizzato (es. `hayami-remu`)
 - `name` - Nome principale
-- `altName` - Nome alternativo (giapponese)
-- `otherNames` - Array di varianti
+- `altName` - Nomi alternativi/alias separati da virgola (nome giapponese, vecchi nomi d'arte, ecc.) — un solo campo, niente `otherNames` separato
 - `birthdate` - Formato `YYYY-MM-DD`
 - `height`, `bust`, `waist`, `hips` - Numeri in cm
 - `thumbUrl` - URL originale foto (sempre preservato)
@@ -121,8 +120,16 @@ Scrape da xxx.xcity.jp (JAV Idol Listing)
 ```
 
 - `enabled` - Abilita/disabilita actor scraping
-- `externalPath` - Path esterno per cache attori (null = interno)
+- `externalPath` - Destinazione di copia per gli attori preferiti (null = disabilitata). **Non** è più una cache/libreria letta dagli scraper: `data/actors/` è l'unica fonte dati per tutti gli attori, `local` incluso. Quando un attore viene marcato preferito, NFO+foto vengono copiati qui (aggiornati in caso di modifica, rimossi se tolto dai preferiti) — utile per condividere i preferiti con altri media server (Jellyfin, Plex) o altre istanze di Javinizer-JS.
 - `scrapers` - Priorità scraper (local sempre primo)
+
+## Preferiti (Favorites)
+
+- Ogni attore ha un flag `favorite` (bool) persistito sia nell'NFO (`<favorite>true</favorite>`) sia nell'indice SQLite (`actors.favorite`, colonna aggiunta via migrazione automatica in `actorDb.js`).
+- Non viene mai impostato da uno scraper: `upsertActor()` (in `actorDb.js`) esclude deliberatamente questa colonna dai propri `INSERT`/`UPDATE`, così un re-scrape non può azzerarlo.
+- Toggle via `POST /actors/favorite` (`{id, favorite}` o `{name, altName, thumb, role, favorite}` se l'attore non è ancora in `data/actors`, es. scraping attori disabilitato — in quel caso viene creato al volo).
+- Attori duplicati (stesso nome su più record — vedi il warning `[actorDb] N name(s) shared by multiple actor records` a ogni avvio) si uniscono da `actors.html` (banner "Review") oppure da CLI con `node bin/merge-actors.js`; entrambi usano `actorDb.findDuplicateNames()`/`mergeActors()`.
+- Se il nome condiviso è solo un'omonimia (due persone diverse, non un duplicato reale), il banner "Review" offre anche `POST /actors/remove-name` per togliere quel singolo alias da uno dei due record senza unirli.
 
 ## Name Inversion Logic
 
@@ -148,8 +155,7 @@ Scrape da xxx.xcity.jp (JAV Idol Listing)
 
 Costruito da:
 - Nome principale (`name`)
-- Nome alternativo (`altName`)
-- Altri nomi (`otherNames[]`)
+- Nomi alternativi/alias (`altName`)
 
 Rebuild index:
 ```bash

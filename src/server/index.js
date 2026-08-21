@@ -384,4 +384,18 @@ server.on('error', (err) => {
 
 server.listen(PORT, () => {
   console.log(`WebUI active on http://localhost:${PORT}`);
+
+  // Non-blocking data-quality check: names shared by more than one actor
+  // record (likely duplicate identities, or a name collision) — detection
+  // only, never auto-merged, since telling them apart needs human judgement.
+  try {
+    const { findDuplicateNames } = require('../../scrapers/actors/actorDb');
+    const duplicates = findDuplicateNames();
+    if (duplicates.length > 0) {
+      console.warn(`[actorDb] ${duplicates.length} name(s) shared by multiple actor records — review recommended:`);
+      duplicates.forEach(d => console.warn(`  "${d.name}" -> ${d.actorIds.join(', ')}`));
+    }
+  } catch (err) {
+    console.error('[actorDb] Duplicate-name check failed:', err.message);
+  }
 });

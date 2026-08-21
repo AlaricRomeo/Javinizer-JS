@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { normalizeActorName, actorToNFO, nfoToActor } = require('../../scrapers/actors/schema');
 const { getActorsCachePath, findLocalPhoto } = require('../../scrapers/actors/cache-helper');
+const actorDb = require('../../scrapers/actors/actorDb');
 const { loadConfig, getScrapePath } = require('./config');
 
 // ─────────────────────────────
@@ -27,7 +28,7 @@ const { loadConfig, getScrapePath } = require('./config');
  *
  * @param {object} actor - Actor data
  */
-function saveActorLocal(actor) {
+function saveActorLocal(actor, options = {}) {
   const actorsPath = getActorsCachePath();
 
   // Ensure actors directory exists
@@ -44,9 +45,27 @@ function saveActorLocal(actor) {
   // Resolve thumb URL before saving
   actor.thumb = resolveActorThumb(actor);
 
+  // Only a real cache filename (not a temp/upload staging name) should be
+  // remembered as this actor's cache photo reference in the index.
+  const isStagingName = actor.thumbLocal && (actor.thumbLocal.startsWith('upload_') || actor.thumbLocal.startsWith('temp_'));
+  const forDb = isStagingName ? { ...actor, thumbLocal: '' } : actor;
+
+  // Upsert into the persistent index, then write the NFO from the merged
+  // canonical row (not the raw incoming object) so a partial save never
+  // regresses fields the index already knew from a previous scrape/edit —
+  // except the thumb fields, which always reflect this save's own
+  // resolution (it may be a staging reference not yet promoted to cache).
+  const merged = actorDb.upsertActor(forDb, { source: (actor.meta.sources || [])[0], replaceNames: options.replaceNames }) || actor;
+  const toWrite = {
+    ...merged,
+    thumbUrl: actor.thumbUrl || merged.thumbUrl,
+    thumbLocal: actor.thumbLocal || merged.thumbLocal,
+    thumb: actor.thumb || merged.thumb
+  };
+
   try {
     // Convert to NFO format and save
-    const nfoContent = actorToNFO(actor);
+    const nfoContent = actorToNFO(toWrite);
     fs.writeFileSync(actorNfoPath, nfoContent, 'utf-8');
     console.log(`[ActorScraperManager] Saved actor NFO: ${actor.id}.nfo`);
 
@@ -446,10 +465,23 @@ async function runScrapers(actorName, enabledScrapers, actorId, emitter, initial
 
   const merged = mergeActorData(actorName, scraperResults, enabledScrapers);
 
-  // Use ID from scraper results (e.g. from local/externalPath NFO) if available,
-  // otherwise fall back to the derived actorId
-  const idFromResults = scraperResults.map(r => r.data && r.data.id).find(id => id);
-  merged.id = idFromResults || actorId;
+  // Always trust the caller-resolved actorId, never a scraper's own id.
+  // Every scraper computes its own `.id` via createEmptyActor() as a fresh
+  // normalizeActorName(theNameItReturned) — a same-actor name formatted
+  // slightly differently by a remote source (spacing, romanization, word
+  // order) normalizes to a different id than the one already established
+  // locally. actorId was already resolved against the local index (or, for
+  // forceOverwrite, re-derived the same way) before scraping started, so
+  // it's the only id here that's actually anchored to an existing record —
+  // trusting a scraper's id instead used to silently create a duplicate
+  // actor record whenever a remote scraper's name formatting didn't match.
+  merged.id = actorId;
+
+  // Fold in any name variant we tried (local index + caller-supplied hints, e.g.
+  // a movie's own alt name for this actor) that isn't already captured by
+  // name/altName/otherNames, so a future lookup by that variant resolves
+  // instantly instead of repeating this same scrape.
+  foldNameVariants(merged, initialVariants);
 
   console.log(`[ActorScraperManager] Using actor ID: ${merged.id}`);
   saveActorLocal(merged);
@@ -457,9 +489,61 @@ async function runScrapers(actorName, enabledScrapers, actorId, emitter, initial
 }
 
 /**
- * Scrape actor using all enabled scrapers.
+ * Add any variant not already captured by name/altName/otherNames into
+ * otherNames, mutating actor in place. Returns true if something changed.
  */
-async function scrapeActor(actorName, emitter = null) {
+function foldNameVariants(actor, variants) {
+  if (!actor || !variants || variants.length === 0) return false;
+  const known = new Set([
+    (actor.name || '').toLowerCase(),
+    ...(actor.altName || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+    ...(actor.otherNames || []).map(n => n.toLowerCase())
+  ]);
+  const fresh = variants.filter(v => v && !known.has(v.toLowerCase()));
+  if (fresh.length === 0) return false;
+  actor.otherNames = [...(actor.otherNames || []), ...fresh];
+  return true;
+}
+
+/**
+ * Split a raw altName-style string ("中條美華, Nakajo Mika") into trimmed candidates.
+ */
+function splitNameHints(altNameHints) {
+  if (!altNameHints) return [];
+  const raw = Array.isArray(altNameHints) ? altNameHints.join(',') : altNameHints;
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/**
+ * Ensure an actor is scraped/cached, given extra name-variant hints (e.g.
+ * aliases a movie's own scraper surfaced for this actor, like javlibrary-fs's
+ * "(Kujou Shizuku)" cast aliases). Mirrors getActor()'s local-first logic,
+ * but also accepts an emitter for progress events and — critically — folds
+ * fresh hints into an already-complete cached record instead of discarding
+ * them, so alt names discovered from a later movie still reach the actor.
+ *
+ * @returns {Promise<{actorData: object|null, cached: boolean}>}
+ */
+async function ensureActorCached(actorName, altNameHints, emitter = null) {
+  const hints = splitNameHints(altNameHints);
+  const { scrapeLocal } = require('../../scrapers/actors/local/run');
+  const localData = await scrapeLocal(actorName).catch(() => null);
+
+  if (localData && !localData.error && isActorComplete(localData)) {
+    if (foldNameVariants(localData, hints)) saveActorLocal(localData);
+    return { actorData: localData, cached: true };
+  }
+
+  const actorData = await scrapeActor(actorName, emitter, hints);
+  return { actorData, cached: false };
+}
+
+/**
+ * Scrape actor using all enabled scrapers.
+ * @param {string[]|string} altNameHints - Extra name candidates (e.g. user-supplied alt name)
+ *   to try against online scrapers, on top of whatever local data resolves to.
+ */
+async function scrapeActor(actorName, emitter = null, altNameHints = []) {
   const config = loadConfig();
   if (!(config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false)) {
     console.error('[ActorScraperManager] Actor scraping is disabled in config');
@@ -473,16 +557,18 @@ async function scrapeActor(actorName, emitter = null) {
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localData = await scrapeLocal(actorName).catch(() => null);
   const actorId = (localData && localData.id) ? localData.id : normalizeActorName(actorName);
-  const initialVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
+  const localVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
+  const initialVariants = [...new Set([...localVariants, ...splitNameHints(altNameHints)])];
 
   return runScrapers(actorName, enabledScrapers, actorId, emitter, initialVariants);
 }
 
 /**
  * Scrape actor excluding 'local' scraper (used when forceOverwrite=true).
- * Still reads name variants from local/externalPath to help remote scrapers find the actor.
+ * Still reads name variants from the local (data/actors) index to help remote scrapers find the actor.
+ * @param {string[]|string} altNameHints - Extra name candidates (e.g. user-supplied alt name)
  */
-async function scrapeActorExcludingLocal(actorName, emitter = null) {
+async function scrapeActorExcludingLocal(actorName, emitter = null, altNameHints = []) {
   const config = loadConfig();
   if (!(config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false)) {
     console.error('[ActorScraperManager] Actor scraping is disabled in config');
@@ -492,15 +578,14 @@ async function scrapeActorExcludingLocal(actorName, emitter = null) {
   const enabledScrapers = (config.scrapers?.actors?.scrapers || ['javdb']).filter(s => s !== 'local');
   console.log(`[ActorScraperManager] Scraping actor (excluding local): ${actorName}, scrapers: ${enabledScrapers.join(', ')}`);
 
-  // Collect name variants from local/externalPath without using it as a scraper source.
-  // includeLibraryFallback: false — skip the library actors/ folder scan here, since its
-  // self-heal (copying a photo back into cache) would fight the "force fresh data" intent.
+  // Collect name variants from the local (data/actors) index without using it as a scraper source.
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
-  const localData = await scrapeLocal(actorName, { includeLibraryFallback: false }).catch(() => null);
+  const localData = await scrapeLocal(actorName).catch(() => null);
   const actorId = (localData && localData.id) ? localData.id : normalizeActorName(actorName);
-  const initialVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
+  const localVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
+  const initialVariants = [...new Set([...localVariants, ...splitNameHints(altNameHints)])];
   if (initialVariants.length > 0) {
-    console.log(`[ActorScraperManager] Name variants from local: ${initialVariants.join(', ')}`);
+    console.log(`[ActorScraperManager] Name variants: ${initialVariants.join(', ')}`);
   }
 
   return runScrapers(actorName, enabledScrapers, actorId, emitter, initialVariants);
@@ -512,38 +597,49 @@ async function scrapeActorExcludingLocal(actorName, emitter = null) {
  *
  * @param {string} actorName - Actor name (any variant)
  * @param {boolean} forceOverwrite - If true, exclude 'local' scraper to force remote scraping
+ * @param {string[]|string} altNameHints - Extra name candidates (e.g. user-supplied alt name)
+ *   tried against online scrapers alongside actorName.
  * @returns {Promise<object|null>} - Actor data or null
  */
-async function getActor(actorName, forceOverwrite = false) {
+async function getActor(actorName, forceOverwrite = false, altNameHints = []) {
   // If forceOverwrite is true, skip local scraper and force remote scraping
   if (forceOverwrite) {
     console.log(`[ActorScraperManager] Force overwrite enabled, excluding 'local' scraper: ${actorName}`);
-    return await scrapeActorExcludingLocal(actorName);
+    return await scrapeActorExcludingLocal(actorName, null, altNameHints);
   }
 
-  // Normal flow: scan local NFOs (externalPath first, then data/actors)
+  // Normal flow: scan the local (data/actors) index
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localActor = await scrapeLocal(actorName).catch(() => null);
 
   if (localActor && !localActor.error) {
     if (isActorComplete(localActor)) {
       console.log(`[ActorScraperManager] Actor complete in local: ${localActor.id}`);
+      // A movie may have surfaced an alt name for this actor we didn't know yet
+      // (e.g. a different romanization) — remember it so future lookups by that
+      // variant resolve instantly instead of falling through to online scrapers.
+      if (foldNameVariants(localActor, splitNameHints(altNameHints))) saveActorLocal(localActor);
       return localActor;
     }
     // Incomplete — scrape online to fill missing fields
     console.log(`[ActorScraperManager] Actor incomplete in local, filling online: ${localActor.id}`);
-    const scrapedActor = await scrapeActor(actorName);
+    const scrapedActor = await scrapeActor(actorName, null, altNameHints);
     if (scrapedActor) {
       const mergedActor = mergeLocalWithScraped(localActor, scrapedActor);
+      // mergeLocalWithScraped() prefers localActor's otherNames wholesale when
+      // non-empty, which can discard variants scrapeActor() just folded in —
+      // re-fold onto the final merged result to guarantee nothing is lost.
+      foldNameVariants(mergedActor, splitNameHints(altNameHints));
       saveActorLocal(mergedActor);
       return mergedActor;
     }
+    if (foldNameVariants(localActor, splitNameHints(altNameHints))) saveActorLocal(localActor);
     return localActor;
   }
 
   // Not found locally — scrape online
   console.log(`[ActorScraperManager] Actor not found locally, scraping: ${actorName}`);
-  return await scrapeActor(actorName);
+  return await scrapeActor(actorName, null, altNameHints);
 }
 
 // ─────────────────────────────
@@ -553,19 +649,20 @@ async function getActor(actorName, forceOverwrite = false) {
 // getScrapePath() is now imported from config.js and always returns data/scrape
 
 /**
- * Extract all unique actor names from scraped movie JSON files
+ * Extract all unique actor names from scraped movie JSON files, along with
+ * any alt-name hints (e.g. javlibrary-fs's cast aliases) each actor was
+ * scraped with, merged across every movie the actor appears in.
  *
- * @returns {string[]} - Array of unique actor names
+ * @returns {Map<string, Set<string>>} - actor name -> set of alt-name hints
  */
-function extractActorNamesFromMovies() {
+function extractActorEntriesFromMovies() {
   const scrapePath = getScrapePath();
+  const actorEntries = new Map();
 
   if (!fs.existsSync(scrapePath)) {
     console.error('[ActorScraperManager] Scrape directory not found');
-    return [];
+    return actorEntries;
   }
-
-  const actorNames = new Set();
 
   try {
     const files = fs.readdirSync(scrapePath);
@@ -588,9 +685,9 @@ function extractActorNamesFromMovies() {
         // Extract actors from movie data
         if (data.actor && Array.isArray(data.actor)) {
           data.actor.forEach(actor => {
-            if (actor.name) {
-              actorNames.add(actor.name);
-            }
+            if (!actor.name) return;
+            if (!actorEntries.has(actor.name)) actorEntries.set(actor.name, new Set());
+            splitNameHints(actor.altName).forEach(hint => actorEntries.get(actor.name).add(hint));
           });
         }
       } catch (error) {
@@ -598,11 +695,11 @@ function extractActorNamesFromMovies() {
       }
     });
 
-    console.log(`[ActorScraperManager] Found ${actorNames.size} unique actors in ${files.length} movies`);
-    return Array.from(actorNames);
+    console.log(`[ActorScraperManager] Found ${actorEntries.size} unique actors in ${files.length} movies`);
+    return actorEntries;
   } catch (error) {
     console.error('[ActorScraperManager] Failed to extract actor names:', error.message);
-    return [];
+    return actorEntries;
   }
 }
 
@@ -639,8 +736,9 @@ async function batchScrapeActors(emitter = null) {
     });
   }
 
-  // Extract all actor names from movie JSONs
-  const actorNames = extractActorNamesFromMovies();
+  // Extract all actor names (with any alt-name hints) from movie JSONs
+  const actorEntries = extractActorEntriesFromMovies();
+  const actorNames = Array.from(actorEntries.keys());
 
   if (actorNames.length === 0) {
     console.error('[Actor Scrape] No actors found in movie files');
@@ -678,14 +776,12 @@ async function batchScrapeActors(emitter = null) {
     }
 
     try {
-      // Check if already in externalPath or cache and complete
-      const { scrapeLocal } = require('../../scrapers/actors/local/run');
-      const localData = await scrapeLocal(actorName).catch(() => null);
-      if (localData && !localData.error && isActorComplete(localData)) {
+      const hints = Array.from(actorEntries.get(actorName) || []);
+      const { actorData, cached: wasCached } = await ensureActorCached(actorName, hints, emitter);
+
+      if (wasCached) {
         console.log(`[Actor Scrape] Actor found locally and complete: ${actorName}`);
         cached++;
-        // Ensure it's saved to internal cache
-        saveActorLocal(localData);
         if (emitter) {
           emitter.emit('progress', {
             message: `[local] ✓ ${actorName} - complete in library`
@@ -693,9 +789,6 @@ async function batchScrapeActors(emitter = null) {
         }
         continue;
       }
-
-      // Use scrapeActor with emitter to get detailed progress messages
-      const actorData = await scrapeActor(actorName, emitter);
 
       if (actorData) {
         scraped++;
@@ -783,7 +876,7 @@ async function updateMovieActorData() {
         for (const actor of movieData.actor) {
           if (!actor.name) continue;
 
-          // Find actor via NFO scan (externalPath first, then data/actors)
+          // Find actor via NFO scan (data/actors, the local index)
           const { scrapeLocal } = require('../../scrapers/actors/local/run');
           const actorData = await scrapeLocal(actor.name).catch(() => null);
           if (!actorData || actorData.error) {
@@ -885,8 +978,8 @@ async function processSingleMovieActors(movieId, emitter = null) {
     };
   }
 
-  // Extract actors from this movie only
-  const actorNames = new Set();
+  // Extract actors from this movie only (with any alt-name hints)
+  const actorEntries = new Map();
 
   try {
     const content = fs.readFileSync(movieFile, 'utf-8');
@@ -900,9 +993,9 @@ async function processSingleMovieActors(movieId, emitter = null) {
     // Extract actors from movie data
     if (data.actor && Array.isArray(data.actor)) {
       data.actor.forEach(actor => {
-        if (actor.name) {
-          actorNames.add(actor.name);
-        }
+        if (!actor.name) return;
+        if (!actorEntries.has(actor.name)) actorEntries.set(actor.name, new Set());
+        splitNameHints(actor.altName).forEach(hint => actorEntries.get(actor.name).add(hint));
       });
     }
   } catch (error) {
@@ -917,7 +1010,7 @@ async function processSingleMovieActors(movieId, emitter = null) {
     };
   }
 
-  if (actorNames.size === 0) {
+  if (actorEntries.size === 0) {
     console.log('[ActorScraperManager] No actors found in movie');
     return {
       success: true,
@@ -929,11 +1022,12 @@ async function processSingleMovieActors(movieId, emitter = null) {
     };
   }
 
-  console.log(`[ActorScraperManager] Found ${actorNames.size} actor(s) in movie: ${Array.from(actorNames).join(', ')}`);
+  const actorNamesArray = Array.from(actorEntries.keys());
+  console.log(`[ActorScraperManager] Found ${actorNamesArray.length} actor(s) in movie: ${actorNamesArray.join(', ')}`);
 
   if (emitter) {
     emitter.emit('progress', {
-      message: `[Actor Scrape] Found ${actorNames.size} actor(s) to process`
+      message: `[Actor Scrape] Found ${actorNamesArray.length} actor(s) to process`
     });
   }
 
@@ -942,7 +1036,6 @@ async function processSingleMovieActors(movieId, emitter = null) {
   let failed = 0;
 
   // Process each actor
-  const actorNamesArray = Array.from(actorNames);
   for (let i = 0; i < actorNamesArray.length; i++) {
     const actorName = actorNamesArray[i];
     console.log(`[ActorScraperManager] Processing ${i + 1}/${actorNamesArray.length}: ${actorName}`);
@@ -954,13 +1047,12 @@ async function processSingleMovieActors(movieId, emitter = null) {
     }
 
     try {
-      // Check if already in externalPath or cache and complete
-      const { scrapeLocal } = require('../../scrapers/actors/local/run');
-      const localData = await scrapeLocal(actorName).catch(() => null);
-      if (localData && !localData.error && isActorComplete(localData)) {
+      const hints = Array.from(actorEntries.get(actorName) || []);
+      const { actorData, cached: wasCached } = await ensureActorCached(actorName, hints, emitter);
+
+      if (wasCached) {
         console.log(`[ActorScraperManager] Actor found locally and complete: ${actorName}`);
         cached++;
-        saveActorLocal(localData);
         if (emitter) {
           emitter.emit('progress', {
             message: `[local] ✓ ${actorName} - complete in library`
@@ -968,9 +1060,6 @@ async function processSingleMovieActors(movieId, emitter = null) {
         }
         continue;
       }
-
-      // Use scrapeActor with emitter to get detailed progress messages
-      const actorData = await scrapeActor(actorName, emitter);
 
       if (actorData) {
         scraped++;
@@ -1013,7 +1102,7 @@ async function processSingleMovieActors(movieId, emitter = null) {
       for (const actor of movieData.actor) {
         if (!actor.name) continue;
 
-          // Find actor via NFO scan (externalPath first, then data/actors)
+          // Find actor via NFO scan (data/actors, the local index)
           const { scrapeLocal } = require('../../scrapers/actors/local/run');
           const actorData = await scrapeLocal(actor.name).catch(() => null);
           if (!actorData || actorData.error) {
@@ -1089,9 +1178,9 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
   console.log(`[ActorScraperManager] Processing actors for ${movieIds.length} movies: ${movieIds.join(', ')}`);
 
   const scrapePath = getScrapePath();
-  const actorNames = new Set();
+  const actorEntries = new Map();
 
-  // Extract actors from specified movies only
+  // Extract actors from specified movies only (with any alt-name hints)
   for (const movieId of movieIds) {
     const movieFile = path.join(scrapePath, `${movieId}.json`);
 
@@ -1112,9 +1201,9 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
       // Extract actors from movie data
       if (data.actor && Array.isArray(data.actor)) {
         data.actor.forEach(actor => {
-          if (actor.name) {
-            actorNames.add(actor.name);
-          }
+          if (!actor.name) return;
+          if (!actorEntries.has(actor.name)) actorEntries.set(actor.name, new Set());
+          splitNameHints(actor.altName).forEach(hint => actorEntries.get(actor.name).add(hint));
         });
       }
     } catch (error) {
@@ -1122,7 +1211,7 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
     }
   }
 
-  if (actorNames.size === 0) {
+  if (actorEntries.size === 0) {
     console.log('[ActorScraperManager] No actors found in specified movies');
     return {
       success: true,
@@ -1132,11 +1221,12 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
     };
   }
 
-  console.log(`[ActorScraperManager] Found ${actorNames.size} unique actor(s) in ${movieIds.length} movies`);
+  const actorNamesArray = Array.from(actorEntries.keys());
+  console.log(`[ActorScraperManager] Found ${actorNamesArray.length} unique actor(s) in ${movieIds.length} movies`);
 
   if (emitter) {
     emitter.emit('progress', {
-      message: `[Actor Scrape] Found ${actorNames.size} unique actor(s) to process`
+      message: `[Actor Scrape] Found ${actorNamesArray.length} unique actor(s) to process`
     });
   }
 
@@ -1145,7 +1235,6 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
   let failed = 0;
 
   // Process each actor
-  const actorNamesArray = Array.from(actorNames);
   for (let i = 0; i < actorNamesArray.length; i++) {
     const actorName = actorNamesArray[i];
     console.log(`[ActorScraperManager] Processing ${i + 1}/${actorNamesArray.length}: ${actorName}`);
@@ -1157,13 +1246,12 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
     }
 
     try {
-      // Check if already in externalPath or cache and complete
-      const { scrapeLocal } = require('../../scrapers/actors/local/run');
-      const localData = await scrapeLocal(actorName).catch(() => null);
-      if (localData && !localData.error && isActorComplete(localData)) {
+      const hints = Array.from(actorEntries.get(actorName) || []);
+      const { actorData, cached: wasCached } = await ensureActorCached(actorName, hints, emitter);
+
+      if (wasCached) {
         console.log(`[ActorScraperManager] Actor found locally and complete: ${actorName}`);
         cached++;
-        saveActorLocal(localData);
         if (emitter) {
           emitter.emit('progress', {
             message: `[local] ✓ ${actorName} - complete in library`
@@ -1171,9 +1259,6 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
         }
         continue;
       }
-
-      // Use scrapeActor with emitter to get detailed progress messages
-      const actorData = await scrapeActor(actorName, emitter);
 
       if (actorData) {
         scraped++;
@@ -1226,7 +1311,7 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
         for (const actor of movieData.actor) {
           if (!actor.name) continue;
 
-          // Find actor via NFO scan (externalPath first, then data/actors)
+          // Find actor via NFO scan (data/actors, the local index)
           const { scrapeLocal } = require('../../scrapers/actors/local/run');
           const actorData = await scrapeLocal(actor.name).catch(() => null);
           if (!actorData || actorData.error) {
@@ -1338,26 +1423,23 @@ async function enrichActorArray(actors, emitter = null) {
     return summary;
   }
 
-  const actorNames = actors.map(a => a.name).filter(Boolean);
-  summary.total = actorNames.length;
+  const namedActors = actors.filter(a => a.name);
+  summary.total = namedActors.length;
 
-  if (emitter) emitter.emit('progress', { message: `[Actor Scrape] Found ${actorNames.length} actor(s) to process` });
+  if (emitter) emitter.emit('progress', { message: `[Actor Scrape] Found ${namedActors.length} actor(s) to process` });
 
   // Phase 1: scrape/cache each actor
-  for (let i = 0; i < actorNames.length; i++) {
-    const actorName = actorNames[i];
-    if (emitter) emitter.emit('progress', { message: `[Actor Scrape] Processing ${i + 1}/${actorNames.length}: ${actorName}` });
+  for (let i = 0; i < namedActors.length; i++) {
+    const actorName = namedActors[i].name;
+    if (emitter) emitter.emit('progress', { message: `[Actor Scrape] Processing ${i + 1}/${namedActors.length}: ${actorName}` });
 
     try {
-      const { scrapeLocal } = require('../../scrapers/actors/local/run');
-      const localData = await scrapeLocal(actorName).catch(() => null);
-      if (localData && !localData.error && isActorComplete(localData)) {
+      const { actorData, cached: wasCached } = await ensureActorCached(actorName, namedActors[i].altName || [], emitter);
+      if (wasCached) {
         summary.cached++;
-        saveActorLocal(localData);
         if (emitter) emitter.emit('progress', { message: `[local] ✓ ${actorName} - complete in library` });
         continue;
       }
-      const actorData = await scrapeActor(actorName, emitter);
       if (actorData) {
         summary.scraped++;
       } else {

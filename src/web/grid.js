@@ -1,17 +1,46 @@
-let items = [];
-let filteredItems = [];
-let currentMode = 'scrape';
+// Browse state: scrape items are few enough to load in full up front;
+// library items are paginated from the server (see /item/library-list) so a
+// huge library doesn't have to be fully scanned/built before anything shows.
+let scrapeItems = [];
+let scrapeItemsLoaded = false;
+let libraryItems = [];
+let libraryOffset = 0;
+let libraryHasMore = true;
+const LIBRARY_PAGE_SIZE = 60;
 
-// Lazy loading config
-const ITEMS_PER_PAGE = 30; // ~10 rows x 3 columns
-let displayedCount = 0;
+// Search state: null means "browsing" (render scrapeItems + libraryItems).
+// A non-null array means "showing search results" — fetched in full from
+// the server (see /item/library-search) since a query can match anywhere in
+// the library, not just whatever pages happen to be loaded so far.
+let searchResults = null;
+let currentSearchQuery = '';
+
+let currentMode = 'scrape';
+let currentConfig = {};
+
+// SEARCH_FILTER_STORAGE_KEY is declared by navbar-loader.js (loaded first on
+// grid.html) and shared here as a global — do not redeclare it in this file.
+
 let isLoadingMore = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initializeI18n();
-  await loadItems();
   setupEventListeners();
   setupInfiniteScroll();
+
+  // Restore the active search: an explicit deep link (?search=<name>, e.g.
+  // from actors.html's "Movies" link) wins over a query carried over from
+  // edit mode's filter, which in turn wins over nothing.
+  const searchParam = new URLSearchParams(window.location.search).get('search')
+    || sessionStorage.getItem(SEARCH_FILTER_STORAGE_KEY);
+
+  if (searchParam) {
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) searchInput.value = searchParam;
+    await applySearchQuery(searchParam);
+  } else {
+    await resetAndBrowse();
+  }
 });
 
 async function initializeI18n() {
@@ -45,38 +74,96 @@ async function initializeI18n() {
 function setupEventListeners() {
   const searchInput = document.getElementById('searchInput');
   if (searchInput) {
-    searchInput.addEventListener('input', handleSearch);
+    let debounce;
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(debounce);
+      const value = e.target.value;
+      debounce = setTimeout(() => applySearchQuery(value), 250);
+    });
   }
 }
 
-function handleSearch(e) {
-  const query = e.target.value.toLowerCase().trim();
+// Every currently-loaded item, scrape and library alike — used by
+// selectItem/playItem/deleteItem to look items up by identifier regardless
+// of whether they're on screen via browsing or a search.
+function allLoadedItems() {
+  return searchResults !== null ? searchResults : [...scrapeItems, ...libraryItems];
+}
 
-  if (!query) {
-    filteredItems = items;
+async function applySearchQuery(rawQuery) {
+  const query = (rawQuery || '').toLowerCase().trim();
+  currentSearchQuery = query;
+
+  // Keep edit mode's navbar filter in sync, so navigating there carries this
+  // search over too (see navbar-loader.js for the other half of this).
+  if (query) {
+    sessionStorage.setItem(SEARCH_FILTER_STORAGE_KEY, query);
   } else {
-    filteredItems = items.filter(item => {
-      const searchText = [
-        item.id,
-        item.filename,
-        item.title,
-        ...(item.actor || []).map(a => {
-          // Se c'è il nome usa il nome
-          if (a.name) return a.name;
-          // Se non c'è il nome usa l'alternate name
-          if (a.altName) return a.altName;
-          // Se non c'è né il nome né l'alternate name usa "Missing Name"
-          return "Missing Name";
-        })
-      ].filter(Boolean).join(' ').toLowerCase();
-
-      return searchText.includes(query);
-    });
+    sessionStorage.removeItem(SEARCH_FILTER_STORAGE_KEY);
   }
 
-  // Reset pagination when searching
-  displayedCount = 0;
-  renderItems();
+  if (!query) {
+    searchResults = null;
+    // Browsing was never actually loaded if the page started on a search
+    // (e.g. the "Movies" deep link) — make sure it has something to show
+    // once the query is cleared.
+    if (libraryItems.length === 0 && scrapeItems.length === 0) {
+      await resetAndBrowse();
+    } else {
+      renderFromScratch();
+    }
+    return;
+  }
+
+  showLoading(true);
+  try {
+    // Scrape items are already fully loaded client-side — filter them the
+    // same way as before. Library items are searched server-side (see
+    // /item/library-search) since paginated browsing no longer holds the
+    // whole library to filter here. loadScrapeItemsOnce() is a no-op if
+    // browsing already loaded them.
+    await loadScrapeItemsOnce();
+
+    const matchedScrape = scrapeItems.filter(item => itemMatchesQuery(item, query));
+
+    const res = await fetch(`/item/library-search?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    const matchedLibrary = (data.ok ? data.items : []).map(item => ({ ...item, mode: 'edit' }));
+
+    searchResults = sortByStatus([...matchedScrape, ...matchedLibrary]);
+    renderFromScratch();
+  } catch (error) {
+    console.error('Search failed:', error);
+    searchResults = [];
+    renderFromScratch();
+  } finally {
+    showLoading(false);
+  }
+}
+
+function itemMatchesQuery(item, query) {
+  const actorNames = item.actorSearchNames && item.actorSearchNames.length > 0
+    ? item.actorSearchNames
+    : (item.actor || []).flatMap(a => [a.name, a.altName]);
+
+  const searchText = [
+    item.id,
+    item.filename,
+    item.title,
+    ...actorNames
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  return searchText.includes(query);
+}
+
+function sortByStatus(list) {
+  // not matched (scrape) < matched (scrape) < saved (library)
+  const getStatus = (item) => {
+    if (item.mode === 'edit') return 2;
+    if (item.matched === false) return 0;
+    return 1;
+  };
+  return [...list].sort((a, b) => getStatus(a) - getStatus(b));
 }
 
 function setupInfiniteScroll() {
@@ -97,64 +184,75 @@ function setupInfiniteScroll() {
   observer.observe(sentinel);
 }
 
-function loadMoreItems() {
-  if (displayedCount >= filteredItems.length) return;
+async function loadMoreItems() {
+  // Search results are fetched in full up front — nothing more to page in.
+  if (searchResults !== null || !libraryHasMore) return;
 
   isLoadingMore = true;
-  const grid = document.getElementById('itemsGrid');
-  const nextBatch = filteredItems.slice(displayedCount, displayedCount + ITEMS_PER_PAGE);
+  try {
+    const res = await fetch(`/item/library-list?offset=${libraryOffset}&limit=${LIBRARY_PAGE_SIZE}`);
+    const data = await res.json();
+    if (!data.ok) return;
 
-  nextBatch.forEach(item => {
-    const card = createItemCard(item);
-    grid.appendChild(card);
-  });
+    const newItems = data.items.map(item => ({ ...item, mode: 'edit' }));
+    libraryItems = [...libraryItems, ...newItems];
+    libraryOffset += data.items.length;
+    libraryHasMore = data.hasMore;
 
-  displayedCount += nextBatch.length;
-  isLoadingMore = false;
+    appendCards(newItems);
+
+    // A page can come back with 0 usable items (e.g. every item in this
+    // batch was stale and got skipped) while more are still available
+    // further in — keep going instead of stalling the scroll trigger.
+    if (newItems.length === 0 && libraryHasMore) {
+      isLoadingMore = false;
+      await loadMoreItems();
+      return;
+    }
+  } catch (error) {
+    console.error('Failed to load more items:', error);
+  } finally {
+    isLoadingMore = false;
+  }
 }
 
-async function loadItems() {
+async function loadScrapeItemsOnce(force = false) {
+  if (scrapeItemsLoaded && !force) return;
+
+  const configRes = await fetch('/item/config');
+  const configData = await configRes.json();
+  if (configData.ok) {
+    currentMode = configData.config.mode || 'scrape';
+    currentConfig = configData.config;
+  }
+
+  const scrapeRes = await fetch('/item/scrape-list');
+  const scrapeData = await scrapeRes.json();
+  scrapeItems = sortByStatus((scrapeData.ok ? scrapeData.items : []).map(item => ({ ...item, mode: 'scrape' })));
+  scrapeItemsLoaded = true;
+}
+
+// (Re)starts browsing from the first page — used on initial load and after
+// anything that invalidates the current listing (delete, clearing a search).
+async function resetAndBrowse() {
+  libraryItems = [];
+  libraryOffset = 0;
+  libraryHasMore = true;
+  searchResults = null;
+
+  showLoading(true);
   try {
-    showLoading(true);
+    await loadScrapeItemsOnce(true);
 
-    const configRes = await fetch('/item/config');
-    const configData = await configRes.json();
-
-    if (configData.ok) {
-      currentMode = configData.config.mode || 'scrape';
+    const res = await fetch(`/item/library-list?offset=0&limit=${LIBRARY_PAGE_SIZE}`);
+    const data = await res.json();
+    if (data.ok) {
+      libraryItems = data.items.map(item => ({ ...item, mode: 'edit' }));
+      libraryOffset = data.items.length;
+      libraryHasMore = data.hasMore;
     }
 
-    const scrapeRes = await fetch('/item/scrape-list');
-    const scrapeData = await scrapeRes.json();
-
-    const libraryRes = await fetch('/item/library-list');
-    const libraryData = await libraryRes.json();
-
-    const scrapeItems = (scrapeData.ok ? scrapeData.items : []).map(item => ({
-      ...item,
-      mode: 'scrape'
-    }));
-
-    const libraryItems = (libraryData.ok ? libraryData.items : []).map(item => ({
-      ...item,
-      mode: 'edit'
-    }));
-
-    items = [...scrapeItems, ...libraryItems];
-
-    // Sort: not matched, scraped, saved
-    items.sort((a, b) => {
-      const getStatus = (item) => {
-        if (item.mode === 'edit') return 2; // saved
-        if (item.matched === false) return 0; // not matched
-        return 1; // scraped
-      };
-      return getStatus(a) - getStatus(b);
-    });
-
-    filteredItems = items;
-    renderItems();
-
+    renderFromScratch();
   } catch (error) {
     console.error('Failed to load items:', error);
     showEmptyState();
@@ -172,10 +270,11 @@ function showEmptyState() {
   document.getElementById('itemsGrid').style.display = 'none';
 }
 
-function renderItems() {
+function renderFromScratch() {
   const grid = document.getElementById('itemsGrid');
+  const displayItems = allLoadedItems();
 
-  if (filteredItems.length === 0) {
+  if (displayItems.length === 0) {
     showEmptyState();
     return;
   }
@@ -183,15 +282,17 @@ function renderItems() {
   document.getElementById('emptyState').style.display = 'none';
   grid.style.display = 'grid';
   grid.innerHTML = '';
+  appendCards(displayItems);
+}
 
-  // Only render first batch, rest will be loaded on scroll
-  const initialBatch = filteredItems.slice(0, ITEMS_PER_PAGE);
-  initialBatch.forEach(item => {
+function appendCards(itemsToAppend) {
+  const grid = document.getElementById('itemsGrid');
+  grid.style.display = 'grid';
+  document.getElementById('emptyState').style.display = 'none';
+  itemsToAppend.forEach(item => {
     const card = createItemCard(item);
     grid.appendChild(card);
   });
-
-  displayedCount = initialBatch.length;
 }
 
 function createItemCard(item) {
@@ -207,20 +308,21 @@ function createItemCard(item) {
 
   const actors = item.actor || [];
   const actorNames = actors.map(a => {
-    // Se c'è il nome visualizza il nome
+    // Se c'è il nome usa il nome
     if (a.name) return a.name;
-    // Se non c'è il nome visualizza l'alternate name
+    // Se non c'è il nome usa l'alternate name
     if (a.altName) return a.altName;
-    // Se non c'è né il nome né l'alternate name visualizza "Missing Name"
+    // Se non c'è né il nome né l'alternate name usa "Missing Name"
     return "Missing Name";
   }).join(', ');
 
   const genres = item.genre || [];
   const genreText = Array.isArray(genres) ? genres.slice(0, 3).join(', ') : '';
   const genresLower = Array.isArray(genres) ? genres.map(g => String(g).toLowerCase()) : [];
-  const isLeaked = genresLower.includes('leaked');
-  const isDecensored = genresLower.includes('decensored');
-  const isUncensored = genresLower.includes('uncensored');
+  const badges = currentConfig.badges || {};
+  const isLeaked = badges.leaked !== false && genresLower.includes('leaked');
+  const isDecensored = badges.decensored !== false && genresLower.includes('decensored');
+  const isUncensored = badges.uncensored !== false && genresLower.includes('uncensored');
 
   let statusBadge = '';
   if (item.mode === 'edit') {
@@ -281,7 +383,7 @@ function createItemCard(item) {
 
 async function selectItem(identifier) {
   try {
-    const item = items.find(i =>
+    const item = allLoadedItems().find(i =>
       i.folderId === identifier || i.id === identifier || i.filename === identifier
     );
 
@@ -326,8 +428,15 @@ async function deleteItem(identifier, mode) {
     const result = await response.json();
 
     if (result.ok) {
-      // Reload items to refresh the grid
-      await loadItems();
+      // Reload from scratch to refresh the grid (re-run the active search, if
+      // any) — force scrape items to be refetched either way, since the
+      // deleted item could have been one of them.
+      scrapeItemsLoaded = false;
+      if (currentSearchQuery) {
+        await applySearchQuery(currentSearchQuery);
+      } else {
+        await resetAndBrowse();
+      }
     } else {
       alert('Failed to delete item: ' + (result.error || 'Unknown error'));
     }
@@ -338,7 +447,7 @@ async function deleteItem(identifier, mode) {
 }
 
 async function playItem(identifier) {
-  const item = items.find(i =>
+  const item = allLoadedItems().find(i =>
     i.folderId === identifier || i.id === identifier || i.filename === identifier
   );
 

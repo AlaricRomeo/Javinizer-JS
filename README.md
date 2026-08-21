@@ -9,7 +9,7 @@ A powerful, cross-platform web application for managing JAV (Japanese Adult Vide
 ### Core Functionality
 - **Automated Scraping** - Plugin-based scraper system for automatic metadata retrieval from multiple sources
 - **Manual Editing** - Full-featured web UI for manual NFO file editing and library management
-- **Actor Management** - Dedicated actors page with search, thumbnails, and automatic data caching
+- **Actor Management** - Dedicated actors page with search, thumbnails, automatic data caching, favorites, and duplicate-record merging
 - **Web Interface** - Modern, responsive UI with real-time updates via WebSocket
 - **NFO Preservation** - Manual edits are preserved and merged with scraped data intelligently
 - **Library Browser** - Built-in file system browser for easy library navigation
@@ -209,7 +209,9 @@ Additional settings can be configured from the web UI settings page:
 - Scraper selection and priority
 - Actor scraping settings
 - Field-level scraper priorities
-- External actor cache path (optional)
+- Scrape mode folder/title naming patterns
+- Cover badge visibility (uncensored/decensored/leaked)
+- Copy favorite actors to an external path (optional) — actors always live in `data/actors`; this is only a mirror for actors marked as favorite
 
 ## Library Structure
 
@@ -379,9 +381,12 @@ The application provides a REST API for integration:
 - `GET /item/browse?path=...` - Browse directories
 
 ### Actors
-- `GET /actors` - List all cached actors
-- `POST /actors` - Create/update actor
-- `DELETE /actors/:id` - Delete actor
+- `GET /actors` - List all actors from `data/actors` (the single actor library)
+- `POST /actors/save` - Create/update actor
+- `POST /actors/delete` - Delete actor
+- `POST /actors/favorite` - Mark/unmark an actor as favorite (mirrors NFO+photo to the external favorites path if configured)
+- `GET /actors/duplicates` - List actor pairs sharing a name, candidates for merging
+- `POST /actors/merge` - Merge one duplicate actor record into another
 - `POST /actors/search` - Search and scrape actor data
 
 ### WebSocket

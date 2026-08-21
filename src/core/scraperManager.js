@@ -311,6 +311,30 @@ function getFieldPriority(fieldName, config) {
  * @param {object} config - Configuration object
  * @returns {object} - Merged object with all schema fields
  */
+/**
+ * Formats the movie title using the configured pattern (e.g. "{id} {title}")
+ * Applied after merge so it's independent of which scraper provided the title.
+ */
+function formatTitle(item, config) {
+  const pattern = (config.scrapeTitlePattern || "{title}").trim() || "{title}";
+
+  const year = item.releaseDate ? item.releaseDate.split("-")[0] : "";
+  const values = {
+    id: item.id || "",
+    contentid: item.contentId || "",
+    title: item.title || "",
+    alternatetitle: item.alternateTitle || "",
+    label: item.label || "",
+    maker: item.studio || "",
+    year: year
+  };
+
+  return pattern.replace(/\{(\w+)\}/g, (match, key) => {
+    const lowerKey = key.toLowerCase();
+    return values.hasOwnProperty(lowerKey) ? values[lowerKey] : match;
+  }).trim();
+}
+
 function isEmptyValue(value) {
   return value === null ||
          value === undefined ||
@@ -382,6 +406,9 @@ function mergeResults(code, scraperResults, config) {
   });
 
   merged.id = code;
+  if (merged.title) {
+    merged.title = formatTitle(merged, config);
+  }
   return merged;
 }
 
@@ -646,4 +673,4 @@ if (require.main === module) {
 }
 
 // Export for use as module
-module.exports = { scrapeAll, extractCodesFromLibrary, executeScraper, mergeResults, isEmptyValue };
+module.exports = { scrapeAll, extractCodesFromLibrary, executeScraper, mergeResults, isEmptyValue, formatTitle };

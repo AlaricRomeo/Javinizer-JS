@@ -136,7 +136,6 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
 
     // Create actor object
     const actor = createEmptyActor(actorName);
-    actor.id = normalizeActorName(actorName); // Use original name for ID
 
     // Extract name from h1.idol-name (remove " - JAV Profile" suffix)
     const nameElement = await page.$('h1.idol-name');
@@ -156,6 +155,11 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
       if (shouldCloseBrowser) await browser.close();
       return null;
     }
+
+    // Derive id from the site's own canonical name, not the search query — the
+    // same actress found via "First Last" one time and "Last First" another
+    // would otherwise get two different ids for the same person.
+    actor.id = normalizeActorName(actor.name || actorName);
 
     // Extract data from the bold tags section
     // Pattern: <b>DOB:</b> <a>1993-10-20</a>
@@ -184,8 +188,11 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
       actor.height = parseInt(heightMatch[1], 10);
     }
 
-    // Extract Japanese name (JP: 浜崎真緒)
-    const jpNameMatch = pageText.match(/JP:\s*([ぁ-んァ-ヶー一-龯]+)/);
+    // Extract Japanese name (JP: 浜崎真緒). Require at least 2 characters —
+    // a single-character match here is a mis-parse (e.g. page text broke
+    // the name across a line), not a real Japanese name, and would poison
+    // the actor index with a near-meaningless, collision-prone alt name.
+    const jpNameMatch = pageText.match(/JP:\s*([ぁ-んァ-ヶー一-龯]{2,})/);
     if (jpNameMatch) {
       actor.altName = jpNameMatch[1].trim();
     }

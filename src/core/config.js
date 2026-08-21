@@ -30,15 +30,25 @@ function loadConfig() {
       libraryPath: process.env.LIBRARY_PATH || getDefaultLibraryPath(),
       mode: "scrape",
       language: "en",
-      scrapeFolderPattern: "{id}",
+      videoPlayerPath: "",
+      browserPath: "",
+      scrapeFolderPattern: "{id} - ({year})",
+      scrapeTitlePattern: "{title}",
+      badges: {
+        uncensored: false,
+        decensored: false,
+        leaked: false
+      },
       scrapers: {
-        video: ["javlibrary", "r18dev", "libredmm"],
+        video: ["javlibrary", "r18dev"],
         actors: {
           enabled: true,
-          scrapers: ["javdb"],
-          externalPath: ""
+          scrapers: ["local", "javdb", "xcity", "xslist-fs"],
+          externalPath: "",
+          copyToMovieFolder: false
         }
       },
+      genreRules: "",
       fieldPriorities: {}
     };
 

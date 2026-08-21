@@ -39,6 +39,7 @@
           <p data-i18n="about.scrapers.flaresolverr.description">Scrapers ending with <code>-fs</code> require FlareSolverr to be installed and running:</p>
           <ul>
             <li><strong>javlibrary-fs</strong></li>
+            <li><strong>xslist-fs</strong></li>
           </ul>
           <p>
             <span data-i18n="about.scrapers.flaresolverr.installation">To use these scrapers, install FlareSolverr in a Docker Container:</span>
@@ -64,7 +65,12 @@
 
       <div class="instruction-block">
         <h3 data-i18n="about.actors.title">Actor Management</h3>
-        <p data-i18n="about.actors.description">Javinizer-JS can automatically scrape and cache actor data during movie save operations. Actor thumbnails and metadata are stored in <code>data/actors/</code> by default, or in a custom path if configured. This allows for consistent actor information across your library.</p>
+        <p data-i18n="about.actors.description">Javinizer-JS can automatically scrape and cache actor data during movie save operations. Actor thumbnails and metadata are stored in <code>data/actors/</code>, which is the single source of truth for every actor. Mark actors as favorites on the Actors page to keep a curated shortlist and optionally copy their photo/NFO to an external folder. Actors that share a name with another record are flagged automatically and can be merged from the Actors page.</p>
+      </div>
+
+      <div class="instruction-block">
+        <h3 data-i18n="about.grid.title">Grid View</h3>
+        <p data-i18n="about.grid.description">Grid View shows a paginated, searchable view of your library and pending scrape results. Use the search box to filter by title, actor, or ID; an active filter is remembered as you move between Grid View and Edit mode.</p>
       </div>
 
       <div class="instruction-block">

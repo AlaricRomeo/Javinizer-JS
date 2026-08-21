@@ -2,6 +2,11 @@
 // Navbar Component Loader
 // ─────────────────────────────
 
+// Shared with grid.js — lets the active search/filter query survive a full
+// page navigation between edit mode and grid view (sessionStorage, not
+// localStorage, so it doesn't leak into a totally separate browser session).
+const SEARCH_FILTER_STORAGE_KEY = 'javinizer_searchFilter';
+
 /**
  * Loads the navbar component and initializes it
  */
@@ -73,18 +78,10 @@ function initNavbarSearch() {
   const isMain = !isGrid && (pagePath === '/' || pagePath === '' || pagePath.includes('index') || pagePath.endsWith('/'));
 
   if (isGrid) {
-    // Sync with grid's own search input (bidirectional)
-    input.addEventListener('input', (e) => {
-      const gridInput = document.getElementById('searchInput');
-      if (gridInput) {
-        gridInput.value = e.target.value;
-        gridInput.dispatchEvent(new Event('input'));
-      }
-    });
-    setTimeout(() => {
-      const gridInput = document.getElementById('searchInput');
-      if (gridInput) gridInput.addEventListener('input', (e) => { input.value = e.target.value; });
-    }, 500);
+    // Grid view has its own dedicated search box (#searchInput) right above
+    // the grid — a second, synced one up in the navbar was redundant, so
+    // the navbar's copy is hidden here instead of kept in sync with it.
+    if (container) container.style.display = 'none';
     return;
   }
 
@@ -102,13 +99,27 @@ function initNavbarSearch() {
     if (!visible) { input.value = ''; dropdown.style.display = 'none'; }
   };
 
+  let lastFilterQuery = null;
+  let lastFilterCount = 0;
+
   function showFilterBadge(query, count) {
     if (!filterBadge) return;
+    lastFilterQuery = query;
+    lastFilterCount = count;
     filterBadgeText.textContent = window.i18n
       ? window.i18n.t('nav.filterActive', { query, count })
       : `Filter: "${query}" (${count})`;
     filterBadge.style.display = 'flex';
   }
+
+  // The saved-filter restore on init can run before this page's own i18n
+  // init finishes loading translations, showing the raw "nav.filterActive"
+  // key briefly — re-render the badge text once translations are ready.
+  window.addEventListener('i18nLoaded', () => {
+    if (filterBadge && filterBadge.style.display === 'flex' && lastFilterQuery !== null) {
+      showFilterBadge(lastFilterQuery, lastFilterCount);
+    }
+  });
 
   function hideFilterBadge() {
     if (filterBadge) filterBadge.style.display = 'none';
@@ -118,19 +129,32 @@ function initNavbarSearch() {
     filterClearBtn.addEventListener('click', async () => {
       if (window.clearSearchFilter) await window.clearSearchFilter();
       hideFilterBadge();
+      sessionStorage.removeItem(SEARCH_FILTER_STORAGE_KEY);
     });
   }
 
-  async function applyAsFilter(q) {
+  // silent: used when restoring a filter saved before a page navigation —
+  // no alert on a stale/no-longer-matching query, just drop it quietly.
+  async function applyAsFilter(q, silent = false) {
     if (!window.applySearchFilter) return;
     const result = await window.applySearchFilter(q);
     if (result && result.ok && result.count > 0) {
       showFilterBadge(q, result.count);
+      sessionStorage.setItem(SEARCH_FILTER_STORAGE_KEY, q);
     } else {
       hideFilterBadge();
-      alert(window.i18n ? window.i18n.t('messages.noResultsFound') : 'No results found');
+      sessionStorage.removeItem(SEARCH_FILTER_STORAGE_KEY);
+      if (!silent) alert(window.i18n ? window.i18n.t('messages.noResultsFound') : 'No results found');
     }
   }
+
+  // Resume a filter that was active before navigating here from grid view
+  // (or before a page reload) — see grid.js for the other half of this.
+  // The input itself is left empty, same as right after committing any
+  // filter normally; only the badge (and the underlying server-side filter)
+  // needs to reappear.
+  const savedFilterQuery = sessionStorage.getItem(SEARCH_FILTER_STORAGE_KEY);
+  if (savedFilterQuery) applyAsFilter(savedFilterQuery, true);
 
   let searchTimeout;
 

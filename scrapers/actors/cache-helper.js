@@ -1,9 +1,10 @@
 /**
  * Cache Helper for Actor Scrapers
  *
- * Internal cache (data/actors/) is always used for all scrapers.
- * externalPath is a user-curated folder, read-only for the system,
- * used exclusively by the "local" scraper.
+ * Internal cache (data/actors/) is the single source of truth for all
+ * actors and is always used by every scraper, including "local".
+ * externalPath is not read by any scraper — it's only a copy destination
+ * for actors marked as favorite (see POST /actors/favorite in routes.js).
  */
 
 const fs = require('fs');
@@ -48,8 +49,9 @@ function findLocalPhoto(dirPath, actorId) {
 }
 
 /**
- * Get external actors path (user-curated, used only by "local" scraper)
- * Returns null if not configured
+ * Get the "copy favorite actors to" path (user-configured, optional).
+ * Not read by any scraper — only used as a copy destination when an actor
+ * is marked favorite. Returns null if not configured.
  */
 function getExternalActorsPath() {
   try {

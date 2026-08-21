@@ -35,7 +35,10 @@
 
                     <div class="form-group">
                         <label for="videoPlayerPath" data-i18n="config.videoPlayerPath">Video Player Path</label>
-                        <input type="text" id="videoPlayerPath" name="videoPlayerPath" placeholder="e.g. mpv, vlc, or full path to executable">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="videoPlayerPath" name="videoPlayerPath" placeholder="e.g. mpv, vlc, or full path to executable" style="flex: 1;">
+                            <button type="button" id="browseVideoPlayerPath" style="white-space: nowrap;">📁 <span data-i18n="buttons.browse">Browse</span></button>
+                        </div>
                         <div class="info-text" data-i18n="config.videoPlayerPathHelp">
                             Path to your video player executable. Leave empty to disable video playback feature.
                         </div>
@@ -59,6 +62,33 @@
                             Customize the folder name pattern for scraped videos. Use placeholders: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Example: {id} - {title} ({maker} - {year})
                         </div>
                     </div>
+
+                    <div class="form-group">
+                        <label for="scrapeTitlePattern" data-i18n="config.scrapeTitlePattern">Title Field Pattern</label>
+                        <input type="text" id="scrapeTitlePattern" name="scrapeTitlePattern" data-i18n-placeholder="config.scrapeTitlePatternPlaceholder">
+                        <div class="info-text" data-i18n="config.scrapeTitlePatternHelp">
+                            Customize how the title field is composed after scraping, independent of the scraper used. Use placeholders: {id}, {contentid}, {title}, {alternatetitle}, {label}, {maker}, {year}. Example: {id} {title}
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label data-i18n="config.badgesLabel">Cover Badges</label>
+                        <div class="info-text" data-i18n="config.badgesHelp">
+                            Choose which badges to display on covers when the corresponding genre is present.
+                        </div>
+                        <label style="display:block; font-weight:normal;">
+                            <input type="checkbox" id="badgeUncensored" name="badgeUncensored">
+                            <span data-i18n="config.badgeUncensored">Uncensored</span>
+                        </label>
+                        <label style="display:block; font-weight:normal;">
+                            <input type="checkbox" id="badgeDecensored" name="badgeDecensored">
+                            <span data-i18n="config.badgeDecensored">Decensored</span>
+                        </label>
+                        <label style="display:block; font-weight:normal;">
+                            <input type="checkbox" id="badgeLeaked" name="badgeLeaked">
+                            <span data-i18n="config.badgeLeaked">Leaked</span>
+                        </label>
+                    </div>
                 </div>
 
 
@@ -73,6 +103,7 @@
                             <span data-i18n="config.scraperHelp">List of enabled scrapers in priority order (first = highest priority).</span><br>
                             <span data-i18n="config.availableScrapers">Available scrapers:</span> <strong id="availableMovieScrapers">Loading...</strong>
                         </div>
+                        <div class="info-text" data-i18n="config.fsScraperNote"></div>
                     </div>
                 </div>
 
@@ -91,10 +122,10 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="actorsPath" data-i18n="config.externalActorsPath">External Actors Path (optional)</label>
-                        <input type="text" id="actorsPath" name="actorsPath" placeholder="Leave empty for default ./data/actors">
+                        <label for="actorsPath" data-i18n="config.externalActorsPath">Copy favorite actors to (optional)</label>
+                        <input type="text" id="actorsPath" name="actorsPath" placeholder="Leave empty to keep favorites internal only">
                         <div class="info-text" data-i18n="config.externalActorsPathHelp">
-                            Leave empty to use **./data/actors** (default). When set, actor thumbnails will be downloaded to this path and referenced by absolute path. Useful for sharing actor data across multiple Javinizer-JS instances or with other media servers (e.g., Jellyfin, Plex).
+                            Actors are always stored in **./data/actors**. When set, actors marked as favorite are additionally copied (NFO + photo) to this path — updated on edit, removed if unfavorited. Useful for sharing favorite actors with other media servers (e.g., Jellyfin, Plex) or other Javinizer-JS instances.
                         </div>
                     </div>
 
@@ -113,6 +144,7 @@
                             <span data-i18n="config.actorScraperHelp">List of enabled actor scrapers in priority order (first = highest priority).</span><br>
                             <span data-i18n="config.availableScrapers">Available scrapers:</span> <strong id="availableActorScrapers">Loading...</strong>
                         </div>
+                        <div class="info-text" data-i18n="config.fsScraperNote"></div>
                     </div>
                 </div>
 
@@ -146,6 +178,21 @@
                 <!-- Save Button -->
                 <button type="submit" class="save-button" data-i18n="config.saveConfig">💾 Save Configuration</button>
             </form>
+        </div>
+    </div>
+
+    <!-- File Browser Modal -->
+    <div id="fileBrowserModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+        <div style="background:white; padding:20px; border-radius:8px; max-width:600px; width:90%; max-height:80vh; display:flex; flex-direction:column;">
+            <h3 style="margin-top:0;" data-i18n="messages.selectFile">Select Executable</h3>
+            <div style="display:flex; gap:10px; margin-bottom:15px; align-items:center;">
+                <button id="fileBrowserUp" type="button">⬆ Up</button>
+                <input id="fileBrowserPath" type="text" readonly style="flex:1; background:#f0f0f0;">
+            </div>
+            <div id="fileBrowserList" style="flex:1; overflow-y:auto; border:1px solid #ddd; padding:10px; border-radius:4px; margin-bottom:15px; max-height:400px;"></div>
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button id="fileBrowserCancel" type="button" style="background-color:#6c757d;">Cancel</button>
+            </div>
         </div>
     </div>
 
@@ -263,6 +310,16 @@
             // Collect scrape folder pattern
             const scrapeFolderPattern = document.getElementById('scrapeFolderPattern').value.trim();
 
+            // Collect scrape title pattern
+            const scrapeTitlePattern = document.getElementById('scrapeTitlePattern').value.trim();
+
+            // Collect badge visibility
+            const badges = {
+                uncensored: document.getElementById('badgeUncensored').checked,
+                decensored: document.getElementById('badgeDecensored').checked,
+                leaked: document.getElementById('badgeLeaked').checked
+            };
+
             // Collect genre rules
             const genreRules = document.getElementById('genreRules').value;
 
@@ -273,6 +330,8 @@
                 videoPlayerPath: videoPlayerPath || '',
                 browserPath: browserPath || '',
                 scrapeFolderPattern: scrapeFolderPattern || '{id}',  // Folder pattern for scrape mode
+                scrapeTitlePattern: scrapeTitlePattern || '{title}',  // Title field pattern
+                badges: badges,
                 genreRules: genreRules,
                 scrapers: {
                     video: scrapers,
@@ -367,6 +426,12 @@
                 // Load scrape folder pattern
                 const scrapeFolderPattern = config.scrapeFolderPattern || '{id}';
 
+                // Load scrape title pattern
+                const scrapeTitlePattern = config.scrapeTitlePattern || '{title}';
+
+                // Load badge visibility (default: all shown)
+                const badges = config.badges || {};
+
                 // Load genre rules
                 const genreRules = config.genreRules || '';
 
@@ -377,6 +442,10 @@
                 document.getElementById('videoPlayerPath').value = videoPlayerPath;
                 document.getElementById('browserPath').value = browserPath;
                 document.getElementById('scrapeFolderPattern').value = scrapeFolderPattern;
+                document.getElementById('scrapeTitlePattern').value = scrapeTitlePattern;
+                document.getElementById('badgeUncensored').checked = badges.uncensored !== false;
+                document.getElementById('badgeDecensored').checked = badges.decensored !== false;
+                document.getElementById('badgeLeaked').checked = badges.leaked !== false;
                 document.getElementById('genreRules').value = genreRules;
 
                 // Render field priorities
@@ -433,7 +502,7 @@
         async function openFileBrowser(initialPath, callback) {
             fileBrowserCallback = callback;
             document.getElementById('fileBrowserModal').style.display = 'flex';
-            await loadFileBrowserDir(initialPath || '/usr/bin');
+            await loadFileBrowserDir(initialPath || '');
         }
 
         async function loadFileBrowserDir(dirPath) {
@@ -486,29 +555,24 @@
             document.getElementById('fileBrowserModal').style.display = 'none';
         });
 
+        // Extracts the containing directory from a path, cross-platform (/ or \).
+        function dirnameOf(pathValue) {
+            if (!pathValue) return '';
+            const lastSlash = Math.max(pathValue.lastIndexOf('/'), pathValue.lastIndexOf('\\'));
+            return lastSlash > -1 ? pathValue.substring(0, lastSlash) : '';
+        }
+
         document.getElementById('browseBrowserPath').addEventListener('click', () => {
-            const current = document.getElementById('browserPath').value || '/usr/bin';
-            const dir = current.includes('/') ? current.substring(0, current.lastIndexOf('/')) || '/' : current;
-            openFileBrowser(dir, (selectedPath) => {
+            openFileBrowser(dirnameOf(document.getElementById('browserPath').value), (selectedPath) => {
                 document.getElementById('browserPath').value = selectedPath;
             });
         });
+
+        document.getElementById('browseVideoPlayerPath').addEventListener('click', () => {
+            openFileBrowser(dirnameOf(document.getElementById('videoPlayerPath').value), (selectedPath) => {
+                document.getElementById('videoPlayerPath').value = selectedPath;
+            });
+        });
     </script>
-
-<!-- File Browser Modal -->
-<div id="fileBrowserModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
-    <div style="background:white; padding:20px; border-radius:8px; max-width:600px; width:90%; max-height:80vh; display:flex; flex-direction:column;">
-        <h3 style="margin-top:0;" data-i18n="messages.selectFile">Select Executable</h3>
-        <div style="display:flex; gap:10px; margin-bottom:15px; align-items:center;">
-            <button id="fileBrowserUp" type="button">⬆ Up</button>
-            <input id="fileBrowserPath" type="text" readonly style="flex:1; background:#f0f0f0;">
-        </div>
-        <div id="fileBrowserList" style="flex:1; overflow-y:auto; border:1px solid #ddd; padding:10px; border-radius:4px; margin-bottom:15px; max-height:400px;"></div>
-        <div style="display:flex; gap:10px; justify-content:flex-end;">
-            <button id="fileBrowserCancel" type="button" style="background-color:#6c757d;">Cancel</button>
-        </div>
-    </div>
-</div>
-
 </body>
 </html>

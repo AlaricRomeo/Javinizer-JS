@@ -59,6 +59,108 @@ body {
   box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
 }
 
+.btn-warning {
+  background-color: #f0ad4e;
+  color: white;
+}
+
+.btn-warning:hover {
+  background-color: #ec971f;
+}
+
+/* Favorites / All filter toggle */
+.filter-toggle {
+  display: flex;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.filter-btn {
+  padding: 10px 16px;
+  border: none;
+  background: white;
+  color: #666;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.filter-btn + .filter-btn {
+  border-left: 1px solid #ddd;
+}
+
+.filter-btn:hover {
+  background: #f5f7fa;
+}
+
+.filter-btn.active {
+  background: #667eea;
+  color: white;
+}
+
+.filter-btn i {
+  color: #f0ad4e;
+}
+
+.filter-btn.active i {
+  color: #ffe27a;
+}
+
+/* Duplicate actors warning banner */
+.duplicates-banner {
+  background: #fff3cd;
+  border: 1px solid #ffe69c;
+  color: #664d03;
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.duplicates-banner i {
+  font-size: 18px;
+  color: #f0ad4e;
+}
+
+.duplicates-banner span {
+  flex: 1;
+}
+
+/* Favorite star on actor card */
+.actor-favorite-star {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  cursor: pointer;
+  z-index: 2;
+  transition: all 0.2s;
+}
+
+.actor-favorite-star:hover {
+  background: rgba(0, 0, 0, 0.65);
+  transform: scale(1.1);
+}
+
+.actor-favorite-star.active {
+  color: #ffcc33;
+}
+
 .actors-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -81,6 +183,7 @@ body {
 }
 
 .actor-thumb {
+  position: relative;
   width: 100%;
   height: 220px;
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -128,6 +231,20 @@ body {
   color: #999;
 }
 
+.actor-movies-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #667eea;
+  text-decoration: none;
+}
+
+.actor-movies-link:hover {
+  text-decoration: underline;
+}
+
 .empty-state {
   background: white;
   padding: 60px 40px;
@@ -171,4 +288,169 @@ body {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+/* ============================================
+   Merge Duplicates Modal
+   ============================================ */
+
+.merge-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.merge-modal {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 720px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.merge-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #eee;
+}
+
+.merge-modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.merge-modal-close {
+  border: none;
+  background: none;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  color: #999;
+}
+
+.merge-modal-close:hover {
+  color: #333;
+}
+
+.merge-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.merge-group {
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.merge-group-shared {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 12px;
+}
+
+.merge-shared-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.merge-shared-name-label {
+  color: #999;
+}
+
+.btn-link-remove {
+  border: 1px solid #f0ad4e;
+  background: #fff8ec;
+  color: #8a5a00;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-link-remove:hover:not(:disabled) {
+  background: #ffe9c7;
+}
+
+.btn-link-remove:disabled {
+  border-color: #eee;
+  background: #f5f5f5;
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.merge-group-pair {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.merge-candidate {
+  flex: 1;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+}
+
+.merge-candidate img,
+.merge-candidate .merge-candidate-placeholder {
+  width: 80px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  color: #ccc;
+}
+
+.merge-candidate-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+}
+
+.merge-candidate-meta {
+  font-size: 11px;
+  color: #999;
+}
+
+.merge-candidate button {
+  margin-top: 6px;
+  width: 100%;
+}
+
+.merge-group-vs {
+  align-self: center;
+  color: #ccc;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.merge-empty {
+  text-align: center;
+  color: #999;
+  padding: 20px;
 }

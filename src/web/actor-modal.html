@@ -17,11 +17,14 @@
             data-i18n="[placeholder]placeholders.actorNamePlaceholder">
         </div>
 
-        <!-- Alternate Name (full width) -->
+        <!-- Alternate Name / aliases (full width) -->
         <div class="form-group">
-          <label class="form-label" data-i18n="actorModal.altName">Alternate Name (Japanese, etc.)</label>
+          <label class="form-label" data-i18n="actorModal.altName">Alternate Names / Aliases</label>
           <input type="text" id="actorEditAltName" class="form-input"
             data-i18n="[placeholder]placeholders.altNamePlaceholder">
+          <div class="info-text" data-i18n="actorModal.altNameHelp">
+            Comma-separated. Japanese name, former stage names, anything a scraper found — remove one here if it's causing a false duplicate-name warning with another actor.
+          </div>
         </div>
 
         <!-- Role (full width) -->

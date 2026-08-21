@@ -207,8 +207,10 @@ class LibraryReader {
       // no verification I/O. A renamed/deleted NFO inside it self-heals on the next
       // real access (getCurrent/getItem/library-list already handle that).
       const cachedItem = this._cachedById && this._cachedById.get(folderName);
+      let fromCache = false;
       if (cachedItem) {
         this.items.push(cachedItem);
+        fromCache = true;
       } else {
         try {
           const files = fs.readdirSync(folderPath);
@@ -230,9 +232,16 @@ class LibraryReader {
         }
       }
 
-      // Once the requested batch size is satisfied, stop only once the time budget
-      // runs out — lets a warm cache blow through the rest of the library in one go.
-      if (i + 1 >= minEndIdx && Date.now() > deadline) { i++; break; }
+      // Once the requested batch size is satisfied: a cache hit is essentially free,
+      // so keep going bounded only by the time budget — that's what lets a warm cache
+      // blow through the rest of the library in one call. A real disk scan (cache miss,
+      // e.g. a folder switch with no matching cache) must stop right at batchSize
+      // regardless of how fast it was, otherwise "lazy" progressive loading disappears
+      // for new/changed libraries on a fast filesystem.
+      if (i + 1 >= minEndIdx) {
+        if (!fromCache) { i++; break; }
+        if (Date.now() > deadline) { i++; break; }
+      }
     }
 
     this.totalScanned = Math.min(i, this.allFolders.length);
@@ -275,6 +284,21 @@ class LibraryReader {
       this.loadLibrary(500); // Load in larger batches
     }
     return this.items.length;
+  }
+
+  /**
+   * Scan only as far as needed to have at least `count` items ready — for
+   * paginated endpoints (GET /library-list?offset&limit) that must not pay
+   * the cost of a full library scan just to serve one page. A cold scan on
+   * slow/network storage can take fs.readdirSync minutes for thousands of
+   * folders; loadAll() there would block the whole (single-threaded) server
+   * for that entire time. This bounds the blocking work to roughly the
+   * requested page instead.
+   */
+  ensureLoadedUpTo(count) {
+    while (this.items.length < count && !this.fullyLoaded) {
+      this.loadLibrary();
+    }
   }
 
   /**

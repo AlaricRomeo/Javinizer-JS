@@ -84,8 +84,26 @@ function openActorModal(actor) {
   if (overwriteCheckbox) overwriteCheckbox.checked = false;
   lastSearchForceOverwrite = false;
 
-  // Update preview
-  updateActorPreview(a.thumb || '');
+  // Update preview — this movie's own actors/ folder copy (ground truth for
+  // this specific movie) wins if present; falls back to the centralized
+  // store / remote URL via updateActorPreview() otherwise. A rescrape
+  // (searchActor()) intentionally bypasses this and always shows the fresh
+  // centralized result instead, since that's the point of rescraping.
+  if (a.localThumb) {
+    const previewImg = document.getElementById('actorEditPreviewImg');
+    const placeholder = document.getElementById('actorEditPreviewPlaceholder');
+    if (previewImg && placeholder) {
+      previewImg.src = `/media/${encodeURIComponent(a.localThumb)}?t=${Date.now()}`;
+      previewImg.style.display = 'block';
+      placeholder.style.display = 'none';
+      previewImg.onload = () => { previewImg.style.display = 'block'; placeholder.style.display = 'none'; };
+      previewImg.onerror = () => updateActorPreview(a.thumb || '');
+    } else {
+      updateActorPreview(a.thumb || '');
+    }
+  } else {
+    updateActorPreview(a.thumb || '');
+  }
 
   // Show modal
   modal.classList.add('active');
@@ -272,6 +290,7 @@ async function searchActor() {
     alert(window.i18n ? window.i18n.t('messages.enterActorNameFirstAlert') : "Enter actor name before searching");
     return;
   }
+  const altName = (document.getElementById('actorEditAltName')?.value || '').trim();
 
   const searchBtn = document.getElementById('actorEditSearch');
   const searchText = document.getElementById('actorEditSearchText');
@@ -289,7 +308,7 @@ async function searchActor() {
     const response = await fetch('/item/actors/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: actorName, forceOverwrite })
+      body: JSON.stringify({ name: actorName, altName, forceOverwrite })
     });
     const result = await response.json();
 
@@ -301,8 +320,29 @@ async function searchActor() {
 
       const fill = (id, val) => { if (shouldOverwrite(document.getElementById(id)?.value, val)) _setField(id, val); };
 
-      fill('actorEditName', result.actor.name);
-      fill('actorEditAltName', result.actor.altName);
+      // Name/alt names are the actual point of a search — a match means we
+      // now know the actor's real identity, which always wins over whatever
+      // query text got them there (unlike birthdate/measurements below,
+      // where a manually-verified value shouldn't be silently replaced).
+      // otherNames (if the scraper returned any separately from altName)
+      // folds into the same alt-names field — there's no dedicated field for it.
+      // Deduped case-insensitively: the server's own foldNameVariants() can
+      // echo back a name the user just typed (sent along as a search hint)
+      // inside otherNames, which would otherwise double up right here.
+      if (result.actor.name) _setField('actorEditName', result.actor.name);
+      const seenAltNames = new Set();
+      const combinedAltName = [result.actor.altName, ...(result.actor.otherNames || [])]
+        .flatMap(v => (v || '').split(','))
+        .map(v => v.trim())
+        .filter(v => {
+          if (!v) return false;
+          const key = v.toLowerCase();
+          if (seenAltNames.has(key)) return false;
+          seenAltNames.add(key);
+          return true;
+        })
+        .join(', ');
+      if (combinedAltName) _setField('actorEditAltName', combinedAltName);
       fill('actorEditBirthdate', result.actor.birthdate);
       if (shouldOverwrite(document.getElementById('actorEditHeight')?.value, result.actor.height) && result.actor.height > 0) _setField('actorEditHeight', result.actor.height);
       if (shouldOverwrite(document.getElementById('actorEditBust')?.value, result.actor.bust) && result.actor.bust > 0) _setField('actorEditBust', result.actor.bust);
