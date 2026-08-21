@@ -13,6 +13,7 @@ data/actors/
 data/library-cache.json
 data/library-position.json
 data/actors-index.db
+data/update-workdir/
 !data/scrape/.gitkeep
 !data/actors/.gitkeep
 

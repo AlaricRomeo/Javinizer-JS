@@ -15,6 +15,7 @@ const ScrapeReader = require("../core/scrapeReader");
 const ScrapeSaver = require("../core/scrapeSaver");
 const { saveNfoPatch } = require("../core/saveNfo");
 const { cleanupTempDirectory } = require("../core/utils");
+const updateManager = require("../core/updateManager");
 
 // getScrapePath() is now imported from config.js and always returns data/scrape
 
@@ -2384,6 +2385,78 @@ router.get("/actors", async (req, res) => {
 });
 
 // POST /actors/save - Save actor
+// ─────────────────────────────
+// externalPath ("Copy favorite actors to") photo mirroring
+//
+// Two independent bugs used to live here: syncing only copied the new file
+// if a same-named file wasn't already there (so re-uploading the same
+// actor's photo a second time silently no-opped), and neither sync path
+// removed a same-id file under a DIFFERENT extension — so an old .webp
+// could sit next to a fresh .jpg forever. The /actors/:file serving route
+// (index.js) tries extensions in a fixed order and returns the first match,
+// so a stale old-extension file keeps winning over the new photo even
+// though the "current" one did get copied. Centralizing the sync here so
+// there's exactly one place that (a) always overwrites and (b) always
+// clears every other extension first.
+// ─────────────────────────────
+function syncFavoritePhotoToExternal(actorId, cacheFilename) {
+  const { getActorsCachePath, getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+  const extPath = getExternalActorsPath();
+  if (!extPath) return;
+
+  const cachedPhoto = path.join(getActorsCachePath(), cacheFilename);
+  if (!fs.existsSync(cachedPhoto)) return;
+
+  if (!fs.existsSync(extPath)) fs.mkdirSync(extPath, { recursive: true });
+
+  const oldPicsDir = path.join(extPath, 'old-pics');
+  if (!fs.existsSync(oldPicsDir)) fs.mkdirSync(oldPicsDir, { recursive: true });
+
+  const ts = Date.now();
+  const imageExtensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+  imageExtensions.forEach(e => {
+    const oldImg = path.join(extPath, `${actorId}${e}`);
+    if (fs.existsSync(oldImg)) {
+      try { fs.renameSync(oldImg, path.join(oldPicsDir, `${ts}_${actorId}${e}`)); } catch (_) {}
+    }
+  });
+
+  try {
+    fs.copyFileSync(cachedPhoto, path.join(extPath, cacheFilename));
+    console.log(`[ActorSave] Synced photo to externalPath: ${cacheFilename}`);
+    require('../../scrapers/actors/actorDb').touchExternalFile(actorId, cacheFilename);
+  } catch (err) {
+    console.error('[ActorSave] Failed to sync photo to externalPath:', err.message);
+  }
+}
+
+// Mirror image of syncFavoritePhotoToExternal(): removes every extension for
+// this actor id from externalPath (soft-deleted to old-pics/, same as above)
+// and clears the DB's external-file reference. Used when the local photo is
+// deleted — without this, the externalPath copy (and the stale extension it
+// might be under) keeps winning in the serving route's fallback order.
+function removeFavoritePhotoFromExternal(actorId) {
+  const { getExternalActorsPath } = require('../../scrapers/actors/cache-helper');
+  const extPath = getExternalActorsPath();
+  if (!extPath || !fs.existsSync(extPath)) return false;
+
+  const oldPicsDir = path.join(extPath, 'old-pics');
+  const imageExtensions = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
+  let removed = false;
+  imageExtensions.forEach(e => {
+    const img = path.join(extPath, `${actorId}${e}`);
+    if (fs.existsSync(img)) {
+      if (!fs.existsSync(oldPicsDir)) fs.mkdirSync(oldPicsDir, { recursive: true });
+      try { fs.renameSync(img, path.join(oldPicsDir, `${Date.now()}_${actorId}${e}`)); removed = true; } catch (_) {}
+    }
+  });
+
+  if (removed) {
+    require('../../scrapers/actors/actorDb').touchExternalFile(actorId, '');
+  }
+  return removed;
+}
+
 router.post("/actors/save", async (req, res) => {
   try {
     const { normalizeActorName } = require('../../scrapers/actors/schema');
@@ -2505,29 +2578,8 @@ router.post("/actors/save", async (req, res) => {
 
         // Sync new photo to externalPath when this actor is a favorite — that
         // path is now purely a "copy of favorites" destination, not the library.
-        // Soft-delete old photos by moving them to old-pics/ subfolder
-        const extPath = getExternalActorsPath();
-        if (actorData.favorite && extPath) {
-          if (!fs.existsSync(extPath)) fs.mkdirSync(extPath, { recursive: true });
-
-          const oldPicsDir = path.join(extPath, 'old-pics');
-          if (!fs.existsSync(oldPicsDir)) fs.mkdirSync(oldPicsDir, { recursive: true });
-
-          const ts = Date.now();
-          imageExtensions.forEach(e => {
-            const oldImg = path.join(extPath, `${actorData.id}${e}`);
-            if (fs.existsSync(oldImg)) {
-              try { fs.renameSync(oldImg, path.join(oldPicsDir, `${ts}_${actorData.id}${e}`)); } catch (_) {}
-            }
-          });
-
-          try {
-            fs.copyFileSync(newPath, path.join(extPath, newFilename));
-            console.log(`[ActorSave] Synced new photo to externalPath (favorite): ${newFilename}`);
-            require('../../scrapers/actors/actorDb').touchExternalFile(actorData.id, newFilename);
-          } catch (err) {
-            console.error('[ActorSave] Failed to sync photo to externalPath:', err.message);
-          }
+        if (actorData.favorite) {
+          syncFavoritePhotoToExternal(actorData.id, newFilename);
         }
       }
     }
@@ -2565,8 +2617,9 @@ router.post("/actors/save", async (req, res) => {
       const nfoContent = actorToNFO(actorData);
       fs.writeFileSync(actorNfoInExt, nfoContent, 'utf-8');
 
-      // Sync photo to externalPath if it's in cache but not already there.
-      // thumbLocal may be absent from request data — scan cache by actor ID as fallback.
+      // Sync photo to externalPath — thumbLocal may be absent from request
+      // data (e.g. a save with no photo change), so fall back to scanning
+      // the cache by actor ID.
       let thumbLocalToSync = actorData.thumbLocal;
       if (!thumbLocalToSync) {
         const cacheDir = getActorsCachePath();
@@ -2576,19 +2629,7 @@ router.post("/actors/save", async (req, res) => {
         }
       }
       if (thumbLocalToSync) {
-        const cachedPhoto = path.join(getActorsCachePath(), thumbLocalToSync);
-        const extPhoto = path.join(extPath, thumbLocalToSync);
-        if (fs.existsSync(cachedPhoto) && !fs.existsSync(extPhoto)) {
-          try {
-            fs.copyFileSync(cachedPhoto, extPhoto);
-            console.log(`[ActorSave] Synced photo to externalPath: ${thumbLocalToSync}`);
-          } catch (err) {
-            console.error('[ActorSave] Failed to sync photo to externalPath:', err.message);
-          }
-        }
-        if (fs.existsSync(extPhoto)) {
-          require('../../scrapers/actors/actorDb').touchExternalFile(actorData.id, thumbLocalToSync);
-        }
+        syncFavoritePhotoToExternal(actorData.id, thumbLocalToSync);
       }
     }
 
@@ -2871,7 +2912,32 @@ router.post("/actors/delete-image", async (req, res) => {
       }
     }
 
-    if (!deleted) {
+    // Deleting the cache file alone would leave the NFO and index still
+    // pointing at it, and (for favorites) leave the externalPath mirror
+    // untouched — either one makes the deleted photo keep reappearing (the
+    // NFO/index reference resolves as if the file still existed, and the
+    // /actors/:file route falls back to externalPath, which still has its
+    // own copy). So this always clears all three, not just the cache file —
+    // and, importantly, doesn't bail out early if there was no cache file to
+    // begin with, since a stale NFO/external reference can outlive it (e.g.
+    // a previous delete that ran before this cleanup existed).
+    const { nfoToActor, actorToNFO } = require('../../scrapers/actors/schema');
+    const nfoPath = path.join(actorsPath, `${id}.nfo`);
+    let clearedNfoRef = false;
+    if (fs.existsSync(nfoPath)) {
+      const actor = nfoToActor(fs.readFileSync(nfoPath, 'utf-8'));
+      if (actor.thumb || actor.thumbLocal || actor.thumbUrl) {
+        actor.thumb = '';
+        actor.thumbLocal = '';
+        actor.thumbUrl = '';
+        fs.writeFileSync(nfoPath, actorToNFO(actor), 'utf-8');
+        clearedNfoRef = true;
+      }
+    }
+    require('../../scrapers/actors/actorDb').touchCacheFile(id, '');
+    const clearedExternal = removeFavoritePhotoFromExternal(id);
+
+    if (!deleted && !clearedNfoRef && !clearedExternal) {
       return res.json({ ok: false, error: "No local image found to delete" });
     }
 
@@ -3335,6 +3401,56 @@ async function copyActorsToFolder(folderPath, actors) {
 
   return { copied, skipped };
 }
+
+// ─────────────────────────────
+// GET /update/check
+// Result of the version check run once at server startup (see index.js) —
+// no per-request GitHub API call, just serves the cached result.
+// ─────────────────────────────
+router.get("/update/check", (req, res) => {
+  res.json(updateManager.getCachedCheck());
+});
+
+// ─────────────────────────────
+// GET /update/version
+// Current installed version, straight from package.json — unlike
+// /update/check this never depends on the GitHub API being reachable, so
+// the About page can always show it.
+// ─────────────────────────────
+router.get("/update/version", (req, res) => {
+  res.json({ version: require('../../package.json').version });
+});
+
+// ─────────────────────────────
+// POST /update/apply
+// Kicks off the standalone updater (bin/apply-update.js) and exits this
+// process shortly after responding, so the updater can swap files/restart.
+// ─────────────────────────────
+router.post("/update/apply", (req, res) => {
+  try {
+    const { tag, version } = req.body;
+    if (!tag || !version) {
+      return res.json({ ok: false, error: "tag and version required" });
+    }
+
+    updateManager.startUpdateProcess({ tag, version });
+    res.json({ ok: true });
+
+    setTimeout(() => process.exit(0), 500);
+  } catch (err) {
+    console.error("[update/apply] Error:", err.message);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// GET /update/status
+// Polled by the WebUI after POST /update/apply — the server restarts mid-
+// update, so progress is read from a status file rather than a held request.
+// ─────────────────────────────
+router.get("/update/status", (req, res) => {
+  res.json(updateManager.readUpdateStatus());
+});
 
 // ─────────────────────────────
 // POST /actors/copy-to-movie

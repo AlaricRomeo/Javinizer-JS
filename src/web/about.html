@@ -85,12 +85,17 @@
         <li><a href="https://github.com/AlaricRomeo/Javinizer-JS" target="_blank" data-i18n="about.links.github">GitHub Repository</a></li>
         <li><a href="https://github.com/AlaricRomeo/Javinizer-JS/issues" target="_blank" data-i18n="about.links.issues">Report Issues</a></li>
       </ul>
+      <p><strong data-i18n="about.version.label">Version</strong>: <span id="aboutVersion">…</span></p>
     </section>
   </main>
 
   <script>
     // Navbar is loaded automatically by navbar-loader.js
     // i18n is initialized automatically by navbar-loader.js
+    fetch('/item/update/version')
+      .then(r => r.json())
+      .then(data => { document.getElementById('aboutVersion').textContent = data.version ? `v${data.version}` : '?'; })
+      .catch(() => { document.getElementById('aboutVersion').textContent = '?'; });
   </script>
 </body>
 </html>

@@ -238,75 +238,6 @@ function isActorComplete(actor) {
 
 
 /**
- * Merge local actor data with scraped data
- * Local data takes priority for non-empty fields
- *
- * @param {object} localActor - Local actor data
- * @param {object} scrapedActor - Scraped actor data
- * @returns {object} - Merged actor data
- */
-function mergeLocalWithScraped(localActor, scrapedActor) {
-  const { createEmptyActor } = require('../../scrapers/actors/schema');
-
-  console.log('[ActorScraperManager] Merging local and scraped data:');
-  console.log('[ActorScraperManager] Local actor:', JSON.stringify(localActor, null, 2));
-  console.log('[ActorScraperManager] Scraped actor:', JSON.stringify(scrapedActor, null, 2));
-
-  // Start with scraped data as base
-  const merged = { ...scrapedActor };
-
-  // Override with local data for non-empty fields
-  Object.keys(localActor).forEach(fieldName => {
-    // Skip meta field (will be handled separately)
-    if (fieldName === 'meta') return;
-
-    const localValue = localActor[fieldName];
-
-    // Check if local value is non-empty
-    const isEmpty = localValue === null ||
-      localValue === undefined ||
-      localValue === '' ||
-      localValue === 0 ||
-      (Array.isArray(localValue) && localValue.length === 0);
-
-    // Use local value if not empty
-    if (!isEmpty) {
-      console.log(`[ActorScraperManager] Using local value for ${fieldName}: ${localValue}`);
-      merged[fieldName] = localValue;
-    } else {
-      console.log(`[ActorScraperManager] Local value for ${fieldName} is empty, using scraped value: ${scrapedActor[fieldName]}`);
-    }
-  });
-
-  // Preserve important local metadata
-  merged.meta = merged.meta || {};
-  if (localActor.meta) {
-    // Preserve thumbLocal if it was manually uploaded (starts with upload_)
-    if (localActor.meta.thumbLocal && localActor.meta.thumbLocal.startsWith('upload_')) {
-      merged.thumbLocal = localActor.meta.thumbLocal;
-    }
-
-    // Preserve any custom metadata
-    if (localActor.meta.custom) {
-      merged.meta.custom = localActor.meta.custom;
-    }
-  }
-
-  // Update metadata
-  merged.meta.sources = merged.meta.sources || [];
-  if (localActor.meta && localActor.meta.sources) {
-    // Merge sources from both local and scraped
-    const allSources = [...new Set([...localActor.meta.sources, ...merged.meta.sources])];
-    merged.meta.sources = allSources;
-  }
-  merged.meta.lastUpdate = new Date().toISOString();
-
-  console.log('[ActorScraperManager] Merged result:', JSON.stringify(merged, null, 2));
-
-  return merged;
-}
-
-/**
  * Merge actor data from multiple scrapers
  * Uses intelligent priority-based merging
  *
@@ -434,17 +365,14 @@ async function runScrapers(actorName, enabledScrapers, actorId, emitter, initial
       console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
       if (emitter) emitter.emit('progress', { message: `[${scraperName}] ✓ Data found` });
 
-      // Local scraper found data — if complete, skip online scrapers; if incomplete, continue to fill missing fields
+      // Local scraper found data — trust it as-is and skip online scrapers
+      // entirely (this loop is only reached when forceOverwrite is false;
+      // scrapeActorExcludingLocal() handles the forceOverwrite=true path
+      // and never puts 'local' in enabledScrapers to begin with).
       if (scraperName === 'local') {
-        const tempMerged = mergeActorData(actorName, scraperResults, enabledScrapers);
-        if (isActorComplete(tempMerged)) {
-          console.log('[ActorScraperManager] Local found complete actor, skipping online scrapers');
-          if (emitter) emitter.emit('progress', { message: `  ✓ Found locally (complete), skipping online scrapers` });
-          break;
-        }
-        console.log('[ActorScraperManager] Local found incomplete actor, continuing with online scrapers to fill missing fields');
-        if (emitter) emitter.emit('progress', { message: `  ⚠ Found locally but incomplete, fetching missing fields online` });
-        continue;
+        console.log('[ActorScraperManager] Found locally, skipping online scrapers');
+        if (emitter) emitter.emit('progress', { message: `  ✓ Found locally, skipping online scrapers` });
+        break;
       }
 
       const tempMerged = mergeActorData(actorName, scraperResults, enabledScrapers);
@@ -519,8 +447,8 @@ function splitNameHints(altNameHints) {
  * aliases a movie's own scraper surfaced for this actor, like javlibrary-fs's
  * "(Kujou Shizuku)" cast aliases). Mirrors getActor()'s local-first logic,
  * but also accepts an emitter for progress events and — critically — folds
- * fresh hints into an already-complete cached record instead of discarding
- * them, so alt names discovered from a later movie still reach the actor.
+ * fresh hints into an already-cached record instead of discarding them, so
+ * alt names discovered from a later movie still reach the actor.
  *
  * @returns {Promise<{actorData: object|null, cached: boolean}>}
  */
@@ -529,7 +457,7 @@ async function ensureActorCached(actorName, altNameHints, emitter = null) {
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localData = await scrapeLocal(actorName).catch(() => null);
 
-  if (localData && !localData.error && isActorComplete(localData)) {
+  if (localData && !localData.error) {
     if (foldNameVariants(localData, hints)) saveActorLocal(localData);
     return { actorData: localData, cached: true };
   }
@@ -608,31 +536,21 @@ async function getActor(actorName, forceOverwrite = false, altNameHints = []) {
     return await scrapeActorExcludingLocal(actorName, null, altNameHints);
   }
 
-  // Normal flow: scan the local (data/actors) index
+  // Normal flow: scan the local (data/actors) index. An actor found locally
+  // is trusted as-is, complete or not, and online scrapers are never
+  // consulted — the only way to refresh/fill in a local actor is the
+  // explicit forceOverwrite path above. Missing fields (birthdate/measurements
+  // are commonly just unavailable) don't trigger an online lookup anymore;
+  // this trades automatic gap-filling for not risking a homonym mismatch
+  // pulling in the wrong identity/photo on an actor already known locally.
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localActor = await scrapeLocal(actorName).catch(() => null);
 
   if (localActor && !localActor.error) {
-    if (isActorComplete(localActor)) {
-      console.log(`[ActorScraperManager] Actor complete in local: ${localActor.id}`);
-      // A movie may have surfaced an alt name for this actor we didn't know yet
-      // (e.g. a different romanization) — remember it so future lookups by that
-      // variant resolve instantly instead of falling through to online scrapers.
-      if (foldNameVariants(localActor, splitNameHints(altNameHints))) saveActorLocal(localActor);
-      return localActor;
-    }
-    // Incomplete — scrape online to fill missing fields
-    console.log(`[ActorScraperManager] Actor incomplete in local, filling online: ${localActor.id}`);
-    const scrapedActor = await scrapeActor(actorName, null, altNameHints);
-    if (scrapedActor) {
-      const mergedActor = mergeLocalWithScraped(localActor, scrapedActor);
-      // mergeLocalWithScraped() prefers localActor's otherNames wholesale when
-      // non-empty, which can discard variants scrapeActor() just folded in —
-      // re-fold onto the final merged result to guarantee nothing is lost.
-      foldNameVariants(mergedActor, splitNameHints(altNameHints));
-      saveActorLocal(mergedActor);
-      return mergedActor;
-    }
+    console.log(`[ActorScraperManager] Actor found locally: ${localActor.id}`);
+    // A movie may have surfaced an alt name for this actor we didn't know yet
+    // (e.g. a different romanization) — remember it so future lookups by that
+    // variant resolve instantly instead of falling through to online scrapers.
     if (foldNameVariants(localActor, splitNameHints(altNameHints))) saveActorLocal(localActor);
     return localActor;
   }
@@ -780,11 +698,11 @@ async function batchScrapeActors(emitter = null) {
       const { actorData, cached: wasCached } = await ensureActorCached(actorName, hints, emitter);
 
       if (wasCached) {
-        console.log(`[Actor Scrape] Actor found locally and complete: ${actorName}`);
+        console.log(`[Actor Scrape] Actor found locally: ${actorName}`);
         cached++;
         if (emitter) {
           emitter.emit('progress', {
-            message: `[local] ✓ ${actorName} - complete in library`
+            message: `[local] ✓ ${actorName} - found in library`
           });
         }
         continue;
@@ -1051,11 +969,11 @@ async function processSingleMovieActors(movieId, emitter = null) {
       const { actorData, cached: wasCached } = await ensureActorCached(actorName, hints, emitter);
 
       if (wasCached) {
-        console.log(`[ActorScraperManager] Actor found locally and complete: ${actorName}`);
+        console.log(`[ActorScraperManager] Actor found locally: ${actorName}`);
         cached++;
         if (emitter) {
           emitter.emit('progress', {
-            message: `[local] ✓ ${actorName} - complete in library`
+            message: `[local] ✓ ${actorName} - found in library`
           });
         }
         continue;
@@ -1250,11 +1168,11 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
       const { actorData, cached: wasCached } = await ensureActorCached(actorName, hints, emitter);
 
       if (wasCached) {
-        console.log(`[ActorScraperManager] Actor found locally and complete: ${actorName}`);
+        console.log(`[ActorScraperManager] Actor found locally: ${actorName}`);
         cached++;
         if (emitter) {
           emitter.emit('progress', {
-            message: `[local] ✓ ${actorName} - complete in library`
+            message: `[local] ✓ ${actorName} - found in library`
           });
         }
         continue;
@@ -1437,7 +1355,7 @@ async function enrichActorArray(actors, emitter = null) {
       const { actorData, cached: wasCached } = await ensureActorCached(actorName, namedActors[i].altName || [], emitter);
       if (wasCached) {
         summary.cached++;
-        if (emitter) emitter.emit('progress', { message: `[local] ✓ ${actorName} - complete in library` });
+        if (emitter) emitter.emit('progress', { message: `[local] ✓ ${actorName} - found in library` });
         continue;
       }
       if (actorData) {

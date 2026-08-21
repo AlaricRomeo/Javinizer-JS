@@ -348,7 +348,18 @@ async function searchActor() {
       if (shouldOverwrite(document.getElementById('actorEditBust')?.value, result.actor.bust) && result.actor.bust > 0) _setField('actorEditBust', result.actor.bust);
       if (shouldOverwrite(document.getElementById('actorEditWaist')?.value, result.actor.waist) && result.actor.waist > 0) _setField('actorEditWaist', result.actor.waist);
       if (shouldOverwrite(document.getElementById('actorEditHips')?.value, result.actor.hips) && result.actor.hips > 0) _setField('actorEditHips', result.actor.hips);
-      fill('actorEditThumb', result.actor.thumb);
+      // Thumb follows name/altName, not the shouldOverwrite gate below: a
+      // match means we now know the actor's real identity, so the photo that
+      // comes with that identity always wins over whatever stale thumb (e.g.
+      // an earlier mis-identified homonym) was already in the field — same
+      // reasoning as the name/altName block above. Also drop any leftover
+      // manually-uploaded-file reference from before this search, so the
+      // fresh thumb we just set is actually what gets saved.
+      if (result.actor.thumb) {
+        _setField('actorEditThumb', result.actor.thumb);
+        const thumbFieldEl = document.getElementById('actorEditThumb');
+        if (thumbFieldEl) delete thumbFieldEl.dataset.uploadedFile;
+      }
 
       if (result.actor.thumb) updateActorPreview(result.actor.thumb, forceOverwrite);
 

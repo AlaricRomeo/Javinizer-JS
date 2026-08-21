@@ -27,9 +27,98 @@ async function loadNavbar() {
     // Initialize language selector and search
     initLanguageSelector();
     initNavbarSearch();
+    initUpdateBadge();
   } catch (error) {
     console.error('Failed to load navbar:', error);
   }
+}
+
+/**
+ * Shows an "Update available" badge when the server's cached GitHub Releases
+ * check (run once at startup, see src/core/updateManager.js) found a newer
+ * version. Clicking it downloads and applies the update, which restarts the
+ * server — this page then polls /item/update/status until it comes back.
+ */
+async function initUpdateBadge() {
+  const badge = document.getElementById('updateBadge');
+  if (!badge) return;
+
+  let latest = null;
+  try {
+    const res = await fetch('/item/update/check');
+    const data = await res.json();
+    if (!data.ok || !data.updateAvailable) return;
+    latest = data;
+  } catch (error) {
+    console.error('[Update] Check failed:', error);
+    return;
+  }
+
+  const t = (key, vars) => window.i18n ? window.i18n.t(key, vars) : key;
+
+  badge.textContent = t('update.available', { version: latest.latestVersion });
+  badge.style.display = '';
+  badge.addEventListener('click', () => applyUpdate(badge, latest, t));
+}
+
+async function applyUpdate(badge, latest, t) {
+  if (!confirm(t('update.confirmApply', { version: latest.latestVersion }))) return;
+
+  badge.disabled = true;
+  badge.textContent = t('update.applying', { version: latest.latestVersion });
+
+  try {
+    const res = await fetch('/item/update/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tag: latest.tag, version: latest.latestVersion })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'unknown error');
+  } catch (error) {
+    // The server exits right after responding as part of the normal update
+    // flow, so a network error here is expected — fall through to polling.
+  }
+
+  pollUpdateStatus(badge, latest, t);
+}
+
+function pollUpdateStatus(badge, latest, t) {
+  const POLL_INTERVAL_MS = 3000;
+  const POLL_TIMEOUT_MS = 10 * 60 * 1000;
+  const startedAt = Date.now();
+
+  const poll = async () => {
+    if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+      badge.textContent = t('update.applyFailed');
+      return;
+    }
+
+    try {
+      const res = await fetch('/item/update/status');
+      const status = await res.json();
+
+      if (status.state === 'complete') {
+        badge.textContent = t('update.complete', { version: latest.latestVersion });
+        setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
+
+      if (status.state === 'failed') {
+        badge.textContent = t('update.applyFailed');
+        console.error('[Update] Failed:', status.error);
+        return;
+      }
+    } catch (error) {
+      // Server is mid-restart (old process gone, new one not listening yet) —
+      // keep polling silently until it answers again.
+      badge.textContent = t('update.waitingForRestart');
+    }
+
+    setTimeout(poll, POLL_INTERVAL_MS);
+  };
+
+  poll();
 }
 
 /**

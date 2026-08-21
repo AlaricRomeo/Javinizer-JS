@@ -1,5 +1,25 @@
 # Release Notes
 
+## v2.3.0 (2026-08-21)
+
+### 🔄 In-app update system
+
+- New "Update available" badge in the navbar: the server checks GitHub Releases once per startup, and a click downloads the new release, swaps application files, reinstalls dependencies, runs any pending SQLite migrations, and restarts automatically
+- User data is never touched by an update: `config.json`, `data/`, `.env`, `scrapers-dev/`, `.claude/`, and `node_modules` are always preserved
+- Current version now shown on the About page
+
+### 🐛 Actor photo bugs
+
+- Searching for an actor could leave the wrong photo in place after a homonym mismatch even though the search itself found the right actor — the found photo now always replaces whatever was already in the field, same as name/alt name already did
+- Fixed the "Copy favorite actors to" mirror only syncing a new photo when none already existed there, and never removing a same-actor photo left over under a different extension — either could make the mirror keep showing a stale photo indefinitely, even after uploading a fresh one
+- "Delete local photo" now actually clears the photo everywhere (NFO, index, and favorite mirror) instead of only deleting the cached file and leaving stale references behind
+
+### 🧭 Simpler actor matching
+
+- An actor already known locally is now used as-is — online scrapers are no longer consulted to fill in missing fields (birthdate/measurements are often genuinely unavailable), removing a source of homonym mix-ups where looking up an "incomplete" local actor online could pull in the wrong identity/photo
+- Same behavior for interactive actor search and for automatic actor scraping during movie save
+- "Overwrite local data" remains the only way to force a fresh online lookup
+
 ## v2.2.0 (2026-08-21)
 
 ### ⭐ Real actor favorites

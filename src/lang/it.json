@@ -348,6 +348,9 @@
       "githubUrl": "https://github.com/AlaricRomeo/Javinizer-JS",
       "issues": "Segnala Problemi",
       "issuesUrl": "https://github.com/AlaricRomeo/Javinizer-JS/issues"
+    },
+    "version": {
+      "label": "Versione"
     }
   },
   "grid": {
@@ -357,5 +360,13 @@
     "noItemsTitle": "Nessun Elemento Trovato",
     "noItemsDesc": "Nessun elemento disponibile nella libreria.",
     "actors": "Attori"
+  },
+  "update": {
+    "available": "🔄 Aggiornamento disponibile: v{version}",
+    "confirmApply": "Aggiornare a v{version} ora?\n\nL'app si riavvierà automaticamente — richiede circa un minuto, dopodiché dovrai ricaricare la pagina.",
+    "applying": "⏳ Aggiornamento a v{version} in corso...",
+    "waitingForRestart": "Riavvio in corso...",
+    "complete": "✓ Aggiornato a v{version} — ricaricamento...",
+    "applyFailed": "✗ Aggiornamento fallito"
   }
 }

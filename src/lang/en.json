@@ -346,6 +346,9 @@
       "githubUrl": "https://github.com/AlaricRomeo/Javinizer-JS",
       "issues": "Report Issues",
       "issuesUrl": "https://github.com/AlaricRomeo/Javinizer-JS/issues"
+    },
+    "version": {
+      "label": "Version"
     }
   },
   "grid": {
@@ -355,5 +358,13 @@
     "noItemsTitle": "No Items Found",
     "noItemsDesc": "No items available in the library.",
     "actors": "Actors"
+  },
+  "update": {
+    "available": "🔄 Update available: v{version}",
+    "confirmApply": "Update to v{version} now?\n\nThe app will restart automatically — this takes about a minute, and you'll need to reload the page afterwards.",
+    "applying": "⏳ Updating to v{version}...",
+    "waitingForRestart": "Restarting...",
+    "complete": "✓ Updated to v{version} — reloading...",
+    "applyFailed": "✗ Update failed"
   }
 }

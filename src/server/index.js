@@ -398,4 +398,8 @@ server.listen(PORT, () => {
   } catch (err) {
     console.error('[actorDb] Duplicate-name check failed:', err.message);
   }
+
+  // Non-blocking: checks GitHub Releases once per server run, cached for
+  // GET /item/update/check to serve without hitting the API again.
+  require('../core/updateManager').initUpdateCheck();
 });
