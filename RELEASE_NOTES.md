@@ -2,39 +2,6 @@
 
 ## v2.2.0 (2026-08-21)
 
-### 📄 Paginated Grid View
-
-- `grid.js` no longer loads the whole library up front: `GET /item/library-list` now serves it in pages (60 items at a time, `offset`/`limit`), fetching more as you scroll
-- New `GET /item/library-search` endpoint runs search server-side against the lightweight search index instead of scanning everything client-side
-- Fixes Grid View getting stuck on "Loading" for minutes on a cold cache with a large library — the previous `loadAll()`-based endpoint blocked the single Node thread until the entire library was scanned
-- Along the way, fixed N+1 SQLite lookup patterns in actor-alias resolution (`resolveActorSearchNames`) and local actor matching (`findActorByName`), both now memoized per request
-
-### 🔎 Search filter persists across navigation
-
-- An active search/filter query now survives moving between Grid View and Edit mode (`sessionStorage`), instead of resetting on every navigation
-- Removed the redundant search box the navbar showed on top of Grid View's own — Grid View already has one right above the grid
-
-### ⭐ Actors page opens on Favorites
-
-- The Actors page now defaults to the Favorites filter instead of All, matching how the page is used day to day
-
-### 🏗️ Fresh-install defaults
-
-- A new install (no existing `config.json`) now comes pre-configured with sensible defaults: `{id} - ({year})` folder pattern, `{title}` title pattern, cover badges off, `javlibrary`/`r18dev` video scrapers, and `local`/`javdb`/`xcity`/`xslist-fs` actor scrapers with actor scraping enabled
-- Existing installs are unaffected — only applies when `config.json` doesn't exist yet
-
-### 🐛 Fixes
-
-- Library position (last-viewed item in Edit mode) now survives a server restart again — `/item/current` and `/item/by-id/:id` were giving up before a pending restore had a chance to be found in later scan batches
-- Fixed a race where the restored filter badge could briefly show the raw `nav.filterActive` translation key instead of its text, if the badge rendered before this page's own i18n init finished loading translations
-
-### 📚 Documentation
-
-- About page now covers the actor favorites/duplicate-merge system, Grid View, and the `xslist-fs` scraper
-- README's scraper list updated to match what's actually shipped (`javlibrary-fs`, `libredmm`, `local`, `xcity`, `xslist-fs` were missing; `javdatabase` renamed to `javdb`)
-
-## v2.1.0 (2026-08-20)
-
 ### ⭐ Real actor favorites
 
 - Actors now have an actual `favorite` flag (persisted in the NFO and in the SQLite actor index), replacing the old "add to library" concept
@@ -66,6 +33,37 @@
 
 - New "Title Field Pattern" setting (Config → General), alongside the existing folder pattern — same placeholders (`{id}`, `{contentid}`, `{title}`, `{alternatetitle}`, `{label}`, `{maker}`, `{year}`), applied after merge so it's independent of which scraper provided the title
 - New checkboxes to individually show/hide the Uncensored / Decensored / Leaked cover badges
+
+### 📄 Paginated Grid View
+
+- `grid.js` no longer loads the whole library up front: `GET /item/library-list` now serves it in pages (60 items at a time, `offset`/`limit`), fetching more as you scroll
+- New `GET /item/library-search` endpoint runs search server-side against the lightweight search index instead of scanning everything client-side
+- Fixes Grid View getting stuck on "Loading" for minutes on a cold cache with a large library — the previous `loadAll()`-based endpoint blocked the single Node thread until the entire library was scanned
+- Along the way, fixed N+1 SQLite lookup patterns in actor-alias resolution (`resolveActorSearchNames`) and local actor matching (`findActorByName`), both now memoized per request
+
+### 🔎 Search filter persists across navigation
+
+- An active search/filter query now survives moving between Grid View and Edit mode (`sessionStorage`), instead of resetting on every navigation
+- Removed the redundant search box the navbar showed on top of Grid View's own — Grid View already has one right above the grid
+
+### ⭐ Actors page opens on Favorites
+
+- The Actors page now defaults to the Favorites filter instead of All, matching how the page is used day to day
+
+### 🏗️ Fresh-install defaults
+
+- A new install (no existing `config.json`) now comes pre-configured with sensible defaults: `{id} - ({year})` folder pattern, `{title}` title pattern, cover badges off, `javlibrary`/`r18dev` video scrapers, and `local`/`javdb`/`xcity`/`xslist-fs` actor scrapers with actor scraping enabled
+- Existing installs are unaffected — only applies when `config.json` doesn't exist yet
+
+### 🐛 Fixes
+
+- Library position (last-viewed item in Edit mode) now survives a server restart again — `/item/current` and `/item/by-id/:id` were giving up before a pending restore had a chance to be found in later scan batches
+- Fixed a race where the restored filter badge could briefly show the raw `nav.filterActive` translation key instead of its text, if the badge rendered before this page's own i18n init finished loading translations
+
+### 📚 Documentation
+
+- About page now covers the actor favorites/duplicate-merge system, Grid View, and the `xslist-fs` scraper
+- README's scraper list updated to match what's actually shipped (`javlibrary-fs`, `libredmm`, `local`, `xcity`, `xslist-fs` were missing; `javdatabase` renamed to `javdb`)
 
 ## v2.0.0 (2026-08-18)
 
