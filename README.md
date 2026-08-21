@@ -1,512 +1,429 @@
 # Javinizer-js
 
-> **Version 1.0** - Production-ready metadata management for JAV libraries
+> **A self-hosted JAV media manager — organize, scrape, edit and maintain your entire library**
 
-A powerful, cross-platform web application for managing JAV (Japanese Adult Video) metadata. Fully compatible with Jellyfin, Plex, and Kodi media servers.
+Javinizer-js is a complete **self-hosted media manager designed specifically for JAV libraries**.
 
-## Features
+While the project originally started as a metadata scraper, it has evolved far beyond scraping. Today, Javinizer-js provides a complete web-based environment for **browsing, organizing, scraping, editing and maintaining movies and actors**, while keeping standard NFO files at the core of the library.
 
-### Core Functionality
-- **Automated Scraping** - Plugin-based scraper system for automatic metadata retrieval from multiple sources
-- **Manual Editing** - Full-featured web UI for manual NFO file editing and library management
-- **Actor Management** - Dedicated actors page with search, thumbnails, automatic data caching, favorites, and duplicate-record merging
-- **Web Interface** - Modern, responsive UI with real-time updates via WebSocket
-- **NFO Preservation** - Manual edits are preserved and merged with scraped data intelligently
-- **Library Browser** - Built-in file system browser for easy library navigation
-- **Error Resilience** - Automatic validation and recovery from common library issues
+From a single interface you can browse your collection, search and edit movies, scrape metadata from multiple sources, manage genres and tags, maintain artwork, organize actors and alternate names, handle duplicates and favorites, and keep your library ready for **Jellyfin and Kodi**.
 
-### Multi-language Support
-- English - Full interface translation
-- Italiano - Complete Italian translation
-- 日本語 - Complete Japanese translation
-- Extensible - Easy to add new languages via JSON files
+Javinizer-js is actively used to manage a real-world library of more than **3,300 movies**.
 
-### Scraper System
-- **Plugin Architecture** - Add new scrapers without modifying core code
-- **Priority System** - Configure scraper priority per field for optimal metadata quality
-- **Data Merging** - Intelligent merging from multiple sources with conflict resolution
-- **Interactive Support** - Handle Cloudflare, CAPTCHA, and other interactive challenges
-- **Actor Scraping** - Automatic actor data retrieval with built-in caching
-- **Rate Limiting** - Respects source websites with built-in rate limiting (max 80 items per session)
-
-### Cross-Platform Support
-- **Windows** - Full support with optimized file handling and browser cleanup
-- **Linux** - Automatic package manager detection and Node.js installation
-- **macOS** - Native support with all features enabled
-- **No Containers** - Runs directly with Node.js for simple deployment
-
-## Intended Use & Fair Use Policy
-
-**Javinizer-js is designed exclusively for personal, home use.**
-
-This software helps individuals manage metadata for their legally-owned media libraries. To ensure responsible use:
-
-- Personal home media library management only
-- Rate-limited scraping (max 80 items per session) to respect source websites
-- Caching system minimizes redundant requests
-- NOT for commercial use
-- NOT for bulk/automated scraping operations
-- NOT for redistribution of scraped data
-
-By using this software, you agree to:
-1. Use it only for organizing your personal media collection
-2. Respect the rate limits and caching mechanisms
-3. Comply with the terms of service of scraped websites
-4. Not use it for any commercial purposes
-
-**This is a personal hobby project.** The author does not endorse or encourage any violation of copyright laws or terms of service of third-party websites.
-
-## Requirements
-
-- **Node.js** 18 or higher
-- **Chromium/Chrome** (automatically installed via Puppeteer for browser automation)
-- **Disk Space** - Minimal (stores JSON metadata and actor thumbnails only)
-- **Memory** - 512MB minimum, 2GB recommended for browser-based scrapers
-
-## Quick Start
-
-### 🪟 Windows (Easiest Method)
-
-**For users who want to just double-click and run:**
-
-1. **Download the project:**
-   - Click the green "Code" button on GitHub
-   - Select "Download ZIP"
-   - Extract the ZIP file to a folder (e.g., `C:\javinizer-js`)
-
-2. **Install Node.js** (if not already installed):
-   - Download from https://nodejs.org/
-   - Run the installer and follow the prompts
-   - Accept all default options
-
-3. **Run Javinizer-JS:**
-   - Open the extracted folder
-   - **Double-click `start.bat`**
-   - The script will automatically:
-     - Check if Node.js is installed
-     - Install all required dependencies
-     - Start the server
-     - Open your browser at http://localhost:4004
-
-4. **First-time setup:**
-   - Click the ⚙️ Settings icon in the web interface
-   - Browse and select your JAV library folder
-   - Choose your preferred language
-   - Save settings
-
-**That's it!** Javinizer-JS is now running. The browser will open automatically.
+Its goal is simple: provide everything needed to manage a JAV collection without turning the setup itself into a project.
 
 ---
 
-### 🐧 Linux (Automatic Setup)
+## 📸 Screenshots
 
-**One command to install and run everything:**
+### Library
+
+<img src="screenshots/library-grid.jpg" width="60%" alt="Javinizer-js Library">
+
+### Movie Editor
+
+<img src="screenshots/Movie-editor1.jpg" width="60%" alt="Javinizer-js Movie Editor">
+
+<img src="screenshots/movie-editor2.jpg" width="60%" alt="Javinizer-js Movie Metadata and Actors">
+
+### Actors Library
+
+<img src="screenshots/actors-library.jpg" width="60%" alt="Javinizer-js Actors Library">
+
+
+---
+
+## 🎬 More Than a Scraper: A JAV Media Manager
+
+Scraping is only one part of Javinizer-js.
+
+The application is designed around the **library itself**, providing a complete interface for managing movies and their metadata before and after scraping.
+
+You can:
+
+* browse your entire collection through a visual grid;
+* quickly search by title, ID, actor, genre and other metadata;
+* open and manage individual movies;
+* scrape metadata from multiple sources;
+* manually edit NFO metadata;
+* add, remove and organize genres and tags;
+* manage posters and fanart;
+* manage trailer URLs;
+* edit studio, label, director, rating, runtime and other metadata;
+* associate and manage actors;
+* maintain a dedicated actors library;
+* write and update NFO files directly from the interface;
+* launch movies using a configured external player.
+
+Javinizer-js does not require its own proprietary library format.
+
+**Your movies, artwork and NFO files remain your library. Javinizer-js provides the tools to manage them.**
+
+The generated NFO files are fully compatible with **Jellyfin and Kodi**.
+
+---
+
+## 🔎 Metadata Scraping
+
+Javinizer-js includes dedicated scrapers for automatically retrieving movie metadata.
+
+The project was primarily created for managing **censored JAV collections**, and the included scrapers were selected to provide broad metadata coverage for this type of content without unnecessarily multiplying data sources.
+
+This is not an architectural limitation. The plugin-based design allows new scrapers and data sources to be added at any time, including sources covering other types of JAV content.
+
+Anyone interested in developing a new scraper, improving an existing one, or simply suggesting a useful new source is welcome to contribute.
+
+Scraping features include:
+
+* automatic movie scraping;
+* individual and batch scraping;
+* configurable scraper priority;
+* different scraper priorities for individual metadata fields;
+* automatic merging of results from multiple sources;
+* re-scraping existing movies;
+* preservation of manual edits.
+
+A complete movie file is **not required**.
+
+Javinizer-js identifies movies from video filenames beginning with the movie ID. This means that even a trailer or short clip can be used as a placeholder when building or preparing a library.
+
+---
+
+## 🧩 Plugin-based Scrapers
+
+The scraper system is completely modular.
+
+Each scraper is independent and can be added without modifying the Javinizer-js core.
+
+This applies to both **movie scrapers** and **actor scrapers**.
+
+The included scrapers already cover the project's primary use cases, but the architecture places no practical restriction on the number of additional sources that can be implemented.
+
+New scrapers can therefore be developed and added whenever a new source becomes useful.
+
+Developers interested in creating new scrapers — or users who know of useful metadata sources — are welcome to contribute or suggest them.
+
+Dedicated scraper development documentation is included in the repository.
+
+---
+
+## 🌐 Scraping With or Without FlareSolverr
+
+Javinizer-js supports different approaches to scraping protected websites.
+
+One of its distinctive features is the ability to use **JavLibrary without requiring FlareSolverr**.
+
+When necessary, the scraper can use an interactive browser, allowing the user to manually handle challenges or verification steps that prevent fully automated scraping.
+
+The same architecture can be used to develop additional interactive scrapers, providing an alternative whenever FlareSolverr has difficulty with a particular source.
+
+This approach also applies to **actor scrapers**, with sources such as **XSList** following the same principle.
+
+For users who prefer full automation, FlareSolverr is also supported. Scrapers designed to use it are identified by the `-fs` suffix and can access compatible sources without requiring manual browser interaction.
+
+This allows users to choose the approach that works best for each source and environment.
+
+---
+
+## 👩 Actors Library
+
+Actor management is a major component of Javinizer-js.
+
+The dedicated Actors Library allows you to:
+
+* quickly search for actors;
+* add actors manually;
+* edit actor information;
+* manage actor photos;
+* mark favorite actors;
+* manage alternate names;
+* identify and manage duplicates;
+* reuse actors already known locally;
+* retrieve actor information from online sources when needed.
+
+Actor information is maintained locally, and Javinizer-js continues to generate dedicated actor NFO files, keeping the library portable and independent from the application itself.
+
+Locally known actors are preferred over unnecessary online lookups, reducing the risk of incorrect matches between people sharing the same or similar names.
+
+Actor scraping uses the same extensible architecture as movie scraping, allowing additional actor sources to be implemented without changing the core application.
+
+---
+
+## 📺 NFO and Media Server Compatibility
+
+Javinizer-js uses standard NFO files to store library metadata.
+
+Supported metadata includes, among other fields:
+
+* title;
+* original title;
+* ID;
+* content ID;
+* release date;
+* runtime;
+* studio;
+* label;
+* director;
+* rating;
+* plot;
+* genres;
+* tags;
+* actors;
+* poster;
+* fanart;
+* trailer URL.
+
+Generated NFO files are **fully compatible with Jellyfin and Kodi**.
+
+Other media servers supporting local NFO metadata may also work, but are not currently listed as officially tested.
+
+---
+
+## 📁 Library Structure
+
+A typical library may look like this:
+
+```text
+Library/
+├── ABC-001/
+│   ├── ABC-001.nfo
+│   ├── ABC-001.mp4
+│   ├── fanart.jpg
+│   └── folder.jpg
+│
+├── ABC-002/
+│   ├── ABC-002.nfo
+│   ├── ABC-002-trailer.mp4
+│   ├── fanart.jpg
+│   └── folder.jpg
+```
+
+The video file does not have to contain the complete movie.
+
+As long as the filename starts with a recognizable movie ID, Javinizer-js can use it to identify and manage the title.
+
+---
+
+## 💾 Fully Self-hosted
+
+Javinizer-js is completely self-hosted.
+
+The application runs directly on your computer or server using Node.js and **does not require Docker**.
+
+Most functionality requires no additional services.
+
+**FlareSolverr is optional** and can be used with scrapers that support it, identified by the `-fs` suffix. When enabled, these scrapers can access compatible sources automatically without requiring manual interaction.
+
+For sources supported by interactive scrapers, Javinizer-js can instead use a browser while allowing the user to intervene when necessary.
+
+The goal is to give users a choice between **FlareSolverr-based automation** and **interactive scraping**, rather than making FlareSolverr a mandatory dependency.
+
+---
+
+## 🚀 Installation
+
+### Windows
+
+Download the latest release, extract it wherever you want, and run:
+
+```text
+start.bat
+```
+
+The startup script prepares the required environment and launches Javinizer-js.
+
+Once running, open the web interface in your browser.
+
+### Linux
+
+Download or clone the project and run:
 
 ```bash
-# Download and enter the project folder
-git clone https://github.com/AlaricRomeo/Javinizer-JS.git
-cd Javinizer-JS
-
-# Run the automatic setup script
 ./start.sh
 ```
 
-The `start.sh` script automatically:
-- Detects your Linux distribution (Ubuntu, Fedora, Arch, etc.)
-- Installs Node.js if not present (using apt, dnf, yum, pacman, etc.)
-- Installs all npm dependencies
-- Starts the server
-- Opens your browser at http://localhost:4004
+The startup script prepares the required environment and dependencies.
 
-**Alternative (if you prefer manual steps):**
-
-1. Make sure Node.js 18+ is installed:
-   ```bash
-   node --version  # Should show v18 or higher
-   ```
-
-2. Install dependencies and run:
-   ```bash
-   npm install
-   npm start
-   ```
-
-3. Open your browser to http://localhost:4004
-
----
-
-### 🍎 macOS
-
-**Option 1: Quick start (recommended)**
+Javinizer-js can also be started manually:
 
 ```bash
-# Download the project
-git clone https://github.com/AlaricRomeo/Javinizer-JS.git
-cd Javinizer-JS
-
-# Run the setup script
-./start.sh
-```
-
-**Option 2: Manual installation**
-
-1. Install Node.js from https://nodejs.org/ (or use `brew install node`)
-
-2. Download and setup:
-   ```bash
-   git clone https://github.com/AlaricRomeo/Javinizer-JS.git
-   cd Javinizer-JS
-   npm install
-   npm start
-   ```
-
-3. Open http://localhost:4004 in your browser
-
----
-
-### ⚙️ First-Time Configuration
-
-After starting Javinizer-JS for the first time:
-
-1. **Open the web interface** at http://localhost:4004
-2. **Click the ⚙️ Settings icon** (top right)
-3. **Set your library path:**
-   - Windows: `C:\Users\YourName\Videos\JAV`
-   - Linux/macOS: `/home/username/Videos/JAV`
-4. **Choose your language:** English, Italiano, or 日本語
-5. **Click Save**
-
-Your library should follow this structure:
-```
-/your/library/
-  ├── [ID-001]/
-  │   ├── [ID-001].nfo       # Metadata file (required)
-  │   └── [ID-001].mp4       # Video file (optional)
-  ├── [ID-002]/
-  │   └── [ID-002].nfo
-  └── ...
-```
-
-**Note:** Video files are optional - Javinizer-JS works with NFO files only if you prefer.
-
-## Configuration
-
-Edit `config.json` to customize your setup:
-
-```json
-{
-  "libraryPath": "/path/to/your/jav/library",
-  "language": "en"
-}
-```
-
-### Configuration Options
-
-- **libraryPath** - Root directory of your JAV library (required)
-- **language** - UI language: `en` (English), `it` (Italiano), or `ja` (日本語)
-
-Additional settings can be configured from the web UI settings page:
-- Scraper selection and priority
-- Actor scraping settings
-- Field-level scraper priorities
-- Scrape mode folder/title naming patterns
-- Cover badge visibility (uncensored/decensored/leaked)
-- Copy favorite actors to an external path (optional) — actors always live in `data/actors`; this is only a mirror for actors marked as favorite
-
-## Library Structure
-
-Your library should follow this structure for best results:
-
-```
-/your/library/
-  ├── [ID-001]/
-  │   ├── [ID-001].nfo       # Metadata file (required)
-  │   └── [ID-001].mp4       # Video file (optional)
-  ├── [ID-002]/
-  │   ├── [ID-002].nfo
-  │   └── [ID-002].mkv
-  └── ...
-```
-
-**Note:** Video files are optional. If not present, the system will show warnings but continue processing metadata normally.
-
-## NFO Format
-
-NFO files are compatible with Jellyfin, Plex, and Kodi:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<movie>
-  <title>Movie Title</title>
-  <originaltitle>Original Title</originaltitle>
-  <id>ID-001</id>
-  <contentid>id00001</contentid>
-  <premiered>2024-01-01</premiered>
-  <runtime>120</runtime>
-  <director>Director Name</director>
-  <studio>Studio Name</studio>
-  <label>Label Name</label>
-  <genre>Drama</genre>
-  <tag>Tag 1</tag>
-  <actor>
-    <name>Actor Name</name>
-    <role>Actress</role>
-    <thumb>https://example.com/actor-thumb.jpg</thumb>
-  </actor>
-  <art>
-    <poster>https://example.com/cover.jpg</poster>
-    <fanart>https://example.com/fanart.jpg</fanart>
-  </art>
-</movie>
-```
-
-## Available Scrapers
-
-### Video Metadata Scrapers
-- **javlibrary** - Scrapes javlibrary.com (interactive, Cloudflare protected)
-- **javlibrary-fs** - Same as javlibrary, but via FlareSolverr instead of an interactive browser window
-- **r18dev** - Scrapes r18.dev (automatic, fast)
-- **libredmm** - Scrapes libredmm.com (automatic)
-
-### Actor Data Scrapers
-- **local** - Looks up actors purely from the local actor index (`data/actors`) — no network request
-- **javdb** - Scrapes javdatabase.com (automatic, with built-in caching)
-- **xcity** - Scrapes xxx.xcity.jp (automatic)
-- **xslist-fs** - Scrapes xslist.org, via FlareSolverr (Cloudflare protected)
-
-## Web Interface
-
-### Main Features
-
-1. **Library Browser** - Navigate through your library items
-2. **Metadata Editor** - Edit all NFO fields with live preview
-3. **Scraper Integration** - Scrape and save metadata in one workflow
-4. **Actor Management** - Dedicated page for managing actor data
-5. **Settings** - Configure scrapers, language, and preferences
-6. **Real-time Updates** - WebSocket-based progress tracking
-
-### Workflow Modes
-
-The application supports different workflows:
-
-1. **Browse & Edit** - Manually browse and edit existing NFO files; re-scrape any title already in the library directly from edit mode
-2. **Scrape & Save** - Automatically scrape metadata and save to library
-3. **Actor Search** - Find and cache actor information
-
-## Error Handling & Resilience
-
-Version 1.0 includes robust error handling:
-
-- **Automatic NFO Validation** - Invalid NFO elements are automatically detected and removed
-- **Missing File Recovery** - Graceful handling of manually deleted folders
-- **Warning System** - Non-critical issues (like missing video files) generate warnings instead of errors
-- **Browser Cleanup** - Automatic cleanup of Puppeteer browser instances on Windows
-- **File Lock Prevention** - Safe file handling to prevent Windows file locking issues
-
-## Adding New Scrapers
-
-Create a new scraper plugin in minutes without modifying core code:
-
-```bash
-# 1. Create scraper directory
-mkdir scrapers/movies/myscraper
-
-# 2. Create run.js (see SCRAPER_DEVELOPMENT.md for details)
-# Your scraper just needs to export a function that returns metadata
-
-# 3. Test your scraper
-node scrapers/movies/myscraper/run.js TEST-001
-
-# 4. Enable in web UI settings
-# Add "myscraper" to enabled scrapers list
-
-# Done! No core code changes needed
-```
-
-See [SCRAPER_DEVELOPMENT.md](SCRAPER_DEVELOPMENT.md) for the complete guide.
-
-## Project Structure
-
-```
-javinizer-js/
-├── src/
-│   ├── core/              # Core business logic
-│   │   ├── libraryReader.js      # NFO file reading and validation
-│   │   ├── scrapeSaver.js        # Save scraped data to library
-│   │   ├── scraperManager.js     # Orchestrate multiple scrapers
-│   │   ├── nfoMapper.js          # Map JSON to NFO XML
-│   │   └── ...
-│   ├── lang/              # i18n translation files
-│   │   ├── en.json        # English
-│   │   ├── it.json        # Italian
-│   │   └── ja.json        # Japanese
-│   ├── server/            # Express server
-│   │   ├── index.js       # Server entry point
-│   │   └── routes.js      # API routes
-│   └── web/               # Frontend
-│       ├── app.js         # Main page
-│       ├── actors.js      # Actors page
-│       ├── i18n.js        # Internationalization
-│       └── *.html         # UI pages
-├── scrapers/              # Scraper plugins
-│   ├── movies/
-│   │   ├── javlibrary/    # JAVLibrary scraper
-│   │   ├── r18dev/        # R18.dev scraper
-│   │   └── _template/     # Template for new scrapers
-│   └── actors/
-│       └── javdatabase/   # Actor scraper
-├── data/                  # Runtime data
-│   ├── scrape/           # Scraped JSON files (centralized)
-│   └── actors/           # Actor cache and thumbnails
-├── config.json           # User configuration (gitignored)
-├── config.example.json   # Example configuration
-├── start.sh              # Linux auto-setup script
-└── package.json          # npm configuration
-```
-
-## API Endpoints
-
-The application provides a REST API for integration:
-
-### Items
-- `GET /item/current` - Get current library item
-- `GET /item/next` - Navigate to next item
-- `GET /item/prev` - Navigate to previous item
-- `POST /item/save` - Save NFO changes
-- `DELETE /item/:id` - Delete item from library
-
-### Configuration
-- `GET /item/config` - Get current configuration
-- `POST /item/config` - Update configuration
-
-### Localization
-- `GET /item/lang/:code` - Get translation file (en, it, ja)
-
-### File System
-- `GET /item/browse?path=...` - Browse directories
-
-### Actors
-- `GET /actors` - List all actors from `data/actors` (the single actor library)
-- `POST /actors/save` - Create/update actor
-- `POST /actors/delete` - Delete actor
-- `POST /actors/favorite` - Mark/unmark an actor as favorite (mirrors NFO+photo to the external favorites path if configured)
-- `GET /actors/duplicates` - List actor pairs sharing a name, candidates for merging
-- `POST /actors/merge` - Merge one duplicate actor record into another
-- `POST /actors/search` - Search and scrape actor data
-
-### WebSocket
-- Real-time scraping progress updates
-- Error notifications
-- Status messages
-
-## Development
-
-### Running in Development Mode
-
-```bash
-# Install nodemon for auto-restart on changes
 npm install
+npm start
+```
 
-# Run with auto-reload
+### macOS
+
+Use:
+
+```bash
+./start.sh
+```
+
+or start the application manually:
+
+```bash
+npm install
+npm start
+```
+
+---
+
+## 🔄 In-app Updates
+
+Starting with **v2.3.0**, Javinizer-js includes its own update system.
+
+The server checks GitHub Releases for new versions when it starts.
+
+When a newer release is available, an **Update available** notification appears in the navigation bar.
+
+The update can then be performed directly from the web interface.
+
+Javinizer-js will automatically:
+
+1. download the new release;
+2. stop the running application;
+3. replace the application files;
+4. reinstall the required dependencies;
+5. apply any pending migrations;
+6. restart itself.
+
+User data and local configuration are preserved during the update, including:
+
+* `config.json`;
+* `data/`;
+* `.env`;
+* custom/development scrapers;
+* other protected local configuration.
+
+This means Javinizer-js can be installed in a directory of your choice and subsequently kept up to date directly from the application.
+
+---
+
+## 🌍 Internationalization
+
+The interface is fully internationalized.
+
+Currently included languages are:
+
+* 🇬🇧 English
+* 🇮🇹 Italiano
+* 🇯🇵 日本語
+
+Adding another language does not require changes to the application core.
+
+A new translation can be created by adding the corresponding language file based on an existing translation.
+
+Contributions for additional languages are welcome.
+
+---
+
+## ⚙️ Configuration
+
+The main configuration can be managed directly from the web interface.
+
+Available settings include:
+
+* library paths;
+* interface language;
+* enabled scrapers;
+* scraper priority;
+* field-level metadata priority;
+* actor management options;
+* external player;
+* application behavior and preferences.
+
+---
+
+## 🎯 Project Philosophy
+
+Javinizer-js follows three basic principles:
+
+### Keep it simple
+
+The application should be straightforward to install and use.
+
+**Download, run, use it.**
+
+### Keep it explicit
+
+Configuration and behavior should remain understandable and predictable, avoiding unnecessary hidden mechanisms or dependencies.
+
+### Keep it extensible
+
+Scrapers, languages, and other components should be extendable without requiring changes to the application core.
+
+---
+
+## 🛠️ Development and Contributions
+
+Javinizer-js is a free, non-commercial hobby project.
+
+Contributions are welcome, particularly for:
+
+* new movie scrapers;
+* new actor scrapers;
+* suggestions for useful metadata sources;
+* translations;
+* bug fixes;
+* UI improvements;
+* documentation;
+* feature requests.
+
+To start working with the source:
+
+```bash
+git clone https://github.com/AlaricRomeo/Javinizer-JS.git
+cd Javinizer-JS
+npm install
 npm run dev
 ```
 
-### Adding a New Language
-
-1. Create `src/lang/XX.json` (where XX is the language code)
-2. Copy the structure from `en.json` and translate all keys
-3. Language will be automatically available in the UI selector
-
-All UI elements use `data-i18n` attributes for automatic translation.
-
-## Contributing
-
-Contributions are welcome! Areas where help is appreciated:
-
-- **New Scrapers** - Add support for additional JAV metadata sources
-- **Translations** - Add new language translations
-- **Bug Reports** - Report issues via GitHub Issues
-- **Feature Requests** - Suggest improvements
-- **Documentation** - Improve guides and examples
-
-Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## Documentation
-
-- **[SCRAPER_DEVELOPMENT.md](SCRAPER_DEVELOPMENT.md)** - Quick start guide for creating scrapers
-- **[SCRAPER_IMPLEMENTATION_GUIDE.md](SCRAPER_IMPLEMENTATION_GUIDE.md)** - Comprehensive scraper implementation guide
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and philosophy
-- **[scrapers/README.md](scrapers/README.md)** - Scrapers overview
-
-## License
-
-MIT License with Additional Fair Use Terms
-
-See [LICENSE](LICENSE) file for details.
-
-**TL;DR**: Free for personal use. Not for commercial use or bulk scraping.
-
-## Credits
-
-Inspired by [Javinizer](https://github.com/jvlflame/Javinizer) by jvlflame.
-
-## Support
-
-For issues and feature requests, please use the [GitHub issue tracker](https://github.com/yourusername/javinizer-js/issues).
-
-## Changelog
-
-### v1.0.0 (2026-01-03)
-
-**Production Release - Stable and Feature Complete**
-
-**Major Features:**
-- Multi-language support (English, Italian, Japanese)
-- Complete actor management system with dedicated page
-- Actor scraping and caching system
-- WebSocket-based real-time scraping progress
-- Modern, responsive UI with consistent styling
-- Cross-platform support (Windows, Linux, macOS)
-
-**Scraper System:**
-- Plugin architecture for easy scraper development
-- Per-field priority configuration
-- Multiple video scrapers (javlibrary, r18dev)
-- Actor scraper with automatic caching (javdatabase)
-- Intelligent data merging from multiple sources
-- Interactive scraper support for Cloudflare/CAPTCHA
-
-**Stability Improvements:**
-- Automatic NFO validation and error recovery
-- Graceful handling of missing video files (warnings instead of errors)
-- Protection against manual folder deletion errors
-- Windows-optimized file handling and browser cleanup
-- Robust error handling throughout the application
-
-**Platform Support:**
-- Linux auto-setup script with package manager detection
-- Windows file locking prevention and browser cleanup
-- macOS full compatibility
-
-**Technical:**
-- Modular CSS architecture
-- Shared UI components for consistency
-- Retry mechanisms for better reliability
-- Comprehensive error logging and user feedback
-- WebSocket connection management
-
-**Documentation:**
-- Complete README with quick start guides
-- SCRAPER_DEVELOPMENT.md for plugin developers
-- Comprehensive implementation guides
-- API documentation
+Issues and pull requests are welcome.
 
 ---
 
-**Ready for production use.** This release represents a stable, feature-complete version suitable for managing personal JAV libraries.
+## 📚 Documentation
+
+Additional technical documentation is available in the repository, including documentation covering the application architecture and scraper development.
+
+The README is intended to provide an overview of Javinizer-js, while implementation details and developer documentation are kept separately.
+
+---
+
+## ⚠️ Responsible Use
+
+Javinizer-js is designed for managing personal media libraries.
+
+Scrapers use caching and request limiting where appropriate to avoid unnecessary requests to external sources.
+
+Users are responsible for using the software in accordance with the terms of service of the websites being accessed and with applicable laws.
+
+The project is not intended for commercial scraping or mass redistribution of retrieved data.
+
+---
+
+## ❤️ Credits
+
+Javinizer-js was originally inspired by **Javinizer**, a project that provided an excellent foundation for scraping and organizing metadata for JAV libraries.
+
+After development of the original Javinizer was discontinued, Javinizer-js began as an independent project inspired by its concepts.
+
+Since then, it has evolved well beyond its original role as a scraper into a complete **JAV media manager**, with its own architecture, web-based library management, dedicated actor management, extensible plugin-based scrapers, internationalization and in-app updates.
+
+Javinizer-js is now an independent project with its own direction and development roadmap.
+
+Special thanks to the original Javinizer project and its contributors for the inspiration.
+
+---
+
+## 📄 License
+
+Javinizer-js is a free, non-commercial hobby project.
+
+See the `LICENSE` file included in the repository for the applicable license terms.
+
+---
+
+**Javinizer-js** — A self-hosted JAV media manager.
+
+
