@@ -421,8 +421,7 @@ Special thanks to the original Javinizer project and its contributors for the in
 ---
 
 ## 📄 License
-
-Javinizer-js is a free, non-commercial hobby project.
+Javinizer-js is a free and open-source hobby project released under the GNU GPL v2.0.
 
 See the `LICENSE` file included in the repository for the applicable license terms.
 
