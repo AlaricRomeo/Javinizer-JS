@@ -32,29 +32,4 @@
   "devDependencies": {
     "nodemon": "^3.1.11"
   }
-}{
-  "name": "javinizer-js",
-  "version": "2.3.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node src/server/index.js",
-    "dev": "nodemon --ignore data/ --ignore .actors/ src/server/index.js"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "cheerio": "^1.1.2",
-    "express": "^5.2.1",
-    "multer": "^2.0.2",
-    "puppeteer": "^24.34.0",
-    "sharp": "^0.34.5",
-    "ws": "^8.18.3",
-    "xml2js": "^0.6.2"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.11"
-  }
 }
