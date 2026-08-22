@@ -1,6 +1,6 @@
 {
   "name": "javinizer-js",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "A self-hosted JAV media manager for organizing, scraping and maintaining JAV libraries",
   "main": "src/server/index.js",
   "scripts": {

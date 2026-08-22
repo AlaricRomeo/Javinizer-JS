@@ -12,7 +12,7 @@ Javinizer-js is actively used to manage a real-world library of more than **3,30
 
 Its goal is simple: provide everything needed to manage a JAV collection without turning the setup itself into a project.
 
-**Latest release:** [v2.3.0](https://github.com/AlaricRomeo/Javinizer-JS/releases/latest)
+**Latest release:** [v2.4.0](https://github.com/AlaricRomeo/Javinizer-JS/releases/latest)
 
 **License:** GPL-2.0-only
 

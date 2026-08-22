@@ -1,5 +1,30 @@
 # Release Notes
 
+## v2.4.0 (2026-08-22)
+
+### 🖼️ Actor photo replacement
+
+- Replacing an actor's photo with a different file format (e.g. `.gif` → `.webp`) could leave the old file behind in a movie's own `actors/` folder — different pages could then each pick a different leftover file, showing inconsistent photos between the actor card, the movie page, and the Actors list
+- `copyActorsToFolder` now cleans up every stale extension in every code path, not just the first one; if duplicates still exist from before, the movie page now picks the most recently written file instead of a non-deterministic filesystem order
+
+### 🔄 Rescan Actors
+
+- New "Rescan Actors" button in Edit mode, next to Add Actor — re-syncs every actor of the current movie against the local-cache-vs-online rules below, without having to remove and re-add them one by one
+- A local actor record now needs a name **and** an image to be trusted as-is; a bare name-only reference (e.g. one saved by "Copy actors in movie folder") no longer blocks online scrapers from filling it in
+
+### 🔀 Merge-duplicates panel: inspect before deciding
+
+- Each candidate in the duplicate-actor merge panel (`actors.html`) now has a "View details" button that opens the normal actor detail modal, so you can check full info before picking which one to keep
+- The panel refreshes itself if you edit a candidate from that detail view
+
+### 🏷️ Primary name leaking into Alt Names
+
+- Two scrapers disagreeing on which field holds a name (or differing only in case/spacing) could leave the primary name duplicated inside its own Alt Names — deduped at the merge, cache-fold, database, and actor-form layers, and self-heals the next time an already-affected actor is touched (opened, searched, or rescanned)
+
+### 🎭 Movie-context actor edits sync immediately
+
+- Saving an actor from inside a movie's own actor card now syncs to the central actor cache right away, instead of only on the next full movie save — a rename or alt-name edit no longer sits unsynced (and invisible to search/other movies) if the movie itself was never separately saved afterward
+
 ## v2.3.0 (2026-08-21)
 
 ### 🔄 In-app update system
