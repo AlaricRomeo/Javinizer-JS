@@ -499,6 +499,24 @@ button:disabled {
 .actor-add-to-lib-btn--favorite:hover {
   background: #ffc107;
 }
+.actors-actions-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.actors-actions-row .add-actor-btn,
+.actors-actions-row .rescan-actors-btn {
+  flex: 1;
+  margin-top: 0;
+  box-sizing: border-box;
+  height: 44px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .add-actor-btn {
   background: #28a745;
   width: 100%;
@@ -506,6 +524,14 @@ button:disabled {
   margin-top: 10px;
 }
 .add-actor-btn:hover {
+  background: #218838;
+}
+.rescan-actors-btn {
+  background: #34ad51;
+  width: 100%;
+  padding: 12px;
+}
+.rescan-actors-btn:hover {
   background: #218838;
 }
 .copy-actors-btn {
@@ -629,13 +655,6 @@ button:disabled {
 }
 .open-folder-button:hover {
   background: #556cd6;
-}
-#addActor {
-  background-color: #17a2b8;
-  margin-top: 10px;
-}
-#addActor:hover {
-  background-color: #138496;
 }
 #dirBrowserList div {
   transition: background-color 0.2s;

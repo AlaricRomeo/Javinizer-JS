@@ -20,7 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
-const { toTitleCase } = require('./schema');
+const { toTitleCase, dedupeAltNames } = require('./schema');
 
 const DB_PATH = path.join(__dirname, '../../data/actors-index.db');
 const IMAGE_EXTENSIONS = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
@@ -374,10 +374,10 @@ function upsertActor(actor, options = {}) {
   // scrapers/callers still produce it as a pre-persistence variant list) and
   // folded into the same 'alt' kind as altName — there's no separate 'other'
   // kind of name anymore, just primary + alt.
-  const altNames = [
+  const altNames = dedupeAltNames(actor.name, [
     ...(actor.altName || '').split(',').map(s => s.trim()),
     ...(Array.isArray(actor.otherNames) ? actor.otherNames : [])
-  ].filter(Boolean);
+  ].filter(Boolean));
   altNames.forEach(n => insertNameIfNew(db, actor.id, n, 'alt'));
 
   return getActor(actor.id);

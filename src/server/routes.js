@@ -848,6 +848,57 @@ router.post("/edit-rescrape", async (req, res) => {
 });
 
 // ─────────────────────────────
+// POST /item/actors/rescan
+// Re-scan only the current movie's actors (applies the same local-cache-vs-
+// online rules as any other actor scrape) and return the refreshed actor
+// array via WebSocket. Does not touch any other field or write to disk —
+// the user still saves explicitly via /item/edit-rescrape/save.
+// ─────────────────────────────
+router.post("/actors/rescan", async (req, res) => {
+  const { EventEmitter } = require('events');
+
+  try {
+    const { folderId, actors } = req.body;
+
+    if (!folderId || !Array.isArray(actors)) {
+      return res.json({ ok: false, error: 'Missing folderId or actors' });
+    }
+
+    const scrapeId = Date.now().toString();
+    res.json({ ok: true, scrapeId });
+
+    const emitter = new EventEmitter();
+    const broadcast = (event, data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event, data, scrapeId }));
+        }
+      });
+    };
+    emitter.on('progress', data => broadcast('progress', data));
+
+    const actorsCopy = JSON.parse(JSON.stringify(actors));
+
+    try {
+      const { enrichActorArray } = require('../core/actorScraperManager');
+      const summary = await enrichActorArray(actorsCopy, emitter);
+      broadcast('complete', {
+        message: `Actor rescan completed: ${summary.total} actors (${summary.scraped} new, ${summary.cached} cached, ${summary.failed} failed).`,
+        folderId,
+        actorsOnly: true,
+        actors: actorsCopy
+      });
+    } catch (actorErr) {
+      console.error('[Routes] Actor rescan error:', actorErr);
+      broadcast('error', { message: actorErr.message });
+    }
+  } catch (err) {
+    console.error('[Routes] Actor rescan error:', err);
+    return res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
 // POST /item/edit-rescrape/save
 // Save re-scraped data to existing library folder (regenerate NFO + images, video stays in place)
 // ─────────────────────────────
@@ -3332,6 +3383,11 @@ async function copyActorsToFolder(folderPath, actors) {
       // reference if the file no longer exists.
       const source = actorDb.resolvePhotoSource(actorId, { cachePath: actorsPath });
       if (source) {
+        // Remove any stale photo left over from a previous copy under a different extension
+        extensions.filter(e => e !== source.ext).forEach(e => {
+          const stale = path.join(destFolder, `${actor.name}.${e}`);
+          if (fs.existsSync(stale)) { try { fs.unlinkSync(stale); } catch (_) {} }
+        });
         fs.copyFileSync(source.absolutePath, path.join(destFolder, `${actor.name}.${source.ext}`));
         copied.push(actor.name);
         found = true;
@@ -3370,11 +3426,16 @@ async function copyActorsToFolder(folderPath, actors) {
           });
           req2.on('error', reject);
         });
-        const ext = path.extname(imageUrl.pathname) || '.jpg';
-        fs.writeFileSync(path.join(destFolder, `${actor.name}${ext}`), imageBuffer);
+        const ext = (path.extname(imageUrl.pathname) || '.jpg').replace(/^\./, '');
+        // Remove any stale photo left over from a previous copy under a different extension
+        extensions.filter(e => e !== ext).forEach(e => {
+          const stale = path.join(destFolder, `${actor.name}.${e}`);
+          if (fs.existsSync(stale)) { try { fs.unlinkSync(stale); } catch (_) {} }
+        });
+        fs.writeFileSync(path.join(destFolder, `${actor.name}.${ext}`), imageBuffer);
         copied.push(actor.name);
         found = true;
-        savedExt = ext.replace(/^\./, '');
+        savedExt = ext;
       } catch (dlErr) {
         console.error(`[copyActorsToFolder] Failed to download thumb for ${actor.name}:`, dlErr.message);
       }

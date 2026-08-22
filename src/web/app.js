@@ -460,6 +460,7 @@ async function switchMode(newMode) {
   const saveBtn = document.getElementById("saveItem");
   const scrapePanel = document.getElementById("mainScraperPanel");
   const copyActorsBtn = document.getElementById("copyActorsToFolder");
+  const rescanActorsBtn = document.getElementById("rescanActors");
 
   if (newMode === "edit") {
     // Edit mode
@@ -479,9 +480,12 @@ async function switchMode(newMode) {
       if (el) el.style.display = "none";
     });
 
-    // Show copy actors button in edit mode
+    // Show copy actors / rescan actors buttons in edit mode
     if (copyActorsBtn) {
       copyActorsBtn.style.display = "block";
+    }
+    if (rescanActorsBtn) {
+      rescanActorsBtn.style.display = "flex";
     }
 
     // Force refresh library count before loading item
@@ -517,9 +521,12 @@ async function switchMode(newMode) {
     });
     // deleteItem/deleteAllItems visibility managed by updateDeleteButtons
 
-    // Hide copy actors button in scrape mode
+    // Hide copy actors / rescan actors buttons in scrape mode
     if (copyActorsBtn) {
       copyActorsBtn.style.display = "none";
+    }
+    if (rescanActorsBtn) {
+      rescanActorsBtn.style.display = "none";
     }
 
     // Check scrape availability first to ensure counter is updated
@@ -1329,11 +1336,15 @@ function renderItem(item) {
   // Clear dirty fields quando carichiamo un nuovo item
   clearDirtyFields();
 
-  // Show copy actors button if in edit mode
+  // Show copy actors / rescan actors buttons if in edit mode
   if (currentMode === "edit") {
     const copyActorsBtn = document.getElementById("copyActorsToFolder");
     if (copyActorsBtn) {
       copyActorsBtn.style.display = "block";
+    }
+    const rescanActorsBtn = document.getElementById("rescanActors");
+    if (rescanActorsBtn) {
+      rescanActorsBtn.style.display = "flex";
     }
   }
 
@@ -1790,6 +1801,11 @@ function setupEventHandlers() {
     openActorModal(null);
   };
 
+  // Rescan all actors of the current movie
+  document.getElementById("rescanActors").onclick = () => {
+    rescanActorsCurrentMovie();
+  };
+
   // Copy actors to movie folder button
   const copyActorsBtn = document.getElementById("copyActorsToFolder");
   if (copyActorsBtn) {
@@ -1816,11 +1832,33 @@ function setupEventHandlers() {
 
   // Register movie context handlers and setup unified actor modal
   ActorModal.registerMovieContextHandlers(
-    (actorData) => {
+    async (actorData) => {
       // Preserve meta if editing existing actor
       if (editingActorIndex !== null && currentItem.actor[editingActorIndex]?.meta) {
         actorData.meta = currentItem.actor[editingActorIndex].meta;
       }
+
+      // Sync to the central actor cache immediately, not just on the next
+      // full movie save — otherwise a rename/edit made here only exists in
+      // this movie's own (unsaved) in-memory data until the user separately
+      // saves the whole item, and a future actor search elsewhere in the app
+      // keeps showing the stale cached data in the meantime.
+      try {
+        const response = await fetch('/api/actors/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...actorData, context: 'movie' })
+        });
+        const result = await response.json();
+        if (result.ok && result.id) {
+          actorData.id = result.id;
+        } else if (!result.ok) {
+          console.error('[Movie-Actor-Save] Failed to sync actor to cache:', result.error);
+        }
+      } catch (error) {
+        console.error('[Movie-Actor-Save] Failed to sync actor to cache:', error);
+      }
+
       if (editingActorIndex === null) {
         currentItem.actor.push(actorData);
       } else {
@@ -2338,6 +2376,83 @@ function applyEditRescrapeData(mergedData, folderId) {
 }
 
 /**
+ * Rescan (refresh) just the current movie's actors, applying the same
+ * local-cache-vs-online rules as any other actor scrape.
+ */
+async function rescanActorsCurrentMovie() {
+  if (!currentItem || !currentItem.folderId) return;
+  if (!currentItem.actor || currentItem.actor.length === 0) return;
+
+  const modal = document.getElementById('scrapingModal');
+  const progressDiv = document.getElementById('scrapingProgress');
+  const cancelBtn = document.getElementById('scrapingCancel');
+
+  modal.style.display = 'block';
+  progressDiv.innerHTML = `<div style="color: #667eea;">🎭 Rescanning actors...</div>`;
+  resetToCancelButton(cancelBtn, modal);
+
+  try {
+    if (!scrapingWebSocket || scrapingWebSocket.readyState !== WebSocket.OPEN) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      scrapingWebSocket = new WebSocket(`${protocol}//${window.location.host}`);
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('WebSocket connection timeout')), 5000);
+        scrapingWebSocket.onopen = () => { clearTimeout(timeout); resolve(); };
+        scrapingWebSocket.onerror = () => { clearTimeout(timeout); reject(new Error('WebSocket connection failed')); };
+      });
+    }
+
+    scrapingWebSocket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        const { event: eventType, data } = message;
+        handleScrapingEvent(progressDiv, modal, eventType, data);
+      } catch (error) {
+        console.error('[WebSocket] Error parsing message:', error);
+      }
+    };
+
+    const response = await fetch('/item/actors/rescan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderId: currentItem.folderId, actors: currentItem.actor })
+    });
+
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || 'Failed to start actor rescan');
+
+    appendProgress(progressDiv, `✅ Actor rescan started`, 'success');
+  } catch (error) {
+    console.error('[Actor-Rescan] Error:', error);
+    appendProgress(progressDiv, `❌ Error: ${error.message}`, 'error');
+    switchToCloseButton(cancelBtn, modal);
+  }
+}
+
+/**
+ * Apply rescanned actor data into currentItem (no server reload, no other
+ * field touched) — mirrors applyEditRescrapeData() but scoped to actors only.
+ */
+function applyActorRescanData(actors, folderId) {
+  if (!currentItem || currentItem.folderId !== folderId) return;
+
+  currentItem.actor = actors;
+  renderActors();
+  // set these so the existing Save button sends the full item (including
+  // the refreshed actor array) to /item/edit-rescrape/save, same as a
+  // regular edit-rescrape
+  hasEditRescrape = true;
+  dirtyFields.add('_rescrape');
+  updateSaveButton();
+
+  showNotification(
+    window.i18n ? window.i18n.t("messages.actorRescanLoaded") : "✓ Actor data refreshed. Review and save.",
+    "success"
+  );
+}
+
+/**
  * WebSocket connection for scraping
  */
 let scrapingWebSocket = null;
@@ -2491,8 +2606,12 @@ async function handleScrapingEvent(progressDiv, modal, eventType, data) {
       appendProgress(progressDiv, '✅ ' + data.message, 'success');
       switchToCloseButton(cancelBtn, modal);
 
+      // Actor-only rescan: apply refreshed actors into the form (no server reload)
+      if (data.actorsOnly && data.actors) {
+        applyActorRescanData(data.actors, data.folderId);
+        appendProgress(progressDiv, window.i18n ? window.i18n.t("messages.actorRescanApplied") : 'Actor data refreshed. Review and save to apply.', 'info');
       // Edit mode rescrape: apply merged data into the form (no server reload)
-      if (data.editMode && data.mergedData) {
+      } else if (data.editMode && data.mergedData) {
         applyEditRescrapeData(data.mergedData, data.folderId);
         appendProgress(progressDiv, window.i18n ? window.i18n.t("messages.editRescrapeApplied") : 'Scraped data loaded into form. Review and save to apply.', 'info');
       // If this was a re-scrape of a specific movie in scrape mode, reload it

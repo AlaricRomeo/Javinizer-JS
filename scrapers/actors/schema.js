@@ -18,6 +18,28 @@ function toTitleCase(str) {
 }
 
 /**
+ * Remove any alt-name entry that's just the primary name again (case- and
+ * whitespace-insensitive), and dedupe the remaining entries against each
+ * other the same way. Used wherever alt names get merged/persisted, so the
+ * primary name never ends up listed among its own aliases.
+ *
+ * @param {string} name - Primary name
+ * @param {string[]} altNames - Candidate alt names
+ * @returns {string[]}
+ */
+function dedupeAltNames(name, altNames) {
+  const normalize = s => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const primaryKey = normalize(name);
+  const seen = new Set();
+  return (altNames || []).filter(n => {
+    const key = normalize(n);
+    if (!key || key === primaryKey || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * Normalize actor name to slug ID format
  * - Converts to lowercase
  * - Removes special characters
@@ -413,6 +435,7 @@ module.exports = {
   removeEmptyFields,
   normalizeActorName,
   toTitleCase,
+  dedupeAltNames,
   actorToNFO,
   nfoToActor
 };

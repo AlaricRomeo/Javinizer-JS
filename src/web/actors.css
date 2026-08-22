@@ -53,6 +53,15 @@ body {
   color: white;
 }
 
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #5a6268;
+}
+
 .btn-success:hover {
   background-color: #218838;
   transform: translateY(-2px);
@@ -293,6 +302,11 @@ body {
 /* ============================================
    Merge Duplicates Modal
    ============================================ */
+
+/* Actor detail modal must appear above the merge modal when opened from it */
+#actorEditModal.active {
+  z-index: 1100;
+}
 
 .merge-modal-overlay {
   position: fixed;

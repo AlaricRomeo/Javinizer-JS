@@ -21,6 +21,22 @@ function setActorModalMode(mode) {
   modalMode = mode;
 }
 
+// Remove any alt-name entry that's just the primary name again (case- and
+// whitespace-insensitive) and dedupe the rest. Mirrors dedupeAltNames() in
+// scrapers/actors/schema.js — duplicated here since this runs in the
+// browser and can't require that module.
+function _dedupeAltNames(name, altNames) {
+  const normalize = s => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const primaryKey = normalize(name);
+  const seen = new Set();
+  return (altNames || []).filter(n => {
+    const key = normalize(n);
+    if (!key || key === primaryKey || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // Open actor modal — unified for both movie and library contexts
 function openActorModal(actor) {
   unifiedCurrentActor = actor || null;
@@ -62,7 +78,7 @@ function openActorModal(actor) {
   // Populate form fields
   const a = actor || {};
   _setField('actorEditName', a.name || '');
-  _setField('actorEditAltName', a.altName || '');
+  _setField('actorEditAltName', _dedupeAltNames(a.name, (a.altName || '').split(',').map(s => s.trim())).join(', '));
   _setField('actorEditRole', a.role || 'Actress');
   _setField('actorEditThumb', a.thumb || '');
   _setField('actorEditBirthdate', a.birthdate || '');
@@ -330,18 +346,10 @@ async function searchActor() {
       // echo back a name the user just typed (sent along as a search hint)
       // inside otherNames, which would otherwise double up right here.
       if (result.actor.name) _setField('actorEditName', result.actor.name);
-      const seenAltNames = new Set();
-      const combinedAltName = [result.actor.altName, ...(result.actor.otherNames || [])]
-        .flatMap(v => (v || '').split(','))
-        .map(v => v.trim())
-        .filter(v => {
-          if (!v) return false;
-          const key = v.toLowerCase();
-          if (seenAltNames.has(key)) return false;
-          seenAltNames.add(key);
-          return true;
-        })
-        .join(', ');
+      const combinedAltName = _dedupeAltNames(
+        result.actor.name || document.getElementById('actorEditName')?.value,
+        [result.actor.altName, ...(result.actor.otherNames || [])].flatMap(v => (v || '').split(',')).map(v => v.trim())
+      ).join(', ');
       if (combinedAltName) _setField('actorEditAltName', combinedAltName);
       fill('actorEditBirthdate', result.actor.birthdate);
       if (shouldOverwrite(document.getElementById('actorEditHeight')?.value, result.actor.height) && result.actor.height > 0) _setField('actorEditHeight', result.actor.height);

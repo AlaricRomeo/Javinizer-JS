@@ -94,6 +94,20 @@ function setupEventListeners() {
     if (e.target.id === 'mergeModal') closeMergeModal();
   });
 
+  // If the actor detail modal was opened from the merge panel (to inspect a
+  // candidate) and edits were saved (e.g. name/photo), refresh the merge
+  // panel's own (separately fetched) actor data so it doesn't show stale info.
+  const actorEditModal = document.getElementById('actorEditModal');
+  if (actorEditModal) {
+    new MutationObserver(() => {
+      const isOpen = actorEditModal.classList.contains('active');
+      const mergeModalVisible = document.getElementById('mergeModal').style.display === 'flex';
+      if (!isOpen && mergeModalVisible) {
+        loadDuplicates().then(renderMergeModal);
+      }
+    }).observe(actorEditModal, { attributes: true, attributeFilter: ['class'] });
+  }
+
   // Event listeners are handled by the unified system
   // The unified system will handle all modal operations
 }
@@ -473,6 +487,13 @@ function renderMergeCandidate(actor, otherId) {
   const movieLabel = window.i18n ? window.i18n.t('actors.movies') : 'movies';
   meta.textContent = `${actor.id} • ${actor.movieCount || 0} ${movieLabel}`;
   wrap.appendChild(meta);
+
+  const detailsBtn = document.createElement('button');
+  detailsBtn.type = 'button';
+  detailsBtn.className = 'btn btn-secondary';
+  detailsBtn.textContent = window.i18n ? window.i18n.t('actors.viewDetails') : 'View details';
+  detailsBtn.onclick = () => openActorModal(actor);
+  wrap.appendChild(detailsBtn);
 
   const keepBtn = document.createElement('button');
   keepBtn.type = 'button';

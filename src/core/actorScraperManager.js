@@ -236,6 +236,19 @@ function isActorComplete(actor) {
   return isComplete;
 }
 
+/**
+ * Check if actor data is complete enough to trust the local cache as-is,
+ * i.e. skip online scrapers. A local record can be just a name (e.g. saved
+ * as a bare reference by copyActorsToFolder) with no image at all, in which
+ * case it's not useful and online scrapers should still run.
+ *
+ * @param {object} actor - Actor data
+ * @returns {boolean} - True if the actor has at least a name and an image
+ */
+function hasNameAndImage(actor) {
+  return !!(actor && actor.name && (actor.thumb || actor.thumbUrl || actor.thumbLocal));
+}
+
 
 /**
  * Merge actor data from multiple scrapers
@@ -247,7 +260,7 @@ function isActorComplete(actor) {
  * @returns {object} - Merged actor data
  */
 function mergeActorData(actorName, scraperResults, scraperPriority) {
-  const { createEmptyActor } = require('../../scrapers/actors/schema');
+  const { createEmptyActor, dedupeAltNames } = require('../../scrapers/actors/schema');
 
   // Start with empty actor structure
   const merged = createEmptyActor(actorName);
@@ -315,6 +328,16 @@ function mergeActorData(actorName, scraperResults, scraperPriority) {
   merged.meta.sources = sources;
   merged.meta.lastUpdate = new Date().toISOString();
 
+  // A different scraper (or a differently-cased/spaced romanization of the
+  // same name) can land the primary name itself in altName/otherNames —
+  // strip it back out, since name/altName are picked independently above.
+  if (merged.altName) {
+    merged.altName = dedupeAltNames(merged.name, merged.altName.split(',').map(s => s.trim())).join(', ');
+  }
+  if (merged.otherNames) {
+    merged.otherNames = dedupeAltNames(merged.name, merged.otherNames);
+  }
+
   return merged;
 }
 
@@ -365,11 +388,13 @@ async function runScrapers(actorName, enabledScrapers, actorId, emitter, initial
       console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully`);
       if (emitter) emitter.emit('progress', { message: `[${scraperName}] ✓ Data found` });
 
-      // Local scraper found data — trust it as-is and skip online scrapers
-      // entirely (this loop is only reached when forceOverwrite is false;
+      // Local scraper found data — only trust it and skip online scrapers if
+      // it has at least a name and an image; a bare name-only record (e.g.
+      // saved as a reference by copyActorsToFolder) isn't useful on its own
+      // (this loop is only reached when forceOverwrite is false;
       // scrapeActorExcludingLocal() handles the forceOverwrite=true path
       // and never puts 'local' in enabledScrapers to begin with).
-      if (scraperName === 'local') {
+      if (scraperName === 'local' && hasNameAndImage(result)) {
         console.log('[ActorScraperManager] Found locally, skipping online scrapers');
         if (emitter) emitter.emit('progress', { message: `  ✓ Found locally, skipping online scrapers` });
         break;
@@ -418,19 +443,38 @@ async function runScrapers(actorName, enabledScrapers, actorId, emitter, initial
 
 /**
  * Add any variant not already captured by name/altName/otherNames into
- * otherNames, mutating actor in place. Returns true if something changed.
+ * otherNames, mutating actor in place. Also self-heals an already-corrupted
+ * altName/otherNames that contains the primary name itself (see
+ * mergeActorData's dedupeAltNames call — this catches records that were
+ * merged before that fix, or corrupted some other way). Returns true if
+ * something changed.
  */
 function foldNameVariants(actor, variants) {
-  if (!actor || !variants || variants.length === 0) return false;
+  if (!actor) return false;
+  const { dedupeAltNames } = require('../../scrapers/actors/schema');
+  let changed = false;
+
+  if (actor.altName) {
+    const cleaned = dedupeAltNames(actor.name, actor.altName.split(',').map(s => s.trim())).join(', ');
+    if (cleaned !== actor.altName) { actor.altName = cleaned; changed = true; }
+  }
+  if (actor.otherNames && actor.otherNames.length > 0) {
+    const cleaned = dedupeAltNames(actor.name, actor.otherNames);
+    if (cleaned.length !== actor.otherNames.length) { actor.otherNames = cleaned; changed = true; }
+  }
+
+  if (!variants || variants.length === 0) return changed;
   const known = new Set([
     (actor.name || '').toLowerCase(),
     ...(actor.altName || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
     ...(actor.otherNames || []).map(n => n.toLowerCase())
   ]);
   const fresh = variants.filter(v => v && !known.has(v.toLowerCase()));
-  if (fresh.length === 0) return false;
-  actor.otherNames = [...(actor.otherNames || []), ...fresh];
-  return true;
+  if (fresh.length > 0) {
+    actor.otherNames = [...(actor.otherNames || []), ...fresh];
+    changed = true;
+  }
+  return changed;
 }
 
 /**
@@ -457,7 +501,7 @@ async function ensureActorCached(actorName, altNameHints, emitter = null) {
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localData = await scrapeLocal(actorName).catch(() => null);
 
-  if (localData && !localData.error) {
+  if (localData && !localData.error && hasNameAndImage(localData)) {
     if (foldNameVariants(localData, hints)) saveActorLocal(localData);
     return { actorData: localData, cached: true };
   }
@@ -537,16 +581,18 @@ async function getActor(actorName, forceOverwrite = false, altNameHints = []) {
   }
 
   // Normal flow: scan the local (data/actors) index. An actor found locally
-  // is trusted as-is, complete or not, and online scrapers are never
-  // consulted — the only way to refresh/fill in a local actor is the
-  // explicit forceOverwrite path above. Missing fields (birthdate/measurements
-  // are commonly just unavailable) don't trigger an online lookup anymore;
-  // this trades automatic gap-filling for not risking a homonym mismatch
-  // pulling in the wrong identity/photo on an actor already known locally.
+  // with at least a name and an image is trusted as-is, missing measurements
+  // and all, and online scrapers are never consulted for it — the only way
+  // to refresh/fill in a local actor is the explicit forceOverwrite path
+  // above. This trades automatic gap-filling for not risking a homonym
+  // mismatch pulling in the wrong identity/photo on an actor already known
+  // locally. But a local record with no image at all (e.g. a bare name
+  // saved as a reference by copyActorsToFolder) isn't useful on its own, so
+  // it still falls through to online scraping.
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localActor = await scrapeLocal(actorName).catch(() => null);
 
-  if (localActor && !localActor.error) {
+  if (localActor && !localActor.error && hasNameAndImage(localActor)) {
     console.log(`[ActorScraperManager] Actor found locally: ${localActor.id}`);
     // A movie may have surfaced an alt name for this actor we didn't know yet
     // (e.g. a different romanization) — remember it so future lookups by that

@@ -101,13 +101,23 @@ function enrichModelWithLocalMedia(model, item, actorCache) {
       }
 
       if (actorFiles.length > 0) {
-        const match = actorFiles.find(f => {
+        const matches = actorFiles.filter(f => {
           const dot = f.lastIndexOf('.');
           if (dot === -1) return false;
           return f.slice(0, dot) === actor.name && IMAGE_EXTENSIONS.includes(f.slice(dot + 1).toLowerCase());
         });
-        if (match) {
-          actor.localThumb = path.join(actorsDir, match);
+        // Stale photos under an old extension can linger alongside a freshly
+        // replaced one (see copyActorsToFolder) — readdir order isn't
+        // guaranteed, so pick the most recently written file, not the first.
+        if (matches.length > 1) {
+          matches.sort((a, b) => {
+            const mtimeA = fs.statSync(path.join(actorsDir, a)).mtimeMs;
+            const mtimeB = fs.statSync(path.join(actorsDir, b)).mtimeMs;
+            return mtimeB - mtimeA;
+          });
+        }
+        if (matches.length > 0) {
+          actor.localThumb = path.join(actorsDir, matches[0]);
         }
       }
     });
