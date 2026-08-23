@@ -499,7 +499,7 @@ function splitNameHints(altNameHints) {
 async function ensureActorCached(actorName, altNameHints, emitter = null) {
   const hints = splitNameHints(altNameHints);
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
-  const localData = await scrapeLocal(actorName).catch(() => null);
+  const localData = await scrapeLocal(actorName, hints).catch(() => null);
 
   if (localData && !localData.error && hasNameAndImage(localData)) {
     if (foldNameVariants(localData, hints)) saveActorLocal(localData);
@@ -527,7 +527,7 @@ async function scrapeActor(actorName, emitter = null, altNameHints = []) {
 
   // Pre-load all known name variants from local storage so every scraper can try them
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
-  const localData = await scrapeLocal(actorName).catch(() => null);
+  const localData = await scrapeLocal(actorName, altNameHints).catch(() => null);
   const actorId = (localData && localData.id) ? localData.id : normalizeActorName(actorName);
   const localVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
   const initialVariants = [...new Set([...localVariants, ...splitNameHints(altNameHints)])];
@@ -552,7 +552,7 @@ async function scrapeActorExcludingLocal(actorName, emitter = null, altNameHints
 
   // Collect name variants from the local (data/actors) index without using it as a scraper source.
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
-  const localData = await scrapeLocal(actorName).catch(() => null);
+  const localData = await scrapeLocal(actorName, altNameHints).catch(() => null);
   const actorId = (localData && localData.id) ? localData.id : normalizeActorName(actorName);
   const localVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
   const initialVariants = [...new Set([...localVariants, ...splitNameHints(altNameHints)])];
@@ -590,7 +590,7 @@ async function getActor(actorName, forceOverwrite = false, altNameHints = []) {
   // saved as a reference by copyActorsToFolder) isn't useful on its own, so
   // it still falls through to online scraping.
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
-  const localActor = await scrapeLocal(actorName).catch(() => null);
+  const localActor = await scrapeLocal(actorName, altNameHints).catch(() => null);
 
   if (localActor && !localActor.error && hasNameAndImage(localActor)) {
     console.log(`[ActorScraperManager] Actor found locally: ${localActor.id}`);

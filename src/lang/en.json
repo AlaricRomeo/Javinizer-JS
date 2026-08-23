@@ -369,6 +369,7 @@
     "applying": "⏳ Updating to v{version}...",
     "waitingForRestart": "Restarting...",
     "complete": "✓ Updated to v{version} — reloading...",
+    "completeWithWarnings": "⚠ Updated to v{version} with warnings — check update.log — reloading...",
     "applyFailed": "✗ Update failed"
   }
 }

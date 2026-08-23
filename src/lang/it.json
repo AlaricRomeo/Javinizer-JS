@@ -371,6 +371,7 @@
     "applying": "⏳ Aggiornamento a v{version} in corso...",
     "waitingForRestart": "Riavvio in corso...",
     "complete": "✓ Aggiornato a v{version} — ricaricamento...",
+    "completeWithWarnings": "⚠ Aggiornato a v{version} con alcuni avvisi — controlla update.log — ricaricamento...",
     "applyFailed": "✗ Aggiornamento fallito"
   }
 }

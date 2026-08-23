@@ -59,6 +59,16 @@ async function initUpdateBadge() {
   badge.textContent = t('update.available', { version: latest.latestVersion });
   badge.style.display = '';
   badge.addEventListener('click', () => applyUpdate(badge, latest, t));
+
+  // This badge is shown right on page load, which can race ahead of this
+  // page's own i18n init (see the identical fix for filterBadge above) and
+  // briefly show the raw "update.available" key — re-render once
+  // translations are actually loaded.
+  window.addEventListener('i18nLoaded', () => {
+    if (badge.style.display !== 'none' && !badge.disabled) {
+      badge.textContent = t('update.available', { version: latest.latestVersion });
+    }
+  });
 }
 
 async function applyUpdate(badge, latest, t) {
@@ -101,6 +111,17 @@ function pollUpdateStatus(badge, latest, t) {
       if (status.state === 'complete') {
         badge.textContent = t('update.complete', { version: latest.latestVersion });
         setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
+
+      // Application files were already swapped successfully (About page
+      // will show the new version) — a secondary step like `npm install`
+      // or a DB migration failed, but that's not the same as the update
+      // itself failing, so it gets its own message instead of applyFailed.
+      if (status.state === 'complete_with_warnings') {
+        badge.textContent = t('update.completeWithWarnings', { version: latest.latestVersion });
+        console.warn('[Update] Completed with warnings:', status.warnings);
+        setTimeout(() => window.location.reload(), 2500);
         return;
       }
 

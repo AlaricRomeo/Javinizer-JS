@@ -342,5 +342,14 @@
     "noItemsTitle": "アイテムが見つかりません",
     "noItemsDesc": "ライブラリに利用可能なアイテムがありません。",
     "actors": "女優"
+  },
+  "update": {
+    "available": "🔄 アップデートがあります: v{version}",
+    "confirmApply": "v{version} に今すぐアップデートしますか?\n\nアプリは自動的に再起動します — 約1分かかります。その後ページを再読み込みしてください。",
+    "applying": "⏳ v{version} にアップデート中...",
+    "waitingForRestart": "再起動中...",
+    "complete": "✓ v{version} にアップデートしました — 再読み込み中...",
+    "completeWithWarnings": "⚠ v{version} にアップデートしましたが警告があります — update.log を確認してください — 再読み込み中...",
+    "applyFailed": "✗ アップデートに失敗しました"
   }
 }

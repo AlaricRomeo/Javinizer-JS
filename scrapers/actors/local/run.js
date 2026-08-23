@@ -16,20 +16,29 @@ const { removeEmptyFields, normalizeActorName } = require('../schema');
 const { getActorsCachePath } = require('../cache-helper');
 const actorDb = require('../actorDb');
 
-async function scrapeLocal(actorName) {
+/**
+ * @param {string} actorName
+ * @param {string[]|string} [altNameHints] - Extra name candidates (e.g. a
+ *   movie's own alt name for this actor, or names discovered by other
+ *   scrapers already run this session) tried against the index if
+ *   `actorName` alone doesn't match — without this, an actor already
+ *   indexed under one of these names but not under `actorName` itself gets
+ *   missed and a duplicate record is created downstream.
+ */
+async function scrapeLocal(actorName, altNameHints) {
   console.error(`[local] Searching for: ${actorName}`);
 
-  const dbActor = actorDb.findActorByName(actorName);
-  if (!dbActor) {
+  const id = actorDb.resolveId(actorName, altNameHints);
+  if (!id) {
     console.error(`[local] ✗ Not found: ${actorName}`);
     return null;
   }
 
   // Self-heal a stale cache photo pointer as we go (cache is the single
   // source of truth for the scraper — see resolvePhotoSource()).
-  actorDb.resolvePhotoSource(dbActor.id, { cachePath: getActorsCachePath() });
+  actorDb.resolvePhotoSource(id, { cachePath: getActorsCachePath() });
 
-  const healed = actorDb.getActor(dbActor.id);
+  const healed = actorDb.getActor(id);
   console.error(`[local] Found in index: ${healed.id}`);
   return removeEmptyFields(healed);
 }

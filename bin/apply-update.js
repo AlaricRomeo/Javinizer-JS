@@ -92,9 +92,12 @@ function download(url, destPath, redirectsLeft = 5) {
 }
 
 function run(cmd, cmdArgs) {
-  log(`$ ${cmd} ${cmdArgs.join(" ")}`);
+  // On Windows, npm is a .cmd shim, not a real executable — execFileSync
+  // can't launch it directly (spawn ENOENT) without resolving to npm.cmd.
+  const resolvedCmd = process.platform === "win32" && cmd === "npm" ? "npm.cmd" : cmd;
+  log(`$ ${resolvedCmd} ${cmdArgs.join(" ")}`);
   try {
-    const output = execFileSync(cmd, cmdArgs, { cwd: REPO_ROOT });
+    const output = execFileSync(resolvedCmd, cmdArgs, { cwd: REPO_ROOT });
     log(output.toString());
   } catch (err) {
     if (err.stdout) log(err.stdout.toString());
@@ -151,8 +154,21 @@ async function main() {
     replaceApplicationFiles();
     filesReplaced = true;
 
+    // Everything from here on runs against already-replaced application
+    // files — a failure in either of these two steps is a real problem
+    // worth surfacing, but not one that should report the update itself as
+    // failed (the new version IS live; About already shows it after the
+    // restart below), so each is caught independently instead of falling
+    // through to the outer catch.
+    const warnings = [];
+
     writeStatus({ state: "installing_dependencies", version, tag });
-    run("npm", ["install"]);
+    try {
+      run("npm", ["install"]);
+    } catch (npmErr) {
+      log(`npm install failed (non-fatal, files already replaced): ${npmErr.message}`);
+      warnings.push("npm install failed — run it manually if the app misbehaves");
+    }
 
     writeStatus({ state: "migrating_database", version, tag });
     try {
@@ -161,13 +177,18 @@ async function main() {
       log(`Migrations applied: ${result.applied}`);
     } catch (migrationErr) {
       log(`Migration error (non-fatal): ${migrationErr.message}`);
+      warnings.push("Database migration failed — check update.log");
     }
 
     fs.rmSync(ARCHIVE_PATH, { force: true });
     fs.rmSync(EXTRACT_DIR, { recursive: true, force: true });
 
-    writeStatus({ state: "complete", version, tag, completedAt: new Date().toISOString() });
-    log("Update complete");
+    writeStatus({
+      state: warnings.length > 0 ? "complete_with_warnings" : "complete",
+      version, tag, completedAt: new Date().toISOString(),
+      ...(warnings.length > 0 ? { warnings } : {})
+    });
+    log(warnings.length > 0 ? `Update complete with warnings: ${warnings.join("; ")}` : "Update complete");
   } catch (err) {
     log(`Update failed: ${err.message}`);
     writeStatus({ state: "failed", version, tag, error: err.message, filesReplaced });
