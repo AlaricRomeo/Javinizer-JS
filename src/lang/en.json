@@ -11,6 +11,8 @@
     "search": "Search...",
     "filterResults": "Filter results ({count})",
     "filterActive": "Filter: \"{query}\" ({count})",
+    "filterActiveMovies": "Filter: \"{label} - {count} movie(s)\"",
+    "filterActiveMoviesNoLabel": "Filter: {count} movie(s)",
     "clearFilter": "Clear filter"
   },
   "sections": {
@@ -203,7 +205,8 @@
     "searchActor": "Search Actor",
     "note": "Note",
     "noteHelp": "Additional information about the actor",
-    "overwriteLocalData": "Overwrite local data (including photo)"
+    "overwriteLocalData": "Overwrite local data (including photo)",
+    "moviesCount": "{count} movie(s)"
   },
   "actors": {
     "pageTitle": "Actors - Javinizer-JS",

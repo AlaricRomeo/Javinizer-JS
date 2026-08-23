@@ -11,6 +11,8 @@
     "search": "Cerca...",
     "filterResults": "Filtra risultati ({count})",
     "filterActive": "Filtro: \"{query}\" ({count})",
+    "filterActiveMovies": "Filtro: \"{label} - {count} film\"",
+    "filterActiveMoviesNoLabel": "Filtro: {count} film",
     "clearFilter": "Rimuovi filtro"
   },
   "sections": {
@@ -204,7 +206,8 @@
     "searchActor": "Cerca Attore",
     "note": "Nota",
     "noteHelp": "Informazioni aggiuntive sull'attore",
-    "overwriteLocalData": "Sovrascrivi dati locali (foto compresa)"
+    "overwriteLocalData": "Sovrascrivi dati locali (foto compresa)",
+    "moviesCount": "{count} film"
   },
   "actors": {
     "pageTitle": "Attori - Javinizer-JS",

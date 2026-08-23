@@ -23,6 +23,17 @@ window.clearSearchFilter = async () => {
   await fetch("/item/filter/clear", { method: "POST" });
 };
 
+// Exposed for navbar/grid "N movies" links (an actor's known movies, real
+// ids from actor_movies): same Next/Previous restriction as
+// applySearchFilter, but by an explicit id list instead of a text query.
+window.applyIdsFilter = async (ids) => {
+  return await loadItem("/item/filter", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids })
+  });
+};
+
 // ─────────────────────────────
 // Sistema Dirty Tracking
 // ─────────────────────────────

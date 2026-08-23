@@ -508,42 +508,79 @@ router.get("/search", (req, res) => {
 // (regex over cached NFO text) and buildItem() only runs for the — typically
 // small — set of matches, not the whole library.
 // ─────────────────────────────
+async function buildLibrarySearchResults(matchedItems) {
+  const aliasCache = new Map();
+  const actorCache = new Map();
+  const built = await Promise.all(
+    matchedItems.map(async item => {
+      try {
+        const builtItem = await buildItem(item, actorCache);
+        if (!builtItem) return null;
+        const localCoverUrl = `/item/library-cover/${encodeURIComponent(builtItem.folderId)}`;
+        return {
+          id: builtItem.id,
+          folderId: builtItem.folderId,
+          filename: builtItem.filename,
+          title: builtItem.title,
+          coverUrl: localCoverUrl,
+          remoteCoverUrl: builtItem.coverUrl,
+          genre: builtItem.genres,
+          actor: builtItem.actor,
+          actorSearchNames: resolveActorSearchNames(builtItem.actor, aliasCache)
+        };
+      } catch (err) {
+        console.error(`[library-search] Skipping stale item ${item.id}:`, err.message);
+        return null;
+      }
+    })
+  );
+  return built.filter(Boolean);
+}
+
 router.get("/library-search", async (req, res) => {
   try {
-    const q = (req.query.q || '').toLowerCase().trim();
-    if (!q) return res.json({ ok: true, items: [] });
+    // Explicit id list (e.g. the actor card's "N movies" link, built from
+    // actor_movies) — skips matchSearchIndex entirely, so it's actually
+    // lighter than a text query, not just more precise. Kept here (GET,
+    // query string) for short lists; POST /library-search below takes the
+    // same `ids` as a JSON body instead, for an actor with enough movies
+    // that a query string risks hitting a URL length limit.
+    const idsParam = (req.query.ids || '').trim();
+    let matchedItems;
 
-    const matches = matchSearchIndex(q);
-    const matchIds = new Set(matches.map(m => m.id));
-    const matchedItems = libraryReader.items.filter(item => matchIds.has(item.id));
+    if (idsParam) {
+      const idSet = new Set(idsParam.split(',').map(s => s.trim()).filter(Boolean));
+      matchedItems = libraryReader.items.filter(item => idSet.has(item.id));
+    } else {
+      const q = (req.query.q || '').toLowerCase().trim();
+      if (!q) return res.json({ ok: true, items: [] });
 
-    const aliasCache = new Map();
-    const actorCache = new Map();
-    const built = await Promise.all(
-      matchedItems.map(async item => {
-        try {
-          const builtItem = await buildItem(item, actorCache);
-          if (!builtItem) return null;
-          const localCoverUrl = `/item/library-cover/${encodeURIComponent(builtItem.folderId)}`;
-          return {
-            id: builtItem.id,
-            folderId: builtItem.folderId,
-            filename: builtItem.filename,
-            title: builtItem.title,
-            coverUrl: localCoverUrl,
-            remoteCoverUrl: builtItem.coverUrl,
-            genre: builtItem.genres,
-            actor: builtItem.actor,
-            actorSearchNames: resolveActorSearchNames(builtItem.actor, aliasCache)
-          };
-        } catch (err) {
-          console.error(`[library-search] Skipping stale item ${item.id}:`, err.message);
-          return null;
-        }
-      })
-    );
+      const matches = matchSearchIndex(q);
+      const matchIds = new Set(matches.map(m => m.id));
+      matchedItems = libraryReader.items.filter(item => matchIds.has(item.id));
+    }
 
-    res.json({ ok: true, items: built.filter(Boolean) });
+    res.json({ ok: true, items: await buildLibrarySearchResults(matchedItems) });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// ─────────────────────────────
+// POST /library-search
+// Same as GET /library-search?ids=..., but for an explicit id list sent as
+// a JSON body instead of a query string — an actor with a lot of movies
+// can produce an `ids` list too long to safely fit a URL.
+// ─────────────────────────────
+router.post("/library-search", async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+    if (ids.length === 0) return res.json({ ok: true, items: [] });
+
+    const idSet = new Set(ids.map(s => String(s).trim()).filter(Boolean));
+    const matchedItems = libraryReader.items.filter(item => idSet.has(item.id));
+
+    res.json({ ok: true, items: await buildLibrarySearchResults(matchedItems) });
   } catch (err) {
     res.json(fail(err.message));
   }
@@ -551,20 +588,29 @@ router.get("/library-search", async (req, res) => {
 
 // ─────────────────────────────
 // POST /filter
-// Restrict /item/next and /item/previous to items matching the query
+// Restrict /item/next and /item/previous to items matching the query — or,
+// given an explicit `ids` list instead of `q` (e.g. an actor card's "N
+// movies" link), to exactly those ids, no text matching involved.
 // ─────────────────────────────
 router.post("/filter", async (req, res) => {
   try {
-    const q = (req.body.q || '').toLowerCase().trim();
-    if (!q) return res.json(fail('Query required'));
+    let matchIds;
 
-    const matches = matchSearchIndex(q);
-    if (matches.length === 0) return res.json({ ok: true, count: 0, item: null });
+    if (Array.isArray(req.body.ids) && req.body.ids.length > 0) {
+      matchIds = req.body.ids;
+    } else {
+      const q = (req.body.q || '').toLowerCase().trim();
+      if (!q) return res.json(fail('Query required'));
 
-    libraryReader.setFilter(matches.map(m => m.id));
+      const matches = matchSearchIndex(q);
+      if (matches.length === 0) return res.json({ ok: true, count: 0, item: null });
+      matchIds = matches.map(m => m.id);
+    }
+
+    libraryReader.setFilter(matchIds);
     const current = libraryReader.getCurrent();
     const model = current ? await buildItem(current) : null;
-    res.json({ ok: true, count: matches.length, item: model });
+    res.json({ ok: true, count: matchIds.length, item: model });
   } catch (err) {
     res.json(fail(err.message));
   }
@@ -619,6 +665,22 @@ router.post("/config", (req, res) => {
       if (libraryPathChanged) {
         scrapeReader.loadScrapeItems();
         console.log('[Config] Scrape items list reloaded');
+
+        // Rebuild actor_movies for the new library — one NFO read per item,
+        // so worth doing here (the only event that actually invalidates it)
+        // rather than on every server restart. Spawned as its own detached
+        // process (same pattern as the updater, see bin/apply-update.js):
+        // this is synchronous, blocking file I/O over the whole library,
+        // and running it in-process would freeze the single-threaded
+        // server for everyone else for the whole scan.
+        const { spawn } = require('child_process');
+        const rebuildScript = path.join(__dirname, '../../bin/rebuild-actor-movies.js');
+        const rebuildChild = spawn(process.execPath, [rebuildScript], {
+          cwd: path.join(__dirname, '../..'),
+          detached: true,
+          stdio: 'ignore'
+        });
+        rebuildChild.unref();
       }
     }
 
@@ -663,15 +725,21 @@ router.post("/save", async (req, res) => {
       const { normalizeActorName } = require('../../scrapers/actors/schema');
       const actorDb = require('../../scrapers/actors/actorDb');
 
+      const resolvedIds = [];
       for (const actor of changes.actor) {
         if (!actor.name) continue;
         try {
           const resolvedId = resolveActorSaveId(actor, actorDb, normalizeActorName);
           saveActorLocal({ ...actor, id: resolvedId, meta: { sources: ['manual'] } }, { replaceNames: true });
+          resolvedIds.push(resolvedId);
         } catch (err) {
           console.error(`[Routes] Failed to persist actor ${actor.name}:`, err.message);
         }
       }
+      // Replace, not append — an actor removed from this movie's cast (or
+      // whose name now resolves to a different existing actor) must
+      // actually drop out of actor_movies too, not linger forever.
+      actorDb.setActorsForMovie(item.id, resolvedIds);
     }
 
     const saveCfg = loadConfig();
@@ -926,15 +994,18 @@ router.post("/edit-rescrape/save", async (req, res) => {
       const { normalizeActorName } = require('../../scrapers/actors/schema');
       const actorDb = require('../../scrapers/actors/actorDb');
 
+      const resolvedIds = [];
       for (const actor of item.actor) {
         if (!actor.name) continue;
         try {
           const resolvedId = resolveActorSaveId(actor, actorDb, normalizeActorName);
           saveActorLocal({ ...actor, id: resolvedId, meta: { sources: ['manual'] } }, { replaceNames: true });
+          resolvedIds.push(resolvedId);
         } catch (err) {
           console.error(`[Routes] Failed to persist actor ${actor.name}:`, err.message);
         }
       }
+      actorDb.setActorsForMovie(folderId, resolvedIds);
     }
 
     if (item.coverUrl) {
@@ -1553,6 +1624,7 @@ router.post("/scrape/save", async (req, res) => {
 
         console.error(`[Routes] Scraping ${itemToSave.actor.length} actors from saved movie`);
 
+        const resolvedIds = [];
         for (const actor of itemToSave.actor) {
           if (actor.name) {
             try {
@@ -1564,6 +1636,7 @@ router.post("/scrape/save", async (req, res) => {
               // discarded instead of updating the index.
               const resolvedId = resolveActorSaveId(actor, actorDb, normalizeActorName);
               saveActorLocal({ ...actor, id: resolvedId, meta: { sources: ['manual'] } }, { replaceNames: true });
+              resolvedIds.push(resolvedId);
 
               console.error(`[Routes] Scraping actor: ${actor.name}`);
               await getActor(actor.name, false, actor.altName || []);
@@ -1573,6 +1646,10 @@ router.post("/scrape/save", async (req, res) => {
               actorResults.failed++;
             }
           }
+        }
+
+        if (results.folder) {
+          actorDb.setActorsForMovie(path.basename(results.folder), resolvedIds);
         }
 
         console.error(`[Routes] Actor scraping completed: ${actorResults.scraped} scraped, ${actorResults.failed} failed`);
@@ -2511,6 +2588,7 @@ function removeFavoritePhotoFromExternal(actorId) {
 router.post("/actors/save", async (req, res) => {
   try {
     const { normalizeActorName } = require('../../scrapers/actors/schema');
+    const actorDb = require('../../scrapers/actors/actorDb');
     const actorData = req.body;
 
     // The id is stable once assigned — it's an internal slug, not required
@@ -2520,9 +2598,14 @@ router.post("/actors/save", async (req, res) => {
     // yet; recomputing it from the current name on every save used to
     // mistake "id isn't derivable from the name" for "actor was renamed"
     // and delete the real NFO/photo out from under an unrelated fresh id.
-    if (!actorData.id) {
-      actorData.id = normalizeActorName(actorData.name);
-    }
+    //
+    // When there's no id at all (e.g. an actor whose id was never resolved
+    // client-side — a brand new record, or one just created by a scrape
+    // moments earlier in the same movie-save flow), resolveId() checks name
+    // AND alt-name against every existing actor first — a plain
+    // normalizeActorName(name) here would silently create a duplicate
+    // record for an actor that already exists under a different id.
+    actorData.id = resolveActorSaveId(actorData, actorDb, normalizeActorName);
 
     // Update thumbUrl if thumb is a remote URL
     if (actorData.thumb && actorData.thumb.startsWith('http')) {
@@ -2824,6 +2907,41 @@ router.post("/actors/favorite", async (req, res) => {
     syncFavoriteCopy(actorId, isFavorite);
 
     res.json({ ok: true, id: actorId, favorite: isFavorite });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ─────────────────────────────
+// GET /actors/:id/movies
+// Real movie ids an actor appears in, from actor_movies — self-heals as it
+// goes: a movie_id no longer present in the current library (deleted/moved
+// outside the app) is dropped from the index right here, so the count
+// shown next time is already correct without needing a full rescan.
+// ─────────────────────────────
+router.get("/actors/:id/movies", async (req, res) => {
+  try {
+    const actorDb = require('../../scrapers/actors/actorDb');
+    const { loadConfig } = require('../core/config');
+    const actorId = req.params.id;
+
+    // Checked straight against the filesystem, not libraryReader.items —
+    // that array is lazily/partially loaded (see libraryReader.loadLibrary's
+    // batching) and would falsely read as "doesn't exist" for anything not
+    // loaded yet, wrongly pruning perfectly valid links.
+    const { libraryPath } = loadConfig();
+
+    const movieIds = actorDb.getMoviesForActor(actorId);
+    const live = [];
+    for (const movieId of movieIds) {
+      if (libraryPath && fs.existsSync(path.join(libraryPath, movieId))) {
+        live.push(movieId);
+      } else {
+        actorDb.unlinkMovie(actorId, movieId);
+      }
+    }
+
+    res.json({ ok: true, movieIds: live });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }

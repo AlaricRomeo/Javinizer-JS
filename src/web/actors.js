@@ -333,13 +333,38 @@ function createActorCard(actor) {
   if (actor.altName) info.appendChild(altName);
   if (statParts.length > 0) info.appendChild(stats);
 
-  // Movies link — jumps to the grid view, pre-filled with this actor's name
-  const moviesLink = document.createElement('a');
-  moviesLink.className = 'actor-movies-link';
-  moviesLink.href = `grid.html?search=${encodeURIComponent(actor.name || actor.altName || '')}`;
-  moviesLink.innerHTML = `<i class="fas fa-film"></i> <span data-i18n="actors.movies">movies</span>`;
-  moviesLink.onclick = (e) => e.stopPropagation();
-  info.appendChild(moviesLink);
+  // Movies link — jumps to the grid view showing exactly this actor's
+  // known movies (real ids from actor_movies, not a name text-match).
+  // Hidden until the async count comes back with at least one movie.
+  if (actor.id) {
+    const moviesLink = document.createElement('a');
+    moviesLink.className = 'actor-movies-link movies-link';
+    moviesLink.href = '#';
+    moviesLink.style.display = 'none';
+    let movieIds = [];
+    moviesLink.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (movieIds.length > 0 && window.applyActorMoviesFilter) {
+        window.applyActorMoviesFilter(actor.id, actor.name || actor.altName || '');
+      }
+    };
+    info.appendChild(moviesLink);
+
+    fetch(`/api/actors/${encodeURIComponent(actor.id)}/movies`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && Array.isArray(data.movieIds) && data.movieIds.length > 0) {
+          movieIds = data.movieIds;
+          const label = window.i18n
+            ? window.i18n.t('actorModal.moviesCount', { count: movieIds.length })
+            : `${movieIds.length} movie${movieIds.length === 1 ? '' : 's'}`;
+          moviesLink.innerHTML = `<span class="movies-icon">🎬</span><span>${label}</span>`;
+          moviesLink.style.display = '';
+        }
+      })
+      .catch(err => console.error('[Actors] Failed to load movie count:', err));
+  }
 
   card.appendChild(thumb);
   card.appendChild(info);

@@ -95,6 +95,14 @@ function openActorModal(actor) {
     if (sourceInfo) sourceInfo.style.display = 'none';
   }
 
+  // Movies this actor appears in — fetched async so opening the modal is
+  // never blocked on it; hidden until (if) it resolves to at least one.
+  const moviesInfo = document.getElementById('actorEditMoviesInfo');
+  if (moviesInfo) moviesInfo.style.display = 'none';
+  if (!unifiedIsNewActor && a.id) {
+    loadActorMoviesInfo(a.id);
+  }
+
   // Reset overwrite checkbox
   const overwriteCheckbox = document.getElementById('actorEditOverwriteLocal');
   if (overwriteCheckbox) overwriteCheckbox.checked = false;
@@ -123,6 +131,50 @@ function openActorModal(actor) {
 
   // Show modal
   modal.classList.add('active');
+}
+
+/**
+ * Fetch and show "N movies" for the actor currently in the modal — real
+ * ids from actor_movies (self-healed against the current library as it
+ * goes, see GET /actors/:id/movies), not a name text-match. Never blocks
+ * opening the modal; silently does nothing if it comes back empty/late
+ * (e.g. the user already closed/switched actors).
+ */
+async function loadActorMoviesInfo(actorId) {
+  try {
+    const res = await fetch(`/api/actors/${encodeURIComponent(actorId)}/movies`);
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.movieIds) || data.movieIds.length === 0) return;
+
+    // The modal may have moved on to a different actor (or closed) by the
+    // time this resolves — don't stomp on whatever's showing now.
+    if (!unifiedCurrentActor || unifiedCurrentActor.id !== actorId) return;
+
+    const moviesInfo = document.getElementById('actorEditMoviesInfo');
+    const moviesLink = document.getElementById('actorEditMoviesLink');
+    const moviesCount = document.getElementById('actorEditMoviesCount');
+    if (!moviesInfo || !moviesLink || !moviesCount) return;
+
+    const count = data.movieIds.length;
+    const actorName = unifiedCurrentActor.name || unifiedCurrentActor.altName || '';
+    moviesCount.textContent = window.i18n
+      ? window.i18n.t('actorModal.moviesCount', { count })
+      : `${count} movie${count === 1 ? '' : 's'}`;
+    // Fallback href only (middle-click/no-JS) — the onclick handler below
+    // is what normally fires, going through applyActorMoviesFilter.
+    moviesLink.href = `grid.html?actorId=${encodeURIComponent(actorId)}`;
+    moviesLink.onclick = (e) => {
+      e.preventDefault();
+      // Close first — otherwise the resulting page change (a new movie
+      // loaded in edit mode, or a jump to grid.html) happens invisibly
+      // behind the still-open modal.
+      closeActorModal();
+      if (window.applyActorMoviesFilter) window.applyActorMoviesFilter(actorId, actorName);
+    };
+    moviesInfo.style.display = 'block';
+  } catch (err) {
+    console.error('[ActorModal] Failed to load actor movies:', err);
+  }
 }
 
 function _setField(id, value) {

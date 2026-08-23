@@ -7,6 +7,74 @@
 // localStorage, so it doesn't leak into a totally separate browser session).
 const SEARCH_FILTER_STORAGE_KEY = 'javinizer_searchFilter';
 
+// Same idea as SEARCH_FILTER_STORAGE_KEY, but for an explicit id list
+// instead of a text query (e.g. an actor's "N movies" link) — stored as
+// JSON {ids, label}. Mutually exclusive with the text filter: setting one
+// clears the other (see grid.js and applyIdsAsFilter below).
+const IDS_FILTER_STORAGE_KEY = 'javinizer_idsFilter';
+
+// Shared by the navbar's own filter badge (edit mode) and Grid View's own
+// badge (grid.js) so both read the same — e.g. 'Filter: "Abeno Miku - 54
+// movies"'.
+function formatIdsFilterBadge(count, label) {
+  if (label) {
+    return window.i18n
+      ? window.i18n.t('nav.filterActiveMovies', { label, count })
+      : `Filter: "${label} - ${count} movie${count === 1 ? '' : 's'}"`;
+  }
+  return window.i18n
+    ? window.i18n.t('nav.filterActiveMoviesNoLabel', { count })
+    : `Filter: ${count} movie${count === 1 ? '' : 's'}`;
+}
+
+/**
+ * Jump to exactly one actor's known movies (real ids from actor_movies) —
+ * used by the actor card (actors.js), the actor detail modal
+ * (actor-modal.js) and Grid View's own per-actor links (grid.js). Available
+ * on every page (unlike the Next/Previous-constraining filter below, which
+ * only makes sense in edit mode): it always saves the filter for edit mode
+ * to pick up later, and applies it live wherever that's currently possible.
+ */
+window.applyActorMoviesFilter = async function(actorId, actorName) {
+  if (!actorId) return;
+  try {
+    const res = await fetch(`/api/actors/${encodeURIComponent(actorId)}/movies`);
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.movieIds) || data.movieIds.length === 0) return;
+    const ids = data.movieIds;
+
+    // Edit mode (index.html): constrain Next/Previous right now and show
+    // the badge, via the closures set up in initNavbarSearch() below.
+    if (window.__applyIdsFilterInPlace) {
+      await window.__applyIdsFilterInPlace(ids, actorName);
+      return;
+    }
+
+    // Anywhere else: just save it as the pending filter (picked up by
+    // initNavbarSearch()'s restore-on-init whenever the user does reach
+    // edit mode) and go look at the results.
+    sessionStorage.setItem(IDS_FILTER_STORAGE_KEY, JSON.stringify({ ids, label: actorName || null }));
+    sessionStorage.removeItem(SEARCH_FILTER_STORAGE_KEY);
+
+    if (typeof window.applyIdsFilterLocal === 'function') {
+      // Already on grid.html — update in place, no reload. The URL gets
+      // just the actor id, not the whole movie list (which for a prolific
+      // actor could grow past a safe URL length) — grid.js resolves it back
+      // to ids itself when landing on ?actorId=.
+      await window.applyIdsFilterLocal(ids, actorName || null, { persist: false });
+      const url = new URL(window.location.href);
+      url.searchParams.set('actorId', actorId);
+      url.searchParams.delete('ids');
+      url.searchParams.delete('search');
+      history.pushState({}, '', url);
+    } else {
+      window.location.href = `grid.html?actorId=${encodeURIComponent(actorId)}`;
+    }
+  } catch (err) {
+    console.error('[Filter] Failed to load actor movies:', err);
+  }
+};
+
 /**
  * Loads the navbar component and initializes it
  */
@@ -209,25 +277,43 @@ function initNavbarSearch() {
     if (!visible) { input.value = ''; dropdown.style.display = 'none'; }
   };
 
+  let lastFilterMode = 'text'; // 'text' | 'ids'
   let lastFilterQuery = null;
+  let lastFilterLabel = null;
   let lastFilterCount = 0;
 
-  function showFilterBadge(query, count) {
+  function renderFilterBadge() {
     if (!filterBadge) return;
-    lastFilterQuery = query;
-    lastFilterCount = count;
-    filterBadgeText.textContent = window.i18n
-      ? window.i18n.t('nav.filterActive', { query, count })
-      : `Filter: "${query}" (${count})`;
+    if (lastFilterMode === 'ids') {
+      filterBadgeText.textContent = formatIdsFilterBadge(lastFilterCount, lastFilterLabel);
+    } else {
+      filterBadgeText.textContent = window.i18n
+        ? window.i18n.t('nav.filterActive', { query: lastFilterQuery, count: lastFilterCount })
+        : `Filter: "${lastFilterQuery}" (${lastFilterCount})`;
+    }
     filterBadge.style.display = 'flex';
   }
 
+  function showFilterBadge(query, count) {
+    lastFilterMode = 'text';
+    lastFilterQuery = query;
+    lastFilterCount = count;
+    renderFilterBadge();
+  }
+
+  function showIdsFilterBadge(count, label) {
+    lastFilterMode = 'ids';
+    lastFilterCount = count;
+    lastFilterLabel = label || null;
+    renderFilterBadge();
+  }
+
   // The saved-filter restore on init can run before this page's own i18n
-  // init finishes loading translations, showing the raw "nav.filterActive"
-  // key briefly — re-render the badge text once translations are ready.
+  // init finishes loading translations, showing the raw i18n key briefly —
+  // re-render the badge text once translations are ready.
   window.addEventListener('i18nLoaded', () => {
-    if (filterBadge && filterBadge.style.display === 'flex' && lastFilterQuery !== null) {
-      showFilterBadge(lastFilterQuery, lastFilterCount);
+    if (filterBadge && filterBadge.style.display === 'flex') {
+      renderFilterBadge();
     }
   });
 
@@ -240,6 +326,7 @@ function initNavbarSearch() {
       if (window.clearSearchFilter) await window.clearSearchFilter();
       hideFilterBadge();
       sessionStorage.removeItem(SEARCH_FILTER_STORAGE_KEY);
+      sessionStorage.removeItem(IDS_FILTER_STORAGE_KEY);
     });
   }
 
@@ -251,6 +338,7 @@ function initNavbarSearch() {
     if (result && result.ok && result.count > 0) {
       showFilterBadge(q, result.count);
       sessionStorage.setItem(SEARCH_FILTER_STORAGE_KEY, q);
+      sessionStorage.removeItem(IDS_FILTER_STORAGE_KEY);
     } else {
       hideFilterBadge();
       sessionStorage.removeItem(SEARCH_FILTER_STORAGE_KEY);
@@ -258,13 +346,48 @@ function initNavbarSearch() {
     }
   }
 
+  // Same as applyAsFilter, for an explicit id list instead of a text query
+  // (e.g. an actor's "N movies" link) — see applyActorMoviesFilter above.
+  async function applyIdsAsFilter(ids, label, silent = false) {
+    if (!window.applyIdsFilter) return;
+    const result = await window.applyIdsFilter(ids);
+    if (result && result.ok && result.count > 0) {
+      showIdsFilterBadge(result.count, label);
+      sessionStorage.setItem(IDS_FILTER_STORAGE_KEY, JSON.stringify({ ids, label: label || null }));
+      sessionStorage.removeItem(SEARCH_FILTER_STORAGE_KEY);
+    } else {
+      hideFilterBadge();
+      sessionStorage.removeItem(IDS_FILTER_STORAGE_KEY);
+      if (!silent) alert(window.i18n ? window.i18n.t('messages.noResultsFound') : 'No results found');
+    }
+  }
+
+  // Lets applyActorMoviesFilter (module scope, always available) apply the
+  // filter immediately when we're already in edit mode, instead of only
+  // saving it for later.
+  window.__applyIdsFilterInPlace = (ids, label) => applyIdsAsFilter(ids, label, false);
+
   // Resume a filter that was active before navigating here from grid view
   // (or before a page reload) — see grid.js for the other half of this.
   // The input itself is left empty, same as right after committing any
   // filter normally; only the badge (and the underlying server-side filter)
-  // needs to reappear.
-  const savedFilterQuery = sessionStorage.getItem(SEARCH_FILTER_STORAGE_KEY);
-  if (savedFilterQuery) applyAsFilter(savedFilterQuery, true);
+  // needs to reappear. An ids filter wins over a text one if somehow both
+  // are present (shouldn't normally happen — each clears the other).
+  const savedIdsFilterRaw = sessionStorage.getItem(IDS_FILTER_STORAGE_KEY);
+  let savedIds = null;
+  if (savedIdsFilterRaw) {
+    try {
+      const parsed = JSON.parse(savedIdsFilterRaw);
+      if (parsed && Array.isArray(parsed.ids) && parsed.ids.length > 0) savedIds = parsed;
+    } catch (_) { /* ignore malformed saved state */ }
+  }
+
+  if (savedIds) {
+    applyIdsAsFilter(savedIds.ids, savedIds.label, true);
+  } else {
+    const savedFilterQuery = sessionStorage.getItem(SEARCH_FILTER_STORAGE_KEY);
+    if (savedFilterQuery) applyAsFilter(savedFilterQuery, true);
+  }
 
   let searchTimeout;
 

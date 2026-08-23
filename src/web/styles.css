@@ -686,3 +686,18 @@ button:disabled {
     opacity: 0;
   }
 }
+
+/* Shared "N movies" link — actor card (actors.html) and actor detail modal
+   (actor-modal.html, both index.html and actors.html) — plain emoji instead
+   of Font Awesome so it renders identically everywhere regardless of
+   whether the page loads the Font Awesome stylesheet. */
+.movies-icon {
+  font-size: 1.3em;
+  margin-right: 8px;
+  vertical-align: middle;
+  line-height: 1;
+}
+.movies-link {
+  display: inline-flex;
+  align-items: center;
+}

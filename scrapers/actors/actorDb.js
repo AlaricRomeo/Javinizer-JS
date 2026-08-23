@@ -272,6 +272,20 @@ function setPrimaryName(db, actorId, name) {
   const nameLower = displayName.toLowerCase().trim();
   if (!nameLower) return;
 
+  // If this exact name is already known (primary or alt) for a DIFFERENT
+  // actor, this rename is effectively the system asserting actorId and that
+  // other record are the same person — absorb it instead of ending up with
+  // two records that both claim this exact name forever after (each save
+  // touching only its own already-known id, so nothing would ever bring
+  // them back together on its own). Much stronger signal than a generic
+  // shared-name overlap (which findDuplicateGroups() already surfaces for
+  // manual review instead of merging automatically) — a plain alt-name
+  // addition doesn't trigger this, only a primary actually being set here.
+  const conflict = db.prepare('SELECT actor_id FROM actor_names WHERE name_lower = ? AND actor_id != ?').get(nameLower, actorId);
+  if (conflict) {
+    mergeActors(actorId, conflict.actor_id);
+  }
+
   const currentPrimary = db.prepare("SELECT * FROM actor_names WHERE actor_id = ? AND kind = 'primary'").get(actorId);
   if (currentPrimary && currentPrimary.name_lower === nameLower && currentPrimary.name === displayName) return;
 
@@ -513,6 +527,66 @@ function getMoviesForActor(actorId) {
 }
 
 /**
+ * Remove a single stale actor/movie link (e.g. the movie folder no longer
+ * exists in the current library — see the existence check run when an
+ * actor's detail card is opened).
+ */
+function unlinkMovie(actorId, movieId) {
+  if (!actorId || !movieId) return;
+  const db = getDb();
+  db.prepare('DELETE FROM actor_movies WHERE actor_id = ? AND movie_id = ?').run(actorId, movieId);
+}
+
+/**
+ * Replace every actor_movies row for one movie with exactly this set of
+ * actor ids — the only way removing an actor from a movie's cast (or
+ * renaming them to a different existing actor) actually drops the stale
+ * link, instead of linkMovie()'s insert-only, forever-accumulating
+ * behavior. Called whenever a movie's actor array is saved.
+ */
+function setActorsForMovie(movieId, actorIds) {
+  if (!movieId) return;
+  const db = getDb();
+  const ids = Array.from(new Set((actorIds || []).filter(Boolean)));
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM actor_movies WHERE movie_id = ?').run(movieId);
+    const insert = db.prepare('INSERT OR IGNORE INTO actor_movies (actor_id, movie_id) VALUES (?, ?)');
+    for (const actorId of ids) insert.run(actorId, movieId);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+/**
+ * Rebuild the entire actor_movies table from scratch — wipes every row and
+ * reinserts exactly the given {actorId, movieId} pairs, in one transaction.
+ * Used for a full library scan (see bin/rebuild-actor-movies.js), which is
+ * the only way to know a movie's actors were removed/moved outside the app
+ * (no per-save hook can ever catch that). No library scoping needed: this
+ * always runs on an actual library-path change (the only event that
+ * invalidates libraryReader's own cache), so the previous library's rows
+ * are simply replaced wholesale along with everything else.
+ */
+function rebuildAllActorMovies(pairs) {
+  const db = getDb();
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM actor_movies');
+    const insert = db.prepare('INSERT OR IGNORE INTO actor_movies (actor_id, movie_id) VALUES (?, ?)');
+    for (const { actorId, movieId } of pairs) {
+      if (actorId && movieId) insert.run(actorId, movieId);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+/**
  * Set/unset an actor's favorite flag. Never touched by upsertActor(), so a
  * scraper re-visiting this actor can't silently clear it.
  */
@@ -720,7 +794,10 @@ module.exports = {
   resolveId,
   resolvePhotoSource,
   linkMovie,
+  unlinkMovie,
   getMoviesForActor,
+  setActorsForMovie,
+  rebuildAllActorMovies,
   findDuplicateNames,
   findDuplicateGroups,
   getActorNames,

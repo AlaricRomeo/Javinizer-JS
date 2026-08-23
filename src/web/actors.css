@@ -243,7 +243,6 @@ body {
 .actor-movies-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   margin-top: 8px;
   font-size: 11px;
   color: #667eea;

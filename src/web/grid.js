@@ -18,30 +18,140 @@ let currentSearchQuery = '';
 let currentMode = 'scrape';
 let currentConfig = {};
 
-// SEARCH_FILTER_STORAGE_KEY is declared by navbar-loader.js (loaded first on
-// grid.html) and shared here as a global — do not redeclare it in this file.
+// SEARCH_FILTER_STORAGE_KEY and IDS_FILTER_STORAGE_KEY are declared by
+// navbar-loader.js (loaded first on grid.html) and shared here as globals —
+// do not redeclare them in this file.
 
 let isLoadingMore = false;
+
+// Guards loadMoreItems() against the IntersectionObserver firing (a short
+// or still-empty grid can put the scroll sentinel in view immediately)
+// before this initial restore has decided browse vs. filtered — otherwise
+// a premature page of the plain alphabetical listing can load and get
+// appended once the real (filtered) results arrive right after, showing up
+// as unrelated movies tacked onto the end of an actor's filtered list.
+let initialLoadComplete = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initializeI18n();
   setupEventListeners();
   setupInfiniteScroll();
 
-  // Restore the active search: an explicit deep link (?search=<name>, e.g.
-  // from actors.html's "Movies" link) wins over a query carried over from
-  // edit mode's filter, which in turn wins over nothing.
-  const searchParam = new URLSearchParams(window.location.search).get('search')
-    || sessionStorage.getItem(SEARCH_FILTER_STORAGE_KEY);
+  // Restore the active filter, most explicit first: a deep link
+  // (?actorId=<id>, e.g. an actor's "N movies" link — kept short instead of
+  // carrying the whole movie list, which could otherwise grow past a safe
+  // URL length for a prolific actor) wins over one carried over from edit
+  // mode (sessionStorage, so it survives navigating here), which wins over
+  // a text search deep link (?search=<name>), which wins over a
+  // carried-over text search, which wins over nothing. ?ids=... is still
+  // accepted for robustness (e.g. an old bookmarked link).
+  const urlParams = new URLSearchParams(window.location.search);
+  const actorIdParam = urlParams.get('actorId');
+  const idsParam = urlParams.get('ids');
+  const savedIdsFilter = readIdsFilterStorage();
+  const searchParam = urlParams.get('search') || sessionStorage.getItem(SEARCH_FILTER_STORAGE_KEY);
 
-  if (searchParam) {
+  if (actorIdParam) {
+    try {
+      const res = await fetch(`/api/actors/${encodeURIComponent(actorIdParam)}/movies`);
+      const data = await res.json();
+      const ids = (data.ok && Array.isArray(data.movieIds)) ? data.movieIds : [];
+      await applyIdsFilterLocal(ids, savedIdsFilter ? savedIdsFilter.label : null, { persist: true });
+    } catch (err) {
+      console.error('[Grid] Failed to load actor movies:', err);
+      await resetAndBrowse();
+    }
+  } else if (idsParam) {
+    // The URL never carries a label (keeps it short/shareable) — pull it
+    // from the just-saved sessionStorage entry when present (the click that
+    // set this URL just saved it there too), instead of persisting a blank
+    // label that would then also clobber it for edit mode's own restore.
+    const ids = idsParam.split(',').map(s => s.trim()).filter(Boolean);
+    await applyIdsFilterLocal(ids, savedIdsFilter ? savedIdsFilter.label : null, { persist: true });
+  } else if (savedIdsFilter) {
+    await applyIdsFilterLocal(savedIdsFilter.ids, savedIdsFilter.label, { persist: false });
+  } else if (searchParam) {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.value = searchParam;
     await applySearchQuery(searchParam);
   } else {
     await resetAndBrowse();
   }
+
+  initialLoadComplete = true;
 });
+
+function readIdsFilterStorage() {
+  const raw = sessionStorage.getItem(IDS_FILTER_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return (parsed && Array.isArray(parsed.ids) && parsed.ids.length > 0) ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+let lastGridFilterCount = 0;
+let lastGridFilterLabel = null;
+
+function showGridFilterBadge(count, label) {
+  const badge = document.getElementById('gridFilterBadge');
+  const text = document.getElementById('gridFilterBadgeText');
+  if (!badge || !text) return;
+  lastGridFilterCount = count;
+  lastGridFilterLabel = label || null;
+  text.textContent = formatIdsFilterBadge(count, lastGridFilterLabel);
+  badge.style.display = 'flex';
+}
+
+function hideGridFilterBadge() {
+  const badge = document.getElementById('gridFilterBadge');
+  if (badge) badge.style.display = 'none';
+}
+
+// Show exactly this set of library item ids (e.g. an actor's "N movies"
+// link) — unlike applySearchQuery(), this never touches scrape items.
+// `persist`: whether to (re-)save this as the active cross-page filter —
+// false when restoring from that same saved state, to avoid re-writing it
+// with an identical value on every load.
+async function applyIdsFilterLocal(ids, label, { persist = true } = {}) {
+  currentSearchQuery = '';
+  if (!ids || ids.length === 0) {
+    searchResults = [];
+    hideGridFilterBadge();
+    renderFromScratch();
+    return;
+  }
+
+  if (persist) {
+    sessionStorage.setItem(IDS_FILTER_STORAGE_KEY, JSON.stringify({ ids, label: label || null }));
+    sessionStorage.removeItem(SEARCH_FILTER_STORAGE_KEY);
+  }
+
+  showLoading(true);
+  try {
+    // POST, not GET+query string — a prolific actor's movie list can grow
+    // past what's safe to put in a URL.
+    const res = await fetch('/item/library-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const data = await res.json();
+    const matchedLibrary = (data.ok ? data.items : []).map(item => ({ ...item, mode: 'edit' }));
+    searchResults = sortByStatus(matchedLibrary);
+    showGridFilterBadge(matchedLibrary.length, label);
+    renderFromScratch();
+  } catch (error) {
+    console.error('Ids filter failed:', error);
+    searchResults = [];
+    hideGridFilterBadge();
+    renderFromScratch();
+  } finally {
+    showLoading(false);
+  }
+}
 
 async function initializeI18n() {
   try {
@@ -68,6 +178,7 @@ async function initializeI18n() {
       window.i18n.applyTranslations();
       if (window.applyI18nBindings) window.applyI18nBindings();
     }
+    if (lastGridFilterCount > 0) showGridFilterBadge(lastGridFilterCount, lastGridFilterLabel);
   });
 }
 
@@ -79,6 +190,22 @@ function setupEventListeners() {
       clearTimeout(debounce);
       const value = e.target.value;
       debounce = setTimeout(() => applySearchQuery(value), 250);
+    });
+  }
+
+  const gridFilterClear = document.getElementById('gridFilterClear');
+  if (gridFilterClear) {
+    gridFilterClear.addEventListener('click', async () => {
+      sessionStorage.removeItem(IDS_FILTER_STORAGE_KEY);
+      // Also clears the Next/Previous restriction server-side, in case edit
+      // mode is visited next — best-effort, grid.html doesn't otherwise
+      // depend on this endpoint.
+      fetch('/item/filter/clear', { method: 'POST' }).catch(() => {});
+      const url = new URL(window.location.href);
+      url.searchParams.delete('ids');
+      url.searchParams.delete('actorId');
+      history.pushState({}, '', url);
+      await resetAndBrowse();
     });
   }
 }
@@ -93,11 +220,15 @@ function allLoadedItems() {
 async function applySearchQuery(rawQuery) {
   const query = (rawQuery || '').toLowerCase().trim();
   currentSearchQuery = query;
+  hideGridFilterBadge();
 
   // Keep edit mode's navbar filter in sync, so navigating there carries this
-  // search over too (see navbar-loader.js for the other half of this).
+  // search over too (see navbar-loader.js for the other half of this). Text
+  // search and an ids filter are mutually exclusive — starting one clears
+  // any saved state of the other.
   if (query) {
     sessionStorage.setItem(SEARCH_FILTER_STORAGE_KEY, query);
+    sessionStorage.removeItem(IDS_FILTER_STORAGE_KEY);
   } else {
     sessionStorage.removeItem(SEARCH_FILTER_STORAGE_KEY);
   }
@@ -185,6 +316,12 @@ function setupInfiniteScroll() {
 }
 
 async function loadMoreItems() {
+  // The initial browse-vs-filter decision (see DOMContentLoaded) hasn't
+  // finished yet — a short/empty grid can put the scroll sentinel in view
+  // and fire this before that decision is made, loading a page of the
+  // plain alphabetical listing that then gets stuck appended after the
+  // real (filtered) results once they arrive.
+  if (!initialLoadComplete) return;
   // Search results are fetched in full up front — nothing more to page in.
   if (searchResults !== null || !libraryHasMore) return;
 
@@ -239,6 +376,7 @@ async function resetAndBrowse() {
   libraryOffset = 0;
   libraryHasMore = true;
   searchResults = null;
+  hideGridFilterBadge();
 
   showLoading(true);
   try {
@@ -307,13 +445,14 @@ function createItemCard(item) {
   const hasCover = coverUrl && coverUrl.trim() !== '';
 
   const actors = item.actor || [];
-  const actorNames = actors.map(a => {
-    // Se c'è il nome usa il nome
-    if (a.name) return a.name;
-    // Se non c'è il nome usa l'alternate name
-    if (a.altName) return a.altName;
-    // Se non c'è né il nome né l'alternate name usa "Missing Name"
-    return "Missing Name";
+  // Actor ids are app-generated slugs (safe to interpolate); names are
+  // free text and only ever used as plain innerHTML text below, same as
+  // before — never inside an attribute.
+  const actorNamesHtml = actors.map(a => {
+    const label = a.name || a.altName || "Missing Name";
+    return a.id
+      ? `<span class="item-actor-link" data-actor-id="${a.id}" title="${label.replace(/"/g, '&quot;')}">${label}</span>`
+      : `<span>${label}</span>`;
   }).join(', ');
 
   const genres = item.genre || [];
@@ -356,10 +495,10 @@ function createItemCard(item) {
       </div>
       ${!isNotMatched ? `<div class="item-filename">${item.filename || ''}</div>` : ''}
       ${!isNotMatched && genreText ? `<div class="item-meta">${genres.slice(0, 3).map(g => `<span class="meta-tag">${g}</span>`).join('')}</div>` : ''}
-      ${!isNotMatched && actorNames ? `
+      ${!isNotMatched && actors.length > 0 ? `
         <div class="item-actors">
           <div class="item-actors-label" data-i18n="grid.actors">Actors</div>
-          <div class="item-actors-list">${actorNames}</div>
+          <div class="item-actors-list">${actorNamesHtml}</div>
         </div>
       ` : ''}
       ${!isNotMatched ? `
@@ -377,6 +516,19 @@ function createItemCard(item) {
       ` : ''}
     </div>
   `;
+
+  // An actor name on a movie card jumps to exactly that actor's own known
+  // movies — see applyActorMoviesFilter in navbar-loader.js, which (since
+  // applyIdsFilterLocal exists here on grid.html) applies it in place, no
+  // reload, and also saves it as the active cross-page filter so it's still
+  // applied to Next/Previous if the user then switches to edit mode.
+  card.querySelectorAll('.item-actor-link').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (window.applyActorMoviesFilter) window.applyActorMoviesFilter(el.dataset.actorId, el.title);
+    });
+  });
 
   return card;
 }

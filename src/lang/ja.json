@@ -11,7 +11,9 @@
     "search": "検索...",
     "filterResults": "結果を絞り込む ({count})",
     "clearFilter": "フィルターを解除",
-    "filterActive": "フィルター: \"{query}\" ({count})"
+    "filterActive": "フィルター: \"{query}\" ({count})",
+    "filterActiveMovies": "フィルター: \"{label} - {count} 本の作品\"",
+    "filterActiveMoviesNoLabel": "フィルター: {count} 本の作品"
   },
   "sections": {
     "fanart": "ファンアート",
@@ -187,7 +189,8 @@
     "searchActor": "女優を検索",
     "note": "注意",
     "noteHelp": "女優に関する追加情報",
-    "overwriteLocalData": "ローカルデータを上書き（写真を含む）"
+    "overwriteLocalData": "ローカルデータを上書き（写真を含む）",
+    "moviesCount": "{count} 本の作品"
   },
   "actors": {
     "pageTitle": "女優 - Javinizer-JS",
