@@ -1,5 +1,23 @@
 # Release Notes
 
+## v2.4.1 (2026-08-23)
+
+### 🎬 "N movies" — a real filter, everywhere
+
+- The actor detail modal, the actor card, and every actor name on a Grid View movie card now show/link "N movies" — built from a proper `actor_movies` index instead of the old opportunistic, always-wrong-count one
+- `actor_movies` is now rebuilt from scratch whenever the library path changes (the only event that already invalidates the library cache — no extra button needed) and kept in sync on every movie save
+- Clicking "N movies" sets a real filter: constrains Next/Previous in Edit mode, persists across Grid View ↔ Edit mode navigation, and shows a badge (now on Grid View too) naming the actor and count — the URL carries just the actor id, not the whole movie list, and the lookup goes over POST, so a prolific actor's filmography can't hit a URL-length wall
+- Fixed a Grid View race where the infinite-scroll observer could fire before the page decided browse vs. filtered, leaving unrelated alphabetical movies appended after an actor's filtered results
+
+### 🐛 More actor duplicate fixes
+
+- `setPrimaryName()` now merges automatically when the name being set already belongs to a different actor (primary or alt) — closes a gap where two records, each already trusting its own id, could never be reconciled by name lookups alone once neither side's save path re-derived its id from scratch
+- `POST /api/actors/save` (manual actor save) now resolves through the same name/alt-name lookup as `/item/save` before minting a new id — it was creating a duplicate for any actor whose id hadn't been resolved client-side yet (e.g. one an online scrape had just created moments earlier in the same movie-save flow)
+
+### 🎨 Fixes
+
+- The movies-link icon is a plain emoji now instead of Font Awesome, which the actor modal's host page (index.html) doesn't load — it was silently invisible there
+
 ## v2.4.0 (2026-08-22)
 
 ### 🖼️ Actor photo replacement
