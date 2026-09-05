@@ -497,6 +497,9 @@ function splitNameHints(altNameHints) {
  * @returns {Promise<{actorData: object|null, cached: boolean}>}
  */
 async function ensureActorCached(actorName, altNameHints, emitter = null) {
+  const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
+  if (isPlaceholderActorName(actorName)) return { actorData: null, cached: false };
+
   const hints = splitNameHints(altNameHints);
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localData = await scrapeLocal(actorName, hints).catch(() => null);
@@ -539,8 +542,16 @@ async function scrapeActor(actorName, emitter = null, altNameHints = []) {
  * Scrape actor excluding 'local' scraper (used when forceOverwrite=true).
  * Still reads name variants from the local (data/actors) index to help remote scrapers find the actor.
  * @param {string[]|string} altNameHints - Extra name candidates (e.g. user-supplied alt name)
+ * @param {string|null} knownId - The id this actor entry is already known
+ *   under, if any (e.g. the id the caller's own actor card was opened
+ *   with) — used as-is when valid. forceOverwrite means the user doesn't
+ *   trust local data for this name (it may have been recorded, even by
+ *   mistake, as an alt of a completely different actor), so a fresh
+ *   name-based local lookup is never used to assign an id here — only an
+ *   id the caller already independently vouches for, or else a brand new
+ *   one, same as an actor genuinely never seen before.
  */
-async function scrapeActorExcludingLocal(actorName, emitter = null, altNameHints = []) {
+async function scrapeActorExcludingLocal(actorName, emitter = null, altNameHints = [], knownId = null) {
   const config = loadConfig();
   if (!(config.scrapers && config.scrapers.actors && config.scrapers.actors.enabled !== false)) {
     console.error('[ActorScraperManager] Actor scraping is disabled in config');
@@ -553,7 +564,7 @@ async function scrapeActorExcludingLocal(actorName, emitter = null, altNameHints
   // Collect name variants from the local (data/actors) index without using it as a scraper source.
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localData = await scrapeLocal(actorName, altNameHints).catch(() => null);
-  const actorId = (localData && localData.id) ? localData.id : normalizeActorName(actorName);
+  const actorId = (knownId && actorDb.getActor(knownId)) ? knownId : normalizeActorName(actorName);
   const localVariants = localData ? extractNameVariants([{ scraperName: 'local', data: localData }]) : [];
   const initialVariants = [...new Set([...localVariants, ...splitNameHints(altNameHints)])];
   if (initialVariants.length > 0) {
@@ -571,13 +582,19 @@ async function scrapeActorExcludingLocal(actorName, emitter = null, altNameHints
  * @param {boolean} forceOverwrite - If true, exclude 'local' scraper to force remote scraping
  * @param {string[]|string} altNameHints - Extra name candidates (e.g. user-supplied alt name)
  *   tried against online scrapers alongside actorName.
+ * @param {string|null} knownId - The id this actor is already known under
+ *   client-side, if any — see scrapeActorExcludingLocal().
  * @returns {Promise<object|null>} - Actor data or null
  */
-async function getActor(actorName, forceOverwrite = false, altNameHints = []) {
+async function getActor(actorName, forceOverwrite = false, altNameHints = [], knownId = null) {
+  // "Unknown", "N/A", blank, ... aren't a real identity to look up.
+  const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
+  if (isPlaceholderActorName(actorName)) return null;
+
   // If forceOverwrite is true, skip local scraper and force remote scraping
   if (forceOverwrite) {
     console.log(`[ActorScraperManager] Force overwrite enabled, excluding 'local' scraper: ${actorName}`);
-    return await scrapeActorExcludingLocal(actorName, null, altNameHints);
+    return await scrapeActorExcludingLocal(actorName, null, altNameHints, knownId);
   }
 
   // Normal flow: scan the local (data/actors) index. An actor found locally
@@ -598,7 +615,11 @@ async function getActor(actorName, forceOverwrite = false, altNameHints = []) {
     // (e.g. a different romanization) — remember it so future lookups by that
     // variant resolve instantly instead of falling through to online scrapers.
     if (foldNameVariants(localActor, splitNameHints(altNameHints))) saveActorLocal(localActor);
-    return localActor;
+    // fromLocal: true tells callers (see POST /item/actors/search) this is
+    // the already-established identity, not a new online discovery — safe
+    // to sync a caller's own "name" field to it (e.g. when a movie's own
+    // NFO happens to use an alt spelling), unlike an online scraper result.
+    return { ...localActor, fromLocal: true };
   }
 
   // Not found locally — scrape online
@@ -1387,7 +1408,8 @@ async function enrichActorArray(actors, emitter = null) {
     return summary;
   }
 
-  const namedActors = actors.filter(a => a.name);
+  const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
+  const namedActors = actors.filter(a => a.name && !isPlaceholderActorName(a.name));
   summary.total = namedActors.length;
 
   if (emitter) emitter.emit('progress', { message: `[Actor Scrape] Found ${namedActors.length} actor(s) to process` });

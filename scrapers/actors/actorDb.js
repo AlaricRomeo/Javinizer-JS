@@ -780,6 +780,54 @@ function mergeActors(winnerId, loserId, fieldOverrides = {}) {
     throw err;
   }
 
+  // The DB merge above only copied thumb_cache_file/thumb_external_file's
+  // *string value* — the actual photo file on disk is still sitting under
+  // the loser's id. If the winner ended up adopting it (had none of its
+  // own), rename it to match the winner's id — every resolver expects the
+  // {id}.{ext} convention, and a filename still named after a now-deleted
+  // actor id would only self-heal by accident. If the winner already had
+  // its own photo, the loser's file is simply orphaned — remove it.
+  const reconcilePhotoFile = (dirPath, loserFilename, mergedFilename) => {
+    // Always a real null, never undefined — node:sqlite's run() rejects an
+    // undefined bound parameter outright (throws), which previously meant a
+    // rename that succeeded on disk never made it into the UPDATE below,
+    // leaving thumb_cache_file/thumb_external_file pointing at the old
+    // (now-renamed-away) filename.
+    if (!dirPath || !loserFilename) return null;
+    const loserPath = path.join(dirPath, loserFilename);
+    if (!fs.existsSync(loserPath)) return null;
+    try {
+      if (mergedFilename === loserFilename) {
+        const newFilename = `${winnerId}${path.extname(loserFilename)}`;
+        fs.renameSync(loserPath, path.join(dirPath, newFilename));
+        return newFilename;
+      }
+      fs.unlinkSync(loserPath);
+    } catch (fileErr) {
+      console.error(`[actorDb] Failed to reconcile photo file after merging ${loserId} into ${winnerId}:`, fileErr.message);
+    }
+    return null;
+  };
+
+  try {
+    const { getActorsCachePath, getExternalActorsPath } = require('./cache-helper');
+    const finalWinner = getActorRow(winnerId);
+
+    const renamedCacheFile = reconcilePhotoFile(getActorsCachePath(), loser.thumb_cache_file, finalWinner.thumb_cache_file);
+    const renamedExternalFile = reconcilePhotoFile(getExternalActorsPath(), loser.thumb_external_file, finalWinner.thumb_external_file);
+
+    if (renamedCacheFile || renamedExternalFile) {
+      db.prepare(`
+        UPDATE actors SET
+          thumb_cache_file = COALESCE(?, thumb_cache_file),
+          thumb_external_file = COALESCE(?, thumb_external_file)
+        WHERE id = ?
+      `).run(renamedCacheFile, renamedExternalFile, winnerId);
+    }
+  } catch (err) {
+    console.error(`[actorDb] Failed to reconcile photo files after merging ${loserId} into ${winnerId}:`, err.message);
+  }
+
   return getActor(winnerId);
 }
 

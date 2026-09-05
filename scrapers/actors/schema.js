@@ -17,11 +17,31 @@ function toTitleCase(str) {
   return str ? str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : str;
 }
 
+// Placeholder values a source (an NFO from another tool, a scraper gap, a
+// stray manual edit) might put in a name field instead of leaving it empty.
+const PLACEHOLDER_ACTOR_NAMES = new Set(['unknown', 'n/a', 'na']);
+
 /**
- * Remove any alt-name entry that's just the primary name again (case- and
- * whitespace-insensitive), and dedupe the remaining entries against each
- * other the same way. Used wherever alt names get merged/persisted, so the
- * primary name never ends up listed among its own aliases.
+ * True for a name that isn't real actor data — empty/whitespace, or one of
+ * PLACEHOLDER_ACTOR_NAMES (case-insensitive). Such an actor should never be
+ * searched/scraped, saved into the actor cache, or kept in a movie's own
+ * cast list.
+ *
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isPlaceholderActorName(name) {
+  const key = (name || '').trim().toLowerCase();
+  return !key || PLACEHOLDER_ACTOR_NAMES.has(key);
+}
+
+/**
+ * Remove any alt-name entry that's just the primary name again — case-,
+ * whitespace-, and word-order-insensitive (a 2-word name reordered
+ * "Family Given" vs "Given Family" is still the same name) — and dedupe
+ * the remaining entries against each other the same way. Used wherever
+ * alt names get merged/persisted, so the primary name never ends up
+ * listed among its own aliases.
  *
  * @param {string} name - Primary name
  * @param {string[]} altNames - Candidate alt names
@@ -29,12 +49,19 @@ function toTitleCase(str) {
  */
 function dedupeAltNames(name, altNames) {
   const normalize = s => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const invert = s => {
+    const parts = normalize(s).split(' ');
+    return parts.length === 2 ? `${parts[1]} ${parts[0]}` : normalize(s);
+  };
   const primaryKey = normalize(name);
+  const primaryInverted = invert(name);
   const seen = new Set();
   return (altNames || []).filter(n => {
     const key = normalize(n);
-    if (!key || key === primaryKey || seen.has(key)) return false;
+    const keyInverted = invert(n);
+    if (!key || key === primaryKey || key === primaryInverted || seen.has(key) || seen.has(keyInverted)) return false;
     seen.add(key);
+    seen.add(keyInverted);
     return true;
   });
 }
@@ -436,6 +463,7 @@ module.exports = {
   normalizeActorName,
   toTitleCase,
   dedupeAltNames,
+  isPlaceholderActorName,
   actorToNFO,
   nfoToActor
 };

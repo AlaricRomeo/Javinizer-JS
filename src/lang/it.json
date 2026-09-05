@@ -154,6 +154,7 @@
     "searchingActor": "Ricerca in corso...",
     "actorNotFound": "Attore non trovato",
     "enterActorNameFirstAlert": "Inserisci il nome dell'attore prima di cercare",
+    "invalidActorName": "Questo non è un nome attore valido — inserisci il nome reale",
     "confirmRemoveActorPrompt": "Rimuovere {name}?",
     "confirmDeleteActor": "Sei sicuro di voler eliminare {name}?",
     "confirmCopyActorsToFolder": "Sei sicuro di voler copiare le miniature degli attori nella cartella del film? Questo creerà una cartella 'actors' e copierà tutte le miniature degli attori.",

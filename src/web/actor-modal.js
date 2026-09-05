@@ -21,18 +21,35 @@ function setActorModalMode(mode) {
   modalMode = mode;
 }
 
-// Remove any alt-name entry that's just the primary name again (case- and
-// whitespace-insensitive) and dedupe the rest. Mirrors dedupeAltNames() in
+// Mirrors isPlaceholderActorName() in scrapers/actors/schema.js — a name
+// that isn't real actor data should never be searched.
+const _PLACEHOLDER_ACTOR_NAMES = new Set(['unknown', 'n/a', 'na']);
+function _isPlaceholderActorName(name) {
+  const key = (name || '').trim().toLowerCase();
+  return !key || _PLACEHOLDER_ACTOR_NAMES.has(key);
+}
+
+// Remove any alt-name entry that's just the primary name again — case-,
+// whitespace-, and word-order-insensitive (a 2-word name given as
+// "Family Given" instead of "Given Family" is still the same name) — and
+// dedupe the rest the same way. Mirrors dedupeAltNames() in
 // scrapers/actors/schema.js — duplicated here since this runs in the
 // browser and can't require that module.
 function _dedupeAltNames(name, altNames) {
   const normalize = s => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const invert = s => {
+    const parts = normalize(s).split(' ');
+    return parts.length === 2 ? `${parts[1]} ${parts[0]}` : normalize(s);
+  };
   const primaryKey = normalize(name);
+  const primaryInverted = invert(name);
   const seen = new Set();
   return (altNames || []).filter(n => {
     const key = normalize(n);
-    if (!key || key === primaryKey || seen.has(key)) return false;
+    const keyInverted = invert(n);
+    if (!key || key === primaryKey || key === primaryInverted || seen.has(key) || seen.has(keyInverted)) return false;
     seen.add(key);
+    seen.add(keyInverted);
     return true;
   });
 }
@@ -283,13 +300,19 @@ function _getFormData() {
 
 // Save actor — dispatches to movie context callback or library API
 async function saveActor() {
+  const nameBeingSaved = (document.getElementById('actorEditName')?.value || '').trim();
+  if (_isPlaceholderActorName(nameBeingSaved)) {
+    alert(window.i18n ? window.i18n.t('messages.invalidActorName') : "This isn't a real actor name — enter the actual name before saving");
+    return;
+  }
+
   if (modalMode === 'movie') {
     if (_movieContextSave) _movieContextSave(_getFormData());
     return;
   }
 
   // Library context: save via API
-  const name = (document.getElementById('actorEditName')?.value || '').trim();
+  const name = nameBeingSaved;
   if (!name) {
     alert(window.i18n ? window.i18n.t('messages.enterActorNameFirstAlert') : 'Please enter actor name');
     return;
@@ -358,6 +381,10 @@ async function searchActor() {
     alert(window.i18n ? window.i18n.t('messages.enterActorNameFirstAlert') : "Enter actor name before searching");
     return;
   }
+  if (_isPlaceholderActorName(actorName)) {
+    alert(window.i18n ? window.i18n.t('messages.invalidActorName') : "This isn't a real actor name — enter the actual name before searching");
+    return;
+  }
   const altName = (document.getElementById('actorEditAltName')?.value || '').trim();
 
   const searchBtn = document.getElementById('actorEditSearch');
@@ -373,10 +400,15 @@ async function searchActor() {
   if (searchStatus) { searchStatus.style.display = 'block'; searchStatus.style.color = '#666'; searchStatus.textContent = window.i18n ? window.i18n.t('messages.searchingActorData') : 'Searching actor data...'; }
 
   try {
+    // id: whatever this actor card was already opened with (if any) — see
+    // scrapeActorExcludingLocal(), used only for forceOverwrite so a name
+    // accidentally recorded as an alt of a different actor can't silently
+    // redirect a "force overwrite" search onto that wrong existing record.
+    const knownActorId = unifiedCurrentActor?.id || null;
     const response = await fetch('/item/actors/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: actorName, altName, forceOverwrite })
+      body: JSON.stringify({ name: actorName, altName, forceOverwrite, id: knownActorId })
     });
     const result = await response.json();
 
@@ -388,19 +420,28 @@ async function searchActor() {
 
       const fill = (id, val) => { if (shouldOverwrite(document.getElementById(id)?.value, val)) _setField(id, val); };
 
-      // Name/alt names are the actual point of a search — a match means we
-      // now know the actor's real identity, which always wins over whatever
-      // query text got them there (unlike birthdate/measurements below,
-      // where a manually-verified value shouldn't be silently replaced).
-      // otherNames (if the scraper returned any separately from altName)
-      // folds into the same alt-names field — there's no dedicated field for it.
-      // Deduped case-insensitively: the server's own foldNameVariants() can
-      // echo back a name the user just typed (sent along as a search hint)
-      // inside otherNames, which would otherwise double up right here.
-      if (result.actor.name) _setField('actorEditName', result.actor.name);
+      // A pure local-cache hit (fromLocal) IS this actor's already-established
+      // identity in our own index — e.g. the movie's own NFO happens to list
+      // them under an alt spelling, but the index already knows their real
+      // primary name — so syncing Name to it is safe and correct (and
+      // matters: saving with Name left on the alt spelling would demote the
+      // real primary to an alt in the index). Explicit forceOverwrite is the
+      // other case that may update Name: the user has deliberately said "I
+      // don't trust what's there, use what's found." Otherwise (a plain
+      // online-scraper result) Name is never touched — that's a fresh, less
+      // certain discovery — a differently-worded found name from it is
+      // filed into Alternate Names instead, alongside altName/otherNames,
+      // deduped against Name and each other (case-, whitespace-, and
+      // word-order-insensitive; also absorbs a name the user just typed
+      // echoed back inside otherNames by the server's own foldNameVariants()).
+      const nameIsAuthoritative = result.fromLocal || forceOverwrite;
+      if (nameIsAuthoritative && result.actor.name) _setField('actorEditName', result.actor.name);
+
+      const currentName = document.getElementById('actorEditName')?.value || '';
+      const foundNameAsAlt = nameIsAuthoritative ? null : result.actor.name;
       const combinedAltName = _dedupeAltNames(
-        result.actor.name || document.getElementById('actorEditName')?.value,
-        [result.actor.altName, ...(result.actor.otherNames || [])].flatMap(v => (v || '').split(',')).map(v => v.trim())
+        currentName,
+        [foundNameAsAlt, result.actor.altName, ...(result.actor.otherNames || [])].flatMap(v => (v || '').split(',')).map(v => v.trim())
       ).join(', ');
       if (combinedAltName) _setField('actorEditAltName', combinedAltName);
       fill('actorEditBirthdate', result.actor.birthdate);

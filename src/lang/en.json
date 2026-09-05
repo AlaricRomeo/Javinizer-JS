@@ -153,6 +153,7 @@
     "searchingActor": "Searching...",
     "actorNotFound": "Actor not found",
     "enterActorNameFirstAlert": "Please enter actor name first",
+    "invalidActorName": "This isn't a real actor name — enter the actual name",
     "confirmRemoveActorPrompt": "Remove {name}?",
     "confirmDeleteActor": "Are you sure you want to delete {name}?",
     "confirmCopyActorsToFolder": "Are you sure you want to copy actor thumbnails to the movie folder? This will create an 'actors' folder and copy all actor thumbnails.",

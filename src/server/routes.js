@@ -48,6 +48,26 @@ function resolveActorSaveId(actor, actorDb, normalizeActorName) {
   return actorDb.resolveId(actor.name, actor.altName) || normalizeActorName(actor.name);
 }
 
+/**
+ * A save whose actor data comes from a movie's own cast list (not a
+ * deliberate actor-identity edit from actors.html) must never demote the
+ * actor's established primary name just because this movie's own NFO
+ * happens to display them under an alt spelling — that's incidental
+ * display data, not a rename request. Mutates `actor` in place: folds the
+ * incoming name into altName instead and restores the real primary. Skip
+ * entirely when forceOverwrite is set — that's an explicit "use what was
+ * found" from the user. Call this AFTER actor.id has been resolved.
+ */
+function protectExistingPrimaryName(actor, actorDb) {
+  if (actor.forceOverwrite) return;
+  const existingActor = actorDb.getActor(actor.id);
+  if (!existingActor || !existingActor.name) return;
+  if (existingActor.name.trim().toLowerCase() === (actor.name || '').trim().toLowerCase()) return;
+  const incomingName = actor.name;
+  actor.name = existingActor.name;
+  actor.altName = [incomingName, actor.altName].filter(Boolean).join(', ');
+}
+
 // ─────────────────────────────
 // standard response helper
 // ─────────────────────────────
@@ -714,6 +734,15 @@ router.post("/save", async (req, res) => {
       return res.json({ ok: false, error: `Item not found: ${searchId}` });
     }
 
+    // Placeholder cast entries ("Unknown", "N/A", ...) are dropped outright
+    // — not just skipped for actor-cache syncing — so they never get
+    // searched/scraped either and never end up written into the movie's
+    // own NFO.
+    if (Array.isArray(changes.actor)) {
+      const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
+      changes.actor = changes.actor.filter(a => !isPlaceholderActorName(a.name));
+    }
+
     await saveNfoPatch(item.nfo, changes);
 
     // Persist any actor edits (name, alt name, birthdate, measurements, ...) into
@@ -729,9 +758,12 @@ router.post("/save", async (req, res) => {
       for (const actor of changes.actor) {
         if (!actor.name) continue;
         try {
-          const resolvedId = resolveActorSaveId(actor, actorDb, normalizeActorName);
-          saveActorLocal({ ...actor, id: resolvedId, meta: { sources: ['manual'] } }, { replaceNames: true });
-          resolvedIds.push(resolvedId);
+          actor.id = resolveActorSaveId(actor, actorDb, normalizeActorName);
+          // See protectExistingPrimaryName() — this movie's own NFO
+          // displaying an alt spelling must not demote the real primary.
+          protectExistingPrimaryName(actor, actorDb);
+          saveActorLocal({ ...actor, meta: { sources: ['manual'] } }, { replaceNames: true });
+          resolvedIds.push(actor.id);
         } catch (err) {
           console.error(`[Routes] Failed to persist actor ${actor.name}:`, err.message);
         }
@@ -945,7 +977,11 @@ router.post("/actors/rescan", async (req, res) => {
     };
     emitter.on('progress', data => broadcast('progress', data));
 
-    const actorsCopy = JSON.parse(JSON.stringify(actors));
+    // Placeholder cast entries ("Unknown", "N/A", ...) are dropped outright,
+    // not just skipped for enrichment — a rescan is also the moment to
+    // clean one out of the movie's own actor list for good.
+    const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
+    const actorsCopy = JSON.parse(JSON.stringify(actors)).filter(a => !isPlaceholderActorName(a.name));
 
     try {
       const { enrichActorArray } = require('../core/actorScraperManager');
@@ -984,6 +1020,14 @@ router.post("/edit-rescrape/save", async (req, res) => {
       return res.json({ ok: false, error: `Item not found: ${folderId}` });
     }
 
+    // See the analogous filter in POST /save — placeholder cast entries
+    // ("Unknown", "N/A", ...) are dropped outright, never searched/scraped
+    // or written into the movie's own NFO.
+    if (Array.isArray(item.actor)) {
+      const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
+      item.actor = item.actor.filter(a => !isPlaceholderActorName(a.name));
+    }
+
     const { saveNfoFull } = require('../core/saveNfo');
     await saveNfoFull(libraryItem.nfo, item);
 
@@ -998,9 +1042,10 @@ router.post("/edit-rescrape/save", async (req, res) => {
       for (const actor of item.actor) {
         if (!actor.name) continue;
         try {
-          const resolvedId = resolveActorSaveId(actor, actorDb, normalizeActorName);
-          saveActorLocal({ ...actor, id: resolvedId, meta: { sources: ['manual'] } }, { replaceNames: true });
-          resolvedIds.push(resolvedId);
+          actor.id = resolveActorSaveId(actor, actorDb, normalizeActorName);
+          protectExistingPrimaryName(actor, actorDb);
+          saveActorLocal({ ...actor, meta: { sources: ['manual'] } }, { replaceNames: true });
+          resolvedIds.push(actor.id);
         } catch (err) {
           console.error(`[Routes] Failed to persist actor ${actor.name}:`, err.message);
         }
@@ -1594,6 +1639,13 @@ router.post("/scrape/save", async (req, res) => {
       ...modifiedData        // Modified data from client (has the same structure as data)
     };
 
+    // Placeholder cast entries ("Unknown", "N/A", ...) are dropped outright
+    // — never searched/scraped, never written into the movie's NFO.
+    if (Array.isArray(itemToSave.actor)) {
+      const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
+      itemToSave.actor = itemToSave.actor.filter(a => !isPlaceholderActorName(a.name));
+    }
+
     // Create a currentScrapeItem object compatible with ScrapeSaver
     // ScrapeSaver expects: { videoFile, scrapedAt, sources, data }
     // Use modifiedData.id (may be uppercase) for folder/NFO, itemId for file lookup only
@@ -1634,9 +1686,10 @@ router.post("/scrape/save", async (req, res) => {
               // fields that are still empty, so without this an edit to an
               // already-"complete" actor would otherwise be silently
               // discarded instead of updating the index.
-              const resolvedId = resolveActorSaveId(actor, actorDb, normalizeActorName);
-              saveActorLocal({ ...actor, id: resolvedId, meta: { sources: ['manual'] } }, { replaceNames: true });
-              resolvedIds.push(resolvedId);
+              actor.id = resolveActorSaveId(actor, actorDb, normalizeActorName);
+              protectExistingPrimaryName(actor, actorDb);
+              saveActorLocal({ ...actor, meta: { sources: ['manual'] } }, { replaceNames: true });
+              resolvedIds.push(actor.id);
 
               console.error(`[Routes] Scraping actor: ${actor.name}`);
               await getActor(actor.name, false, actor.altName || []);
@@ -1970,7 +2023,7 @@ router.post("/actors/search", async (req, res) => {
   const { getActor } = require('../core/actorScraperManager');
 
   try {
-    const { name, altName, forceOverwrite } = req.body;
+    const { name, altName, forceOverwrite, id } = req.body;
 
     if (!name) {
       return res.json({ ok: false, error: 'Actor name is required' });
@@ -1978,13 +2031,17 @@ router.post("/actors/search", async (req, res) => {
 
     console.error(`[Routes] Searching for actor: ${name}${altName ? ` (alt: ${altName})` : ''}${forceOverwrite ? ' (force overwrite)' : ''}`);
 
-    // Search/scrape actor — altName is passed as extra name candidates for online scrapers
-    const actorData = await getActor(name, forceOverwrite || false, altName || []);
+    // Search/scrape actor — altName is passed as extra name candidates for
+    // online scrapers; id (if the caller already knows it) is only used by
+    // the forceOverwrite path, to avoid re-deriving identity from a name
+    // lookup the user has explicitly said not to trust for this search.
+    const actorData = await getActor(name, forceOverwrite || false, altName || [], id || null);
 
     if (actorData) {
       res.json({
         ok: true,
-        actor: actorData
+        actor: actorData,
+        fromLocal: !!actorData.fromLocal
       });
     } else {
       res.json({
@@ -2587,9 +2644,13 @@ function removeFavoritePhotoFromExternal(actorId) {
 
 router.post("/actors/save", async (req, res) => {
   try {
-    const { normalizeActorName } = require('../../scrapers/actors/schema');
+    const { normalizeActorName, isPlaceholderActorName } = require('../../scrapers/actors/schema');
     const actorDb = require('../../scrapers/actors/actorDb');
     const actorData = req.body;
+
+    if (isPlaceholderActorName(actorData.name)) {
+      return res.json({ ok: false, error: 'Not a real actor name' });
+    }
 
     // The id is stable once assigned — it's an internal slug, not required
     // to match a fresh normalize of the current name (many ids were
@@ -2606,6 +2667,11 @@ router.post("/actors/save", async (req, res) => {
     // normalizeActorName(name) here would silently create a duplicate
     // record for an actor that already exists under a different id.
     actorData.id = resolveActorSaveId(actorData, actorDb, normalizeActorName);
+
+    // See protectExistingPrimaryName() — a movie-context save must not
+    // demote the actor's established primary just because this movie's own
+    // NFO happens to display an alt spelling.
+    if (req.body.context === 'movie') protectExistingPrimaryName(actorData, actorDb);
 
     // Update thumbUrl if thumb is a remote URL
     if (actorData.thumb && actorData.thumb.startsWith('http')) {

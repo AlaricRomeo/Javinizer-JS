@@ -1865,9 +1865,11 @@ function setupEventHandlers() {
           actorData.id = result.id;
         } else if (!result.ok) {
           console.error('[Movie-Actor-Save] Failed to sync actor to cache:', result.error);
+          showNotification(window.i18n ? window.i18n.t("messages.failedToSaveActor") : "Failed to save actor", "error");
         }
       } catch (error) {
         console.error('[Movie-Actor-Save] Failed to sync actor to cache:', error);
+        showNotification(window.i18n ? window.i18n.t("messages.failedToSaveActor") : "Failed to save actor", "error");
       }
 
       if (editingActorIndex === null) {
