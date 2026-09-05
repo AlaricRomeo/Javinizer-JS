@@ -1,5 +1,22 @@
 # Release Notes
 
+## v2.4.2 (2026-09-05)
+
+### 🔍 Actor search no longer overwrites the Name field
+
+- A plain online-scraper search result can no longer silently replace what's typed in Name — a different found name is filed into Alternate Names instead. A pure local-cache hit or an explicit "Overwrite local data" search may still update Name, since those are a confirmed identity, not a fresh guess
+- "Overwrite local data" (forceOverwrite) no longer re-derives identity from a name-based local lookup that could be fooled by data already mis-recorded elsewhere (e.g. one actor's name wrongly saved as another's alt) — it uses the id the actor card was already opened with, if any, instead of silently redirecting onto whatever existing record that name happens to match
+- Alt-name dedup (both client and server) now also catches word-order-inverted duplicates of the primary name ("Family Given" vs "Given Family"), not just case/whitespace ones
+
+### 🛡️ Movie-context saves protect the actor's real identity
+
+- Saving an actor from inside a movie's own cast list can no longer demote their established primary name just because that movie's own NFO happens to display an alt spelling — applies across every save/scrape-save path, skipped only with "Overwrite local data" explicitly checked
+- `mergeActors()` now reconciles the actual photo file on disk, not just the database pointer: deletes an orphaned stray photo if the surviving actor already had one of their own, or renames it to match if not — closes a gap (including from the automatic merge added in v2.4.1) that could leave a wrongly-named, unreferenced image file behind
+
+### 🚫 "Unknown" is never a real actor
+
+- A cast entry named "Unknown", "N/A", or blank is never searched or saved to the actor cache, and is now actively dropped from a movie's own cast list on every save, on scrape-save, and on "Rescan Actors" — previously just skipped, not removed
+
 ## v2.4.1 (2026-08-23)
 
 ### 🎬 "N movies" — a real filter, everywhere
