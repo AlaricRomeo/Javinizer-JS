@@ -82,7 +82,9 @@
     "copyActorsToFolder": "動画フォルダに女優をコピー",
     "play": "▶ 再生",
     "openFolder": "📁 フォルダーを開く",
-    "selectScraper": "-- スクレイパーを選択 --"
+    "selectScraper": "-- スクレイパーを選択 --",
+    "allConfiguredScrapers": "⚙️ 設定済みの全スクレイパー（優先順位順）",
+    "allConfiguredScrapersShort": "設定済みの全スクレイパー"
   },
   "placeholders": {
     "noImage": "画像なし",

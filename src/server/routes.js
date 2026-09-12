@@ -739,8 +739,8 @@ router.post("/save", async (req, res) => {
     // searched/scraped either and never end up written into the movie's
     // own NFO.
     if (Array.isArray(changes.actor)) {
-      const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
-      changes.actor = changes.actor.filter(a => !isPlaceholderActorName(a.name));
+      const { isPlaceholderActorName, normalizeActorDisplayName } = require('../../scrapers/actors/schema');
+      changes.actor = changes.actor.filter(a => !isPlaceholderActorName(a.name)).map(normalizeActorDisplayName);
     }
 
     await saveNfoPatch(item.nfo, changes);
@@ -802,7 +802,7 @@ router.post("/save", async (req, res) => {
 // ─────────────────────────────
 router.post("/edit-rescrape", async (req, res) => {
   const { EventEmitter } = require('events');
-  const { executeScraper, formatTitle } = require('../core/scraperManager');
+  const { executeScraperOrAll, formatTitle } = require('../core/scraperManager');
 
   try {
     const { folderId, scraper } = req.body;
@@ -867,12 +867,13 @@ router.post("/edit-rescrape", async (req, res) => {
     let totalTasks = 1;
     if (actorsEnabled) totalTasks++;
     let completedTasks = 0;
+    let scraperLabel = scraper;
 
     const checkAllTasksComplete = (mergedData) => {
       completedTasks++;
       if (completedTasks >= totalTasks) {
         broadcast('complete', {
-          message: `Re-scraping completed with ${scraper}.`,
+          message: `Re-scraping completed with ${scraperLabel}.`,
           folderId,
           editMode: true,
           mergedData
@@ -880,13 +881,9 @@ router.post("/edit-rescrape", async (req, res) => {
       }
     };
 
-    executeScraper(scraper, [movieCode], emitter)
-      .then(async (results) => {
-        if (!results || results.length === 0) {
-          throw new Error(`No results from scraper ${scraper}`);
-        }
-
-        const newData = results[0];
+    executeScraperOrAll(scraper, movieCode, emitter, editRescrapeCfg)
+      .then(async ({ data: newData, usedScrapers }) => {
+        scraperLabel = usedScrapers.join(', ');
         const mergedData = JSON.parse(JSON.stringify(existingModel));
 
         Object.keys(newData).forEach(field => {
@@ -980,8 +977,8 @@ router.post("/actors/rescan", async (req, res) => {
     // Placeholder cast entries ("Unknown", "N/A", ...) are dropped outright,
     // not just skipped for enrichment — a rescan is also the moment to
     // clean one out of the movie's own actor list for good.
-    const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
-    const actorsCopy = JSON.parse(JSON.stringify(actors)).filter(a => !isPlaceholderActorName(a.name));
+    const { isPlaceholderActorName, normalizeActorDisplayName } = require('../../scrapers/actors/schema');
+    const actorsCopy = JSON.parse(JSON.stringify(actors)).filter(a => !isPlaceholderActorName(a.name)).map(normalizeActorDisplayName);
 
     try {
       const { enrichActorArray } = require('../core/actorScraperManager');
@@ -1024,8 +1021,8 @@ router.post("/edit-rescrape/save", async (req, res) => {
     // ("Unknown", "N/A", ...) are dropped outright, never searched/scraped
     // or written into the movie's own NFO.
     if (Array.isArray(item.actor)) {
-      const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
-      item.actor = item.actor.filter(a => !isPlaceholderActorName(a.name));
+      const { isPlaceholderActorName, normalizeActorDisplayName } = require('../../scrapers/actors/schema');
+      item.actor = item.actor.filter(a => !isPlaceholderActorName(a.name)).map(normalizeActorDisplayName);
     }
 
     const { saveNfoFull } = require('../core/saveNfo');
@@ -1642,8 +1639,8 @@ router.post("/scrape/save", async (req, res) => {
     // Placeholder cast entries ("Unknown", "N/A", ...) are dropped outright
     // — never searched/scraped, never written into the movie's NFO.
     if (Array.isArray(itemToSave.actor)) {
-      const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
-      itemToSave.actor = itemToSave.actor.filter(a => !isPlaceholderActorName(a.name));
+      const { isPlaceholderActorName, normalizeActorDisplayName } = require('../../scrapers/actors/schema');
+      itemToSave.actor = itemToSave.actor.filter(a => !isPlaceholderActorName(a.name)).map(normalizeActorDisplayName);
     }
 
     // Create a currentScrapeItem object compatible with ScrapeSaver
@@ -2062,7 +2059,7 @@ router.post("/actors/search", async (req, res) => {
 // ─────────────────────────────
 router.post("/scrape/rescrape", async (req, res) => {
   const { EventEmitter } = require('events');
-  const { executeScraper, mergeResults, formatTitle } = require('../core/scraperManager');
+  const { executeScraperOrAll, formatTitle, MULTI_SCRAPER_VALUE } = require('../core/scraperManager');
 
   try {
     const { movieId, scraper } = req.body;
@@ -2088,11 +2085,12 @@ router.post("/scrape/rescrape", async (req, res) => {
       return res.json({ ok: false, error: `Failed to read existing data: ${err.message}` });
     }
 
-    console.error(`[Routes] Re-scraping ${movieId} with ${scraper}`);
+    const initialLabel = scraper === MULTI_SCRAPER_VALUE ? 'all configured scrapers' : scraper;
+    console.error(`[Routes] Re-scraping ${movieId} with ${initialLabel}`);
 
     // Return immediate response with WebSocket ID
     const scrapeId = Date.now().toString();
-    res.json({ ok: true, scrapeId, message: `Re-scraping started with ${scraper}` });
+    res.json({ ok: true, scrapeId, message: `Re-scraping started with ${initialLabel}` });
 
     // Start re-scraping in background with WebSocket communication
     const emitter = new EventEmitter();
@@ -2160,6 +2158,7 @@ router.post("/scrape/rescrape", async (req, res) => {
       totalTasks++; // Add actor scraping
     }
     let completedTasks = 0;
+    let scraperLabel = initialLabel;
     console.error(`[Routes] Total tasks to run: ${totalTasks}`);
 
     // Helper function to check if all tasks are complete
@@ -2174,7 +2173,7 @@ router.post("/scrape/rescrape", async (req, res) => {
             client.send(JSON.stringify({
               event: 'complete',
               data: {
-                message: `Re-scraping completed. Data merged with priority to ${scraper}.`,
+                message: `Re-scraping completed. Data merged with priority to ${scraperLabel}.`,
                 movieId: movieId
               },
               scrapeId
@@ -2187,17 +2186,11 @@ router.post("/scrape/rescrape", async (req, res) => {
       }
     };
 
-    // Execute scraper for single movie
-    executeScraper(scraper, [movieId], emitter)
-      .then((results) => {
-        console.error(`[Routes] Re-scraping with ${scraper} completed`);
-
-        // Results is an array of scraped data
-        if (!results || results.length === 0) {
-          throw new Error(`No results from scraper ${scraper}`);
-        }
-
-        const newData = results[0];
+    // Execute scraper (or every configured scraper) for single movie
+    executeScraperOrAll(scraper, movieId, emitter, config)
+      .then(({ data: newData, usedScrapers }) => {
+        scraperLabel = usedScrapers.join(', ');
+        console.error(`[Routes] Re-scraping with ${scraperLabel} completed`);
 
         // Manual merge with priority to new data
         // Start with existing data as base
@@ -2245,7 +2238,7 @@ router.post("/scrape/rescrape", async (req, res) => {
         // Update wrapper with new data and metadata
         const updatedWrapper = {
           scrapedAt: new Date().toISOString(),
-          sources: [...new Set([scraper, ...(existingWrapper.sources || [])])],
+          sources: [...new Set([...usedScrapers, ...(existingWrapper.sources || [])])],
           videoFile: existingWrapper.videoFile,
           data: mergedData
         };
@@ -2644,13 +2637,15 @@ function removeFavoritePhotoFromExternal(actorId) {
 
 router.post("/actors/save", async (req, res) => {
   try {
-    const { normalizeActorName, isPlaceholderActorName } = require('../../scrapers/actors/schema');
+    const { normalizeActorName, isPlaceholderActorName, normalizeActorDisplayName } = require('../../scrapers/actors/schema');
     const actorDb = require('../../scrapers/actors/actorDb');
-    const actorData = req.body;
+    let actorData = req.body;
 
     if (isPlaceholderActorName(actorData.name)) {
       return res.json({ ok: false, error: 'Not a real actor name' });
     }
+
+    actorData = normalizeActorDisplayName(actorData);
 
     // The id is stable once assigned — it's an internal slug, not required
     // to match a fresh normalize of the current name (many ids were

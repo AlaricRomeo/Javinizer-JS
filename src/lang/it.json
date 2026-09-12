@@ -83,7 +83,9 @@
     "copyActorsToFolder": "Copia attori nella cartella del film",
     "play": "▶ Riproduci",
     "openFolder": "📁 Apri cartella",
-    "selectScraper": "-- Seleziona Scraper --"
+    "selectScraper": "-- Seleziona Scraper --",
+    "allConfiguredScrapers": "⚙️ Tutti gli Scraper Configurati (ordine di priorità)",
+    "allConfiguredScrapersShort": "tutti gli scraper configurati"
   },
   "placeholders": {
     "noImage": "Nessuna immagine",

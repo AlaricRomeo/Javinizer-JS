@@ -58,7 +58,9 @@
     "copyActorsToFolder": "Copy actors in movie folder",
     "play": "▶ Play",
     "openFolder": "📁 Open Folder",
-    "selectScraper": "-- Select Scraper --"
+    "selectScraper": "-- Select Scraper --",
+    "allConfiguredScrapers": "⚙️ All Configured Scrapers (priority order)",
+    "allConfiguredScrapersShort": "all configured scrapers"
   },
   "fields": {
     "id": "ID",

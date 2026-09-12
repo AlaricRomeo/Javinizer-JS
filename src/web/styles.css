@@ -656,6 +656,37 @@ button:disabled {
 .open-folder-button:hover {
   background: #556cd6;
 }
+/* Rating stars (5 stars = rating/10, half-star steps) */
+.rating-stars-container {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rating-stars {
+  display: flex;
+  gap: 2px;
+  cursor: pointer;
+}
+.rating-stars .star {
+  position: relative;
+  font-size: 24px;
+  line-height: 1;
+  color: #ccc;
+}
+.rating-stars .star.full {
+  color: #f5b301;
+}
+.rating-stars .star.half {
+  background: linear-gradient(90deg, #f5b301 50%, #ccc 50%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rating-value {
+  font-size: 13px;
+  color: #666;
+}
 #dirBrowserList div {
   transition: background-color 0.2s;
 }

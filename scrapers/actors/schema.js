@@ -36,6 +36,30 @@ function isPlaceholderActorName(name) {
 }
 
 /**
+ * Title-case an actor's name and each comma-separated alt name (no-op on
+ * non-Latin scripts — see toTitleCase()). The central actor cache already
+ * does this on every save (setPrimaryName()/insertNameIfNew() in
+ * actorDb.js); this is for the OTHER place a name gets written — a
+ * movie's own NFO — which would otherwise keep whatever casing a scraper
+ * or manual edit happened to use, out of step with the cache. Returns a
+ * new object; does not mutate the one passed in.
+ *
+ * @param {object} actor
+ * @returns {object}
+ */
+function normalizeActorDisplayName(actor) {
+  return {
+    ...actor,
+    name: toTitleCase(actor.name),
+    altName: (actor.altName || '')
+      .split(',')
+      .map(s => toTitleCase(s.trim()))
+      .filter(Boolean)
+      .join(', ')
+  };
+}
+
+/**
  * Remove any alt-name entry that's just the primary name again — case-,
  * whitespace-, and word-order-insensitive (a 2-word name reordered
  * "Family Given" vs "Given Family" is still the same name) — and dedupe
@@ -464,6 +488,7 @@ module.exports = {
   toTitleCase,
   dedupeAltNames,
   isPlaceholderActorName,
+  normalizeActorDisplayName,
   actorToNFO,
   nfoToActor
 };

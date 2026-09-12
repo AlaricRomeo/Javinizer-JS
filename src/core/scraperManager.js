@@ -18,6 +18,11 @@ const path = require('path');
 const { loadConfig, getScrapePath } = require('./config');
 const { applyGenreRules } = require('./genreFilter');
 
+// Sentinel value for "scraper" params/dropdowns meaning "run every scraper
+// configured in scrapers.video, in priority order, and merge like a normal
+// scrape" instead of a single named scraper.
+const MULTI_SCRAPER_VALUE = '__all__';
+
 // ─────────────────────────────
 // Configuration Loading
 // ─────────────────────────────
@@ -412,6 +417,50 @@ function mergeResults(code, scraperResults, config) {
   return merged;
 }
 
+/**
+ * Re-scrape helper for a single code: runs either one named scraper, or —
+ * when scraperOrAll is MULTI_SCRAPER_VALUE — every scraper configured in
+ * scrapers.video (priority order), merged with the same mergeResults()
+ * logic as a normal multi-scraper scrape.
+ *
+ * @param {string} scraperOrAll - Scraper name, or MULTI_SCRAPER_VALUE
+ * @param {string} code - Single DVD code to re-scrape
+ * @param {EventEmitter} emitter - Event emitter for progress updates (optional)
+ * @param {object} config - Loaded config (scrapers.video used for the "all" case)
+ * @returns {Promise<{data: object, usedScrapers: string[]}>}
+ */
+async function executeScraperOrAll(scraperOrAll, code, emitter, config) {
+  if (scraperOrAll !== MULTI_SCRAPER_VALUE) {
+    const results = await executeScraper(scraperOrAll, [code], emitter);
+    if (!results || results.length === 0) {
+      throw new Error(`No results from scraper ${scraperOrAll}`);
+    }
+    return { data: results[0], usedScrapers: [scraperOrAll] };
+  }
+
+  const scrapersToRun = (config.scrapers && config.scrapers.video) || [];
+  if (scrapersToRun.length === 0) {
+    throw new Error('No scrapers configured in scrapers.video');
+  }
+
+  const scraperResults = [];
+  for (const scraperName of scrapersToRun) {
+    const results = await executeScraper(scraperName, [code], emitter);
+    if (results && results[0]) {
+      scraperResults.push({ scraperName, data: results[0] });
+    }
+  }
+
+  if (scraperResults.length === 0) {
+    throw new Error(`No results from any configured scraper (${scrapersToRun.join(', ')})`);
+  }
+
+  return {
+    data: mergeResults(code, scraperResults, config),
+    usedScrapers: scraperResults.map(r => r.scraperName)
+  };
+}
+
 // ─────────────────────────────
 // File Saving
 // ─────────────────────────────
@@ -673,4 +722,4 @@ if (require.main === module) {
 }
 
 // Export for use as module
-module.exports = { scrapeAll, extractCodesFromLibrary, executeScraper, mergeResults, isEmptyValue, formatTitle };
+module.exports = { scrapeAll, extractCodesFromLibrary, executeScraper, executeScraperOrAll, mergeResults, isEmptyValue, formatTitle, MULTI_SCRAPER_VALUE };

@@ -4,6 +4,11 @@ let currentItem = null;
 let currentMode = null; // "edit" or "scrape" - will be set in initializeApp
 let appConfig = {};
 
+// Sentinel dropdown value meaning "run every scraper configured in
+// scrapers.video, in priority order" instead of a single named scraper.
+// Must match MULTI_SCRAPER_VALUE in src/core/scraperManager.js.
+const MULTI_SCRAPER_VALUE = "__all__";
+
 // Exposed for navbar universal search (edit mode only)
 window.navigateToSearchResult = async (item) => {
   await loadItem(`/item/by-id/${encodeURIComponent(item.id)}`);
@@ -932,12 +937,19 @@ function initLazyLoadObserver() {
 // ─────────────────────────────
 // Gestione Actors (Grid Layout)
 // ─────────────────────────────
-function createActorThumbnail(thumbUrl, actorName, localThumb) {
+function createActorThumbnail(thumbUrl, actorName, localThumb, actorId) {
   const thumbnailDiv = document.createElement('div');
   thumbnailDiv.className = 'thumbnail';
 
   if (actorName) {
-    const actorId = normalizeActorNameForFile(actorName);
+    // Prefer the real, already-resolved id (e.g. from findActorByName())
+    // over guessing one from the current display name — many ids were
+    // established in inverted order by a scraper (e.g. "ogasawara-ai" for
+    // "Ai Ogasawara"), so a fresh normalize here can silently point at a
+    // filename that never existed, hiding a photo that's actually right
+    // there in the cache. Only guess when there's truly no id yet (e.g. an
+    // actor just added in this session, not yet resolved).
+    const resolvedActorId = actorId || normalizeActorNameForFile(actorName);
     const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
     const ts = Date.now();
 
@@ -950,7 +962,7 @@ function createActorThumbnail(thumbUrl, actorName, localThumb) {
     // externalPath then internal cache), then the remote thumb URL as a last resort.
     const candidates = [];
     if (localThumb) candidates.push(`/media/${encodeURIComponent(localThumb)}?t=${ts}`);
-    extensions.forEach(ext => candidates.push(`/actors/${actorId}.${ext}?t=${ts}`));
+    extensions.forEach(ext => candidates.push(`/actors/${resolvedActorId}.${ext}?t=${ts}`));
     if (thumbUrl) candidates.push(thumbUrl);
 
     img.dataset.candidates = JSON.stringify(candidates);
@@ -1019,7 +1031,7 @@ function createActorCard(actor, index) {
   actorCard.dataset.actorIndex = index;
 
   // Crea thumbnail
-  const thumbnail = createActorThumbnail(actor.thumb, actor.name, actor.localThumb);
+  const thumbnail = createActorThumbnail(actor.thumb, actor.name, actor.localThumb, actor.id);
   actorCard.appendChild(thumbnail);
 
   // Aggiungi nome e ruolo
@@ -1108,7 +1120,7 @@ function updateActorCard(card, actor, index) {
   // Update thumbnail
   const thumbnail = card.querySelector('.thumbnail');
   if (thumbnail) {
-    const newThumbnail = createActorThumbnail(actor.thumb, actor.name, actor.localThumb);
+    const newThumbnail = createActorThumbnail(actor.thumb, actor.name, actor.localThumb, actor.id);
     thumbnail.replaceWith(newThumbnail);
   }
 
@@ -1220,6 +1232,32 @@ function editActor(index) {
 }
 
 // ─────────────────────────────
+// Rating a stelle (5 stelle = rating/10, step da 0.5 stelle)
+// ─────────────────────────────
+function renderRatingStars(ratingValue) {
+  const starValue = Math.round((ratingValue || 0) / 2 * 2) / 2; // 0-5, arrotondato a 0.5
+  document.querySelectorAll('#ratingStars .star').forEach((star, idx) => {
+    const i = idx + 1;
+    star.classList.remove('full', 'half');
+    if (starValue >= i) star.classList.add('full');
+    else if (starValue >= i - 0.5) star.classList.add('half');
+  });
+  const label = document.getElementById('ratingValueLabel');
+  if (label) label.textContent = ratingValue ? `${starValue.toFixed(1)}/5` : '';
+}
+
+function setRatingFromStarClick(newRating) {
+  if (!currentItem) return;
+  if (!currentItem.rating) currentItem.rating = {};
+  currentItem.rating.value = newRating;
+  const ratingEl = document.getElementById('rating');
+  if (ratingEl) ratingEl.value = newRating;
+  renderRatingStars(newRating);
+  markFieldDirty('rating');
+  updateDebugJson();
+}
+
+// ─────────────────────────────
 // Renderizza i dati
 // ─────────────────────────────
 function renderItem(item) {
@@ -1279,10 +1317,12 @@ function renderItem(item) {
     ratingEl.oninput = () => {
       if (!currentItem.rating) currentItem.rating = {};
       currentItem.rating.value = parseFloat(ratingEl.value) || 0;
+      renderRatingStars(currentItem.rating.value);
       markFieldDirty("rating");
       updateDebugJson();
     };
   }
+  renderRatingStars(item.rating?.value || 0);
 
   bindField("contentRating", "contentRating");
 
@@ -1533,6 +1573,10 @@ function setupEventHandlers() {
     const selectedScraper = e.target.value;
     if (!selectedScraper) return;
 
+    const scraperDisplayLabel = selectedScraper === MULTI_SCRAPER_VALUE
+      ? (window.i18n ? window.i18n.t("buttons.allConfiguredScrapersShort") : "all configured scrapers")
+      : selectedScraper;
+
     if (currentMode === "edit") {
       const folderId = currentItem?.folderId;
       if (!currentItem || !folderId) {
@@ -1542,14 +1586,14 @@ function setupEventHandlers() {
       }
       const movieId = currentItem.id || folderId;
       const confirmMsg = window.i18n
-        ? window.i18n.t("messages.confirmEditRescrape", { movieId, scraper: selectedScraper })
-        : `Re-scrape "${movieId}" with ${selectedScraper}?\n\nScraped data will be loaded into the form.\nYou can review before saving.`;
+        ? window.i18n.t("messages.confirmEditRescrape", { movieId, scraper: scraperDisplayLabel })
+        : `Re-scrape "${movieId}" with ${scraperDisplayLabel}?\n\nScraped data will be loaded into the form.\nYou can review before saving.`;
       if (!confirm(confirmMsg)) {
         e.target.value = "";
         return;
       }
       e.target.value = "";
-      await editRescrapeCurrentMovie(selectedScraper, folderId);
+      await editRescrapeCurrentMovie(selectedScraper, folderId, scraperDisplayLabel);
     } else {
       // scrape mode
       const movieId = currentItem?.fileId || currentItem?.id || currentItem?.data?.id;
@@ -1560,14 +1604,14 @@ function setupEventHandlers() {
         return;
       }
       const confirmMsg = window.i18n
-        ? window.i18n.t("messages.confirmRescrape", { movieId, scraper: selectedScraper })
-        : `Re-scrape "${movieId}" with ${selectedScraper}?\n\nFound fields will be replaced.\nMissing fields will be kept as they were.`;
+        ? window.i18n.t("messages.confirmRescrape", { movieId, scraper: scraperDisplayLabel })
+        : `Re-scrape "${movieId}" with ${scraperDisplayLabel}?\n\nFound fields will be replaced.\nMissing fields will be kept as they were.`;
       if (!confirm(confirmMsg)) {
         e.target.value = "";
         return;
       }
       e.target.value = "";
-      await rescrapeCurrentMovie(selectedScraper, movieId);
+      await rescrapeCurrentMovie(selectedScraper, movieId, scraperDisplayLabel);
     }
   };
 
@@ -1839,6 +1883,22 @@ function setupEventHandlers() {
   const openFolderBtn = document.getElementById("openFolder");
   if (openFolderBtn) {
     openFolderBtn.onclick = openMovieFolder;
+  }
+
+  // Rating stars: click sulla metà sinistra/destra di ogni stella = 1 o 2 punti (scala 0-10)
+  const ratingStarsEl = document.getElementById("ratingStars");
+  if (ratingStarsEl) {
+    const starRatingFromEvent = (e, star) => {
+      const i = parseInt(star.dataset.star, 10);
+      const rect = star.getBoundingClientRect();
+      const isLeftHalf = (e.clientX - rect.left) < rect.width / 2;
+      return isLeftHalf ? (2 * i - 1) : (2 * i);
+    };
+    ratingStarsEl.querySelectorAll(".star").forEach(star => {
+      star.addEventListener("click", (e) => setRatingFromStarClick(starRatingFromEvent(e, star)));
+      star.addEventListener("mousemove", (e) => renderRatingStars(starRatingFromEvent(e, star)));
+    });
+    ratingStarsEl.addEventListener("mouseleave", () => renderRatingStars(currentItem?.rating?.value || 0));
   }
 
   // Register movie context handlers and setup unified actor modal
@@ -2205,7 +2265,9 @@ async function openMovieFolder() {
 function populateScraperDropdown(scrapers) {
   const dropdown = document.getElementById("rescrapeDropdown");
   if (!dropdown) return;
-  while (dropdown.options.length > 1) dropdown.remove(1);
+  // Keep the first two static options: the placeholder and the
+  // "all configured scrapers" entry (see index.html).
+  while (dropdown.options.length > 2) dropdown.remove(2);
   scrapers.forEach(scraper => {
     const option = document.createElement("option");
     option.value = scraper;
@@ -2238,14 +2300,14 @@ function resetToCancelButton(btn, modal) {
 /**
  * Re-scrape current movie with selected scraper
  */
-async function rescrapeCurrentMovie(scraperName, movieId) {
+async function rescrapeCurrentMovie(scraperName, movieId, displayLabel) {
   const modal = document.getElementById('scrapingModal');
   const progressDiv = document.getElementById('scrapingProgress');
   const cancelBtn = document.getElementById('scrapingCancel');
 
   // Show modal
   modal.style.display = 'block';
-  progressDiv.innerHTML = `<div style="color: #667eea;">🔍 Re-scraping with ${scraperName}...</div>`;
+  progressDiv.innerHTML = `<div style="color: #667eea;">🔍 Re-scraping with ${displayLabel || scraperName}...</div>`;
   resetToCancelButton(cancelBtn, modal);
 
   try {
@@ -2303,7 +2365,7 @@ async function rescrapeCurrentMovie(scraperName, movieId) {
       throw new Error(result.error || 'Failed to start re-scraping');
     }
 
-    appendProgress(progressDiv, `✅ Re-scraping started with ${scraperName}`, 'success');
+    appendProgress(progressDiv, `✅ Re-scraping started with ${displayLabel || scraperName}`, 'success');
 
   } catch (error) {
     console.error('[Re-scraping] Error:', error);
@@ -2315,13 +2377,13 @@ async function rescrapeCurrentMovie(scraperName, movieId) {
 /**
  * Re-scrape current library item in edit mode
  */
-async function editRescrapeCurrentMovie(scraperName, folderId) {
+async function editRescrapeCurrentMovie(scraperName, folderId, displayLabel) {
   const modal = document.getElementById('scrapingModal');
   const progressDiv = document.getElementById('scrapingProgress');
   const cancelBtn = document.getElementById('scrapingCancel');
 
   modal.style.display = 'block';
-  progressDiv.innerHTML = `<div style="color: #667eea;">🔍 Re-scraping with ${scraperName}...</div>`;
+  progressDiv.innerHTML = `<div style="color: #667eea;">🔍 Re-scraping with ${displayLabel || scraperName}...</div>`;
   resetToCancelButton(cancelBtn, modal);
 
   try {
@@ -2355,7 +2417,7 @@ async function editRescrapeCurrentMovie(scraperName, folderId) {
     const result = await response.json();
     if (!result.ok) throw new Error(result.error || 'Failed to start re-scraping');
 
-    appendProgress(progressDiv, `✅ Re-scraping started with ${scraperName}`, 'success');
+    appendProgress(progressDiv, `✅ Re-scraping started with ${displayLabel || scraperName}`, 'success');
   } catch (error) {
     console.error('[Edit-Rescrape] Error:', error);
     appendProgress(progressDiv, `❌ Error: ${error.message}`, 'error');
