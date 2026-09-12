@@ -1,5 +1,22 @@
 # Release Notes
 
+## v2.4.3 (2026-09-12)
+
+### 🔀 Re-scrape with all configured scrapers
+
+- The "Re-scrape" dropdown (Edit and Scrape mode) has a new "All Configured Scrapers" option that runs every scraper listed in `scrapers.video`, in priority order, and merges the results with the same field-priority logic as a normal multi-scraper scrape — previously a re-scrape could only use one named scraper at a time
+- The saved data's source list now records every scraper that actually contributed to the merge, not just the one selected
+
+### ⭐ Star rating in Edit mode
+
+- A 5-star control now sits under the Play/Open Folder buttons in Edit mode, mapped to the Kodi NFO's 0-10 rating scale in half-star steps, with a hover preview and click-to-set — kept in sync with the existing numeric Rating field
+- Uses the standard `<rating>` NFO tag, so it sorts correctly in both Kodi and Jellyfin with no schema change needed
+
+### 🏷️ Actor display name normalization
+
+- An actor's name and alt names are now title-cased before being written into a movie's own NFO (on actor save, scrape save, edit-rescrape save, actors/rescan, actors/save) — the actor cache already did this on its own saves, so a movie's NFO could drift out of step with the cache's casing
+- Actor thumbnails now prefer the already-resolved actor id over re-normalizing the display name, closing a gap where an inverted-order id (e.g. `ogasawara-ai` for "Ai Ogasawara") could hide an existing photo
+
 ## v2.4.2 (2026-09-05)
 
 ### 🔍 Actor search no longer overwrites the Name field
