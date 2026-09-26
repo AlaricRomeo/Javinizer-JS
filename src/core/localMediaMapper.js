@@ -98,6 +98,15 @@ function enrichModelWithLocalMedia(model, item, actorCache) {
       if (dbActor) {
         actor.id = dbActor.id;
         actor.favorite = dbActor.favorite;
+
+        // actor.thumb here is a snapshot written into this movie's own NFO
+        // the last time it was saved — it goes stale the moment the central
+        // actor record gets a better photo (rescrape, merge, manual edit),
+        // since nothing re-saves every movie's NFO when that happens. The
+        // central store is the live source of truth, so prefer it here too
+        // (localThumb below, this movie's own copied-in photo, still wins
+        // over both as the more specific override).
+        if (dbActor.thumb) actor.thumb = dbActor.thumb;
       }
 
       if (actorFiles.length > 0) {

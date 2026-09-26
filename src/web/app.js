@@ -153,6 +153,8 @@ function showNotification(message, type = "info", duration = 5000) {
     notification.style.backgroundColor = "#28a745";
   } else if (type === "error") {
     notification.style.backgroundColor = "#dc3545";
+  } else if (type === "warning") {
+    notification.style.backgroundColor = "#ff9800";
   } else {
     notification.style.backgroundColor = "#007bff";
   }
@@ -2677,6 +2679,15 @@ async function handleScrapingEvent(progressDiv, modal, eventType, data) {
       break;
     }
 
+    case 'scraperWarning': {
+      const warnMsg = window.i18n
+        ? window.i18n.t("messages.scraperNoData", { scraper: data.scraperName, code: data.code, reason: data.reason })
+        : `Scraper "${data.scraperName}" found no data for ${data.code} (${data.reason})`;
+      appendProgress(progressDiv, '⚠️ ' + warnMsg, 'warning');
+      showNotification('⚠️ ' + warnMsg, 'warning', 8000);
+      break;
+    }
+
     case 'complete':
       appendProgress(progressDiv, '✅ ' + data.message, 'success');
       switchToCloseButton(cancelBtn, modal);
@@ -2902,6 +2913,7 @@ function appendProgress(div, message, type) {
     actor: '#f59e0b',         // Amber for Actor scraper
     success: '#28a745',
     error: '#dc3545',
+    warning: '#ff9800',
     prompt: '#ff9800'         // Orange for interactive prompts
   };
 

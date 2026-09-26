@@ -2,7 +2,7 @@
  * Main scraping logic for javlibrary
  */
 
-const { initSession, fetchPage, closeBrowser } = require('./browser');
+const { initSession, fetchPage, releaseBrowser } = require('./browser');
 const { parseHTML } = require('./parse');
 
 let sessionInitialized = false;
@@ -122,7 +122,8 @@ async function scrape(codes) {
     return results;
 
   } finally {
-    await closeBrowser();
+    // Leave the browser open (already past Cloudflare) for the next scrape
+    await releaseBrowser();
   }
 }
 

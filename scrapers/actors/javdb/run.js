@@ -27,11 +27,26 @@ const { getActorsCachePath } = require('../cache-helper');
 
 
 /**
- * Download image from URL
+ * Download image from URL.
+ *
+ * javdatabase.com's og:image always points at idolimages/full/{slug}.webp
+ * even when it has no real photo for the idol — the URL itself just
+ * 302-redirects to idolimages/full/unknown.webp, its fixed "no photo"
+ * placeholder. That only shows up here, at fetch time, not in the page
+ * HTML, so it's flagged on the rejected error (isPlaceholder) rather than
+ * detected up front like the other scrapers' placeholders.
  */
 function downloadImage(url, destPath) {
   return new Promise((resolve, reject) => {
     https.get(url, (response) => {
+      const location = response.headers.location;
+      if (response.statusCode >= 300 && response.statusCode < 400 && location && /\/unknown\.\w+/i.test(location)) {
+        const err = new Error(`Placeholder photo (redirects to ${location})`);
+        err.isPlaceholder = true;
+        reject(err);
+        return;
+      }
+
       if (response.statusCode !== 200) {
         reject(new Error(`Failed to download: ${response.statusCode}`));
         return;
@@ -243,9 +258,13 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
         actor.thumb = `/actors/${photoFilename}`;
       } catch (error) {
         console.error(`[javdb] Failed to download photo:`, error.message);
-        // Still preserve URL even if download fails
-        actor.thumbUrl = photoUrl;
-        actor.thumb = photoUrl;
+        if (!error.isPlaceholder) {
+          // Still preserve URL even if download fails for an unrelated reason
+          actor.thumbUrl = photoUrl;
+          actor.thumb = photoUrl;
+        }
+        // Placeholder photo: leave thumbUrl/thumb/thumbLocal unset so the
+        // actor is treated as having no photo and other scrapers still run.
       }
     }
 

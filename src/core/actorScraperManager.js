@@ -103,33 +103,32 @@ function executeActorScraper(scraperName, actorName, nameVariants = []) {
         : null;
 
       if (typeof fn === 'function') {
+        // Per-name timeout: a single global budget let a slow scraper (e.g.
+        // javdb via browser) burn it on the first couple of names, so the
+        // alias variants further down the list were never tried at all.
         const timeoutMs = 30000;
+        const withTimeout = p => Promise.race([p, new Promise(res => setTimeout(() => res(null), timeoutMs))]);
 
         // Build unique list: original + inverted + all variants + their inverted forms
         const invert = n => { const p = n.trim().split(/\s+/); return p.length === 2 ? `${p[1]} ${p[0]}` : n; };
         const seen = new Set();
         const allNames = [actorName, invert(actorName), ...nameVariants]
           .flatMap(n => [n, invert(n)])
-          .filter(n => { if (!n || seen.has(n)) return false; seen.add(n); return true; });
+          .filter(n => { if (!n || seen.has(n.toLowerCase())) return false; seen.add(n.toLowerCase()); return true; });
 
-        const runPromise = (async () => {
-          for (const name of allNames) {
-            try {
-              console.log(`[ActorScraperManager] Executing scraper in-process: ${scraperName} for ${name}`);
-              const result = await fn(name);
-              if (result) return result;
-            } catch (err) {
-              console.error(`[ActorScraperManager] Scraper ${scraperName} threw for "${name}":`, err.message);
-            }
+        let final = null;
+        for (const name of allNames) {
+          try {
+            console.log(`[ActorScraperManager] Executing scraper in-process: ${scraperName} for ${name}`);
+            const result = await withTimeout(Promise.resolve(fn(name)));
+            if (result) { final = result; break; }
+          } catch (err) {
+            console.error(`[ActorScraperManager] Scraper ${scraperName} threw for "${name}":`, err.message);
           }
-          return null;
-        })();
-
-        const timeoutPromise = new Promise(res => setTimeout(() => res(null), timeoutMs));
-        const final = await Promise.race([runPromise, timeoutPromise]);
+        }
 
         if (final === null) {
-          console.error(`[ActorScraperManager] Scraper ${scraperName} timed out or returned null`);
+          console.error(`[ActorScraperManager] Scraper ${scraperName} returned null for all ${allNames.length} name(s)`);
         } else {
           console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully (in-process)`);
         }
@@ -434,7 +433,9 @@ async function runScrapers(actorName, enabledScrapers, actorId, emitter, initial
   // a movie's own alt name for this actor) that isn't already captured by
   // name/altName/otherNames, so a future lookup by that variant resolves
   // instantly instead of repeating this same scrape.
-  foldNameVariants(merged, initialVariants);
+  // actorName itself too: when a scraper matched via an alias and returned a
+  // different primary, the name this movie actually uses would otherwise be lost.
+  foldNameVariants(merged, [actorName, ...initialVariants]);
 
   console.log(`[ActorScraperManager] Using actor ID: ${merged.id}`);
   saveActorLocal(merged);
@@ -486,6 +487,69 @@ function splitNameHints(altNameHints) {
   return raw.split(',').map(s => s.trim()).filter(Boolean);
 }
 
+function knownNamesLower(actor) {
+  return new Set([
+    actor.name,
+    ...(actor.altName || '').split(','),
+    ...(actor.otherNames || [])
+  ].map(n => (n || '').trim().toLowerCase()).filter(Boolean));
+}
+
+/**
+ * Fill only the still-empty physical fields of an already-local actor from
+ * online scrapers, trying every known name. Never overwrites existing data
+ * or the photo; a result is ignored unless it shares at least one name
+ * with the actor (guards against a homonym match). Saves the actor.
+ */
+async function fillMissingFromOnline(actor, emitter = null) {
+  const config = loadConfig();
+  const scrapers = (config.scrapers?.actors?.scrapers || ['javdb']).filter(s => s !== 'local');
+  const variants = extractNameVariants([{ scraperName: 'local', data: actor }]);
+  const FILLABLE = ['birthdate', 'height', 'bust', 'waist', 'hips'];
+  const isEmpty = v => v === undefined || v === null || v === '' || (typeof v === 'number' && v <= 0);
+
+  if (emitter) emitter.emit('progress', { message: `[Actor Scrape] New names for ${actor.name}, searching online for missing fields` });
+
+  for (const scraperName of scrapers) {
+    if (!FILLABLE.some(f => isEmpty(actor[f]))) break;
+
+    const result = await executeActorScraper(scraperName, actor.name, variants);
+    if (!result) continue;
+
+    const known = knownNamesLower(actor);
+    const resultNames = [...knownNamesLower(result)];
+    if (!resultNames.some(n => known.has(n))) {
+      console.log(`[ActorScraperManager] ${scraperName} result "${result.name}" shares no name with ${actor.id}, ignored`);
+      continue;
+    }
+
+    FILLABLE.forEach(f => { if (isEmpty(actor[f]) && !isEmpty(result[f])) actor[f] = result[f]; });
+    foldNameVariants(actor, [result.name, ...splitNameHints(result.altName), ...(result.otherNames || [])]);
+    actor.meta = { ...(actor.meta || {}), sources: [scraperName] };
+    if (emitter) emitter.emit('progress', { message: `[${scraperName}] ✓ Missing fields filled for ${actor.name}` });
+  }
+
+  saveActorLocal(actor);
+}
+
+/**
+ * An actor already known locally (with photo) was just seen again, e.g. in
+ * a movie's cast: record the name the movie uses plus any alias hints.
+ * If that brought in names never tried before and the actor still has
+ * empty fields, search online with all names to fill them.
+ */
+async function syncLocalActor(actor, actorName, hints, emitter = null) {
+  const before = knownNamesLower(actor);
+  const changed = foldNameVariants(actor, [actorName, ...hints]);
+  const addedNames = [...knownNamesLower(actor)].some(n => !before.has(n));
+
+  if (addedNames && !isActorComplete(actor)) {
+    await fillMissingFromOnline(actor, emitter);
+  } else if (changed) {
+    saveActorLocal(actor);
+  }
+}
+
 /**
  * Ensure an actor is scraped/cached, given extra name-variant hints (e.g.
  * aliases a movie's own scraper surfaced for this actor, like javlibrary-fs's
@@ -505,7 +569,7 @@ async function ensureActorCached(actorName, altNameHints, emitter = null) {
   const localData = await scrapeLocal(actorName, hints).catch(() => null);
 
   if (localData && !localData.error && hasNameAndImage(localData)) {
-    if (foldNameVariants(localData, hints)) saveActorLocal(localData);
+    await syncLocalActor(localData, actorName, hints, emitter);
     return { actorData: localData, cached: true };
   }
 
@@ -614,7 +678,7 @@ async function getActor(actorName, forceOverwrite = false, altNameHints = [], kn
     // A movie may have surfaced an alt name for this actor we didn't know yet
     // (e.g. a different romanization) — remember it so future lookups by that
     // variant resolve instantly instead of falling through to online scrapers.
-    if (foldNameVariants(localActor, splitNameHints(altNameHints))) saveActorLocal(localActor);
+    await syncLocalActor(localActor, actorName, splitNameHints(altNameHints));
     // fromLocal: true tells callers (see POST /item/actors/search) this is
     // the already-established identity, not a new online discovery — safe
     // to sync a caller's own "name" field to it (e.g. when a movie's own
@@ -863,7 +927,7 @@ async function updateMovieActorData() {
 
           // Find actor via NFO scan (data/actors, the local index)
           const { scrapeLocal } = require('../../scrapers/actors/local/run');
-          const actorData = await scrapeLocal(actor.name).catch(() => null);
+          const actorData = await scrapeLocal(actor.name, splitNameHints(actor.altName)).catch(() => null);
           if (!actorData || actorData.error) {
             console.error(`[ActorScraperManager] Actor not found locally: ${actor.name}`);
             continue;
@@ -882,7 +946,7 @@ async function updateMovieActorData() {
 
 
           movieUpdated = true;
-          console.log(`[ActorScraperManager] Updated actor in ${filename}: ${actor.name} -> ${actorId}`);
+          console.log(`[ActorScraperManager] Updated actor in ${filename}: ${actor.name} -> ${actorData.id}`);
         }
 
         // Save updated movie JSON (preserve wrapper if it exists)
@@ -1089,7 +1153,7 @@ async function processSingleMovieActors(movieId, emitter = null) {
 
           // Find actor via NFO scan (data/actors, the local index)
           const { scrapeLocal } = require('../../scrapers/actors/local/run');
-          const actorData = await scrapeLocal(actor.name).catch(() => null);
+          const actorData = await scrapeLocal(actor.name, splitNameHints(actor.altName)).catch(() => null);
           if (!actorData || actorData.error) {
             console.error(`[ActorScraperManager] Actor not found locally: ${actor.name}`);
             continue;
@@ -1298,7 +1362,7 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
 
           // Find actor via NFO scan (data/actors, the local index)
           const { scrapeLocal } = require('../../scrapers/actors/local/run');
-          const actorData = await scrapeLocal(actor.name).catch(() => null);
+          const actorData = await scrapeLocal(actor.name, splitNameHints(actor.altName)).catch(() => null);
           if (!actorData || actorData.error) {
             console.error(`[ActorScraperManager] Actor not found locally: ${actor.name}`);
             continue;

@@ -184,6 +184,7 @@
     "confirmRescrape": "Re-scrape \"{movieId}\" with {scraper}?\n\nFound fields will be replaced.\nMissing fields will be kept as they were.",
     "confirmEditRescrape": "Re-scrape \"{movieId}\" with {scraper}?\n\nScraped data will be loaded into the form.\nYou can review before saving.",
     "editRescrapeLoaded": "✓ Scraped data loaded. Review and save to apply.",
+    "scraperNoData": "Scraper \"{scraper}\" found no data for {code} ({reason})",
     "editRescrapeApplied": "Scraped data loaded into form. Review and save to apply.",
     "actorRescanLoaded": "✓ Actor data refreshed. Review and save.",
     "actorRescanApplied": "Actor data refreshed. Review and save to apply.",

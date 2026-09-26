@@ -120,9 +120,17 @@ function parseHTML(html, code) {
     $('.star a[href*="vl_star.php"]').each((i, el) => {
       const name = $(el).text().trim();
       if (name) {
+        // Alternate stage names are sibling spans in the shared .cast container,
+        // e.g. <span class="cast"><span class="star"><a>A</a></span> <span id="alias...">(B)</span></span>
+        const aliases = [];
+        $(el).closest('.cast').find('span[id^="alias"]').each((_, aliasEl) => {
+          const alias = $(aliasEl).text().trim().replace(/^\(|\)$/g, '').trim();
+          if (alias) aliases.push(alias);
+        });
+
         actors.push({
           name: name,
-          altName: '',
+          altName: aliases.join(', '),
           role: 'Actress',
           thumb: ''
         });

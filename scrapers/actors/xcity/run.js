@@ -16,7 +16,7 @@
  * - Birthdate (from "Date of birth" profile row, e.g. "1988 May 24")
  * - Height (from "Height" profile row, e.g. "163cm")
  * - Measurements: Bust(cup)-Waist-Hips (from "Size" profile row, e.g. "B88(D) W59 H85")
- * - Photo (from .actressThumb)
+ * - Photo (from .actressThumb - skipped when it's the site's "no photo" placeholder)
  *
  * No FlareSolverr/Cloudflare challenge encountered - plain HTTP works.
  *
@@ -29,11 +29,30 @@ const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const crypto = require('crypto');
 const { createEmptyActor, removeEmptyFields, normalizeActorName } = require('../schema');
 const { getActorsCachePath } = require('../cache-helper');
 
 const BASE_URL = 'https://xxx.xcity.jp';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// xcity serves this fixed image (faws.xcity.jp/actress/large/image/noimage.gif)
+// for idols it has no real photo for. Treating it as a real photo would
+// permanently block other scrapers from ever supplying the actual one.
+const PLACEHOLDER_PHOTO = 'noimage.gif';
+
+// A second xcity placeholder: a generic "No Image" graphic served from
+// .../image/person/thumb_<timestamp>.jpg — a per-actor-looking URL, so it
+// can't be caught by filename like PLACEHOLDER_PHOTO above. Caught instead
+// by content hash after download (MD5 of the known "No Image" graphic).
+const PLACEHOLDER_PHOTO_HASHES = new Set([
+  'e3404d8210f013180ae8535372ecf44c',
+]);
+
+function isPlaceholderPhotoFile(filePath) {
+  const hash = crypto.createHash('md5').update(fs.readFileSync(filePath)).digest('hex');
+  return PLACEHOLDER_PHOTO_HASHES.has(hash);
+}
 
 const MONTHS = {
   january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
@@ -209,7 +228,9 @@ async function scrapeDetailPage(detailUrl, actorName) {
   });
 
   const photoSrc = $('.photo .actressThumb').attr('src');
-  const photoUrl = photoSrc ? new URL(photoSrc, `${BASE_URL}/`).href : null;
+  const photoUrl = (photoSrc && !photoSrc.includes(PLACEHOLDER_PHOTO))
+    ? new URL(photoSrc, `${BASE_URL}/`).href
+    : null;
 
   if (photoUrl) {
     console.error(`[xcity] Downloading photo: ${photoUrl}`);
@@ -227,11 +248,17 @@ async function scrapeDetailPage(detailUrl, actorName) {
 
     try {
       await downloadImage(photoUrl, photoPath);
-      console.error(`[xcity] Photo saved: ${photoPath}`);
 
-      actor.thumbUrl = photoUrl;
-      actor.thumbLocal = photoFilename;
-      actor.thumb = `/actors/${photoFilename}`;
+      if (isPlaceholderPhotoFile(photoPath)) {
+        console.error(`[xcity] Photo is the site's generic "No Image" graphic, skipping`);
+        fs.unlinkSync(photoPath);
+      } else {
+        console.error(`[xcity] Photo saved: ${photoPath}`);
+
+        actor.thumbUrl = photoUrl;
+        actor.thumbLocal = photoFilename;
+        actor.thumb = `/actors/${photoFilename}`;
+      }
     } catch (error) {
       console.error(`[xcity] Failed to download photo:`, error.message);
       actor.thumbUrl = photoUrl;

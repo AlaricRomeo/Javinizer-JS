@@ -42,6 +42,7 @@ todo.md
 # Javlibrary scraper browser data and cache
 scrapers/movies/javlibrary/browser-data/
 scrapers/movies/javlibrary/cookies.json
+scrapers/movies/javlibrary/browser-state.json
 
 # Build artifacts (se in futuro aggiungi build step)
 dist/

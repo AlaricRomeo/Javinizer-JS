@@ -169,6 +169,7 @@
     "confirmRescrape": "「{movieId}」を{scraper}で再スクレイプしますか？\n\n見つかったフィールドは置き換えられます。\n見つからなかったフィールドは以前のまま残ります。",
     "confirmEditRescrape": "「{movieId}」を{scraper}で再スクレイプしますか？\n\n抽出されたデータがフォームに読み込まれます。\n保存前に確認できます。",
     "editRescrapeLoaded": "✓ スクレイプデータを読み込みました。確認して保存してください。",
+    "scraperNoData": "スクレイパー「{scraper}」は{code}のデータを取得できませんでした（{reason}）",
     "editRescrapeApplied": "スクレイプデータをフォームに読み込みました。確認して保存してください。",
     "actorRescanLoaded": "✓ 女優データを更新しました。確認して保存してください。",
     "actorRescanApplied": "女優データをフォームに読み込みました。確認して保存してください。",

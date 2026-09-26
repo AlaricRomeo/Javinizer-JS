@@ -1,19 +1,30 @@
 /**
  * Browser management for javlibrary scraper
  * Handles Cloudflare protection with real browser
+ *
+ * The scraper runs as a short-lived child process (one per scrape), but the
+ * browser outlives it: Chrome is spawned detached with a DevTools port, and
+ * its endpoint is saved in browser-state.json so the next scrape reconnects
+ * to the same, already-past-Cloudflare window instead of launching a new
+ * one. A detached watchdog (browser-watchdog.js) kills it after IDLE_MS of
+ * inactivity — past that, Cloudflare would challenge again anyway.
  */
 
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const { loadConfig } = require('../../../src/core/config');
 
 let browser = null;
 let sessionPage = null; // Keep the same page/tab alive
 let _s = 0; // Session usage counter
 
-const COOKIES_FILE = path.join(__dirname, 'cookies.json');
+const USER_DATA_DIR = path.join(__dirname, 'browser-data');
+const STATE_FILE = path.join(__dirname, 'browser-state.json');
+const WATCHDOG_SCRIPT = path.join(__dirname, 'browser-watchdog.js');
 const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
+const IDLE_MS = 10 * 60 * 1000; // Close the shared browser after 10 min unused
 const _m = 80; // Max operations per session
 
 /**
@@ -69,58 +80,159 @@ function cleanOldCache(userDataDir) {
   }
 }
 
-/**
- * Initialize browser instance
- * @param {boolean} headless - Run browser in headless mode
- */
-async function initBrowser(headless = false) {
-  if (browser) return;
+function isAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === 'EPERM';
+  }
+}
 
-  console.error(`[Browser] Launching browser${headless ? ' (headless)' : ''}...`);
+function killPid(pid) {
+  if (!isAlive(pid)) return;
+  try {
+    process.kill(pid, process.platform === 'win32' ? 'SIGTERM' : 'SIGKILL');
+    console.error('[Browser] Browser process killed');
+  } catch (e) {
+    console.error(`[Browser] Could not kill browser process: ${e.message}`);
+  }
+}
 
-  // Use a persistent user data directory to maintain session across runs
-  const userDataDir = path.join(__dirname, 'browser-data');
+function readState() {
+  try {
+    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+  } catch (_) {
+    return null;
+  }
+}
 
-  // Clean cache if it's too old
-  cleanOldCache(userDataDir);
+function writeState(patch) {
+  const next = { ...(readState() || {}), ...patch };
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify(next), 'utf-8');
+  } catch (e) {
+    console.error(`[Browser] Could not write browser state: ${e.message}`);
+  }
+}
 
-  const launchOptions = {
-    headless: headless,
-    userDataDir: userDataDir,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-blink-features=AutomationControlled',
-      '--disable-features=IsolateOrigins,site-per-process',
-      '--disable-infobars',
-      '--window-size=1920,1080'
-    ],
-    defaultViewport: { width: 1920, height: 1080 }
-  };
+function removeState() {
+  try { fs.rmSync(STATE_FILE, { force: true }); } catch (_) {}
+}
 
-  // Use configured browser path, then env var, then Puppeteer default
+function getExecutablePath() {
   try {
     const cfg = loadConfig();
-    if (cfg.browserPath) {
-      launchOptions.executablePath = cfg.browserPath;
-    } else if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-    }
-  } catch (_) {
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    if (cfg.browserPath) return cfg.browserPath;
+  } catch (_) {}
+  return process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
+}
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); })
+  ]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Spawn a detached Chrome with a DevTools port, independent from this
+ * process's lifetime (puppeteer.launch() would kill it on exit).
+ * @returns {Promise<{pid: number, wsEndpoint: string}>}
+ */
+async function launchDetachedChrome() {
+  const portFile = path.join(USER_DATA_DIR, 'DevToolsActivePort');
+  try { fs.rmSync(portFile, { force: true }); } catch (_) {}
+
+  const args = [
+    `--user-data-dir=${USER_DATA_DIR}`,
+    '--remote-debugging-port=0',
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-blink-features=AutomationControlled',
+    '--disable-features=IsolateOrigins,site-per-process',
+    '--disable-infobars',
+    '--window-size=1920,1080',
+    'about:blank'
+  ];
+
+  const child = spawn(getExecutablePath(), args, { detached: true, stdio: 'ignore' });
+  child.unref();
+
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw new Error(`Browser exited during launch (code ${child.exitCode})`);
+    try {
+      const [port, wsPath] = fs.readFileSync(portFile, 'utf-8').split('\n').map(l => l.trim());
+      if (port && wsPath) return { pid: child.pid, wsEndpoint: `ws://127.0.0.1:${port}${wsPath}` };
+    } catch (_) {}
+    await new Promise(res => setTimeout(res, 200));
+  }
+
+  killPid(child.pid);
+  throw new Error('Browser launch timeout after 30s');
+}
+
+function startWatchdog(pid) {
+  const child = spawn(process.execPath, [WATCHDOG_SCRIPT, String(pid), STATE_FILE, String(IDLE_MS)], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true
+  });
+  child.unref();
+}
+
+/**
+ * Connect to the shared browser, reusing the running one when it's still
+ * within IDLE_MS, otherwise launching a fresh one.
+ * @returns {Promise<boolean>} true if a new browser was launched
+ */
+async function initBrowser() {
+  if (browser && browser.isConnected()) return false;
+
+  let launched = false;
+  const state = readState();
+
+  if (state && isAlive(state.pid)) {
+    if (Date.now() - (state.lastUsed || 0) < IDLE_MS) {
+      try {
+        browser = await withTimeout(
+          puppeteer.connect({ browserWSEndpoint: state.wsEndpoint, defaultViewport: null }),
+          10000,
+          'Connect timeout'
+        );
+        console.error('[Browser] Reusing already open browser');
+      } catch (e) {
+        console.error(`[Browser] Could not reuse open browser (${e.message}), relaunching...`);
+        killPid(state.pid);
+      }
+    } else {
+      console.error('[Browser] Open browser idle too long, relaunching...');
+      killPid(state.pid);
     }
   }
 
-  console.error('[Browser] Launching Puppeteer...');
+  if (!browser) {
+    removeState();
+    cleanOldCache(USER_DATA_DIR);
 
-  // Launch with timeout
-  const launchPromise = puppeteer.launch(launchOptions);
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('Browser launch timeout after 30s')), 30000);
-  });
+    console.error('[Browser] Launching browser...');
+    const { pid, wsEndpoint } = await launchDetachedChrome();
+    browser = await withTimeout(
+      puppeteer.connect({ browserWSEndpoint: wsEndpoint, defaultViewport: null }),
+      10000,
+      'Connect timeout'
+    );
+    writeState({ pid, wsEndpoint });
+    startWatchdog(pid);
+    launched = true;
+  }
 
-  browser = await Promise.race([launchPromise, timeoutPromise]);
+  writeState({ lastUsed: Date.now(), busyPid: process.pid });
 
   // Handle browser disconnection
   browser.on('disconnected', () => {
@@ -131,6 +243,44 @@ async function initBrowser(headless = false) {
   });
 
   console.error('[Browser] Browser ready with persistent session');
+  return launched;
+}
+
+/**
+ * What's blocking the javlibrary page, if anything: 'cloudflare',
+ * 'adult' (age agreement), 'unknown' (not a recognizable javlibrary page)
+ * or null when the page is usable as-is.
+ */
+async function detectBlocker(page) {
+  try {
+    return await page.evaluate(() => {
+      if (/just a moment|attention required/i.test(document.title || '')) return 'cloudflare';
+      if (document.querySelector('#challenge-form, #challenge-running, .cf-turnstile, iframe[src*="challenges.cloudflare.com"]')) return 'cloudflare';
+      const adult = document.querySelector('#adultwarningprompt, .btnAdultAgree, #btnAdultAgree');
+      if (adult && adult.offsetParent !== null) return 'adult';
+      if (!document.querySelector('#idsearchbox, form[action*="vl_searchbyid"], a[href*="vl_searchbyid"]')) return 'unknown';
+      return null;
+    });
+  } catch (_) {
+    return 'unknown';
+  }
+}
+
+async function askUserToUnblock() {
+  console.error('[Browser] ========================================');
+  console.error('[Browser] Browser window is now open.');
+  console.error('[Browser] Please:');
+  console.error('[Browser]   1. Solve any Cloudflare challenges');
+  console.error('[Browser]   2. Accept the adult agreement');
+  console.error('[Browser]   3. Click "Continue" when ready');
+  console.error('[Browser] ========================================');
+
+  // Wait for user confirmation via WebSocket
+  // The message key will be translated by the frontend i18n system
+  const confirmed = await waitForUserConfirmation('javlibraryCloudflare');
+  if (!confirmed) {
+    throw new Error('User canceled browser initialization');
+  }
 }
 
 /**
@@ -165,19 +315,29 @@ async function waitForUserConfirmation(message) {
 }
 
 /**
- * Initialize session by solving Cloudflare once
- * Opens browser, lets user solve challenge via WebUI
+ * Initialize session: reuse/launch the browser and ask the user to solve
+ * Cloudflare only when the homepage is actually blocked.
  */
 async function initSession() {
-  await initBrowser(false); // Non-headless for user interaction
+  const launched = await initBrowser();
 
   const pages = await browser.pages();
   sessionPage = pages[0] || await browser.newPage();
 
+  // Disable the HTTP cache for this page's whole lifetime so every navigation
+  // reflects the real Cloudflare state (equivalent to always doing ctrl+F5),
+  // instead of a stale cached page making it look like the challenge already passed.
+  // Per-connection setting, so it's re-applied on every reconnect.
   try {
-    console.error('[Browser] Opening browser to initialize session...');
-    await sessionPage.goto('https://www.javlibrary.com/en/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await sessionPage.setCacheEnabled(false);
+  } catch (cacheError) {
+    console.error('[Browser] Could not disable cache (not critical):', cacheError.message);
+  }
 
+  console.error('[Browser] Opening javlibrary homepage...');
+  await sessionPage.goto('https://www.javlibrary.com/en/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+  if (launched) {
     // Minimize the browser window (works on Linux, Windows behavior varies)
     try {
       const session = await sessionPage.target().createCDPSession();
@@ -190,37 +350,21 @@ async function initSession() {
     } catch (minimizeError) {
       console.error('[Browser] Could not minimize window (not critical):', minimizeError.message);
     }
-
-    console.error('[Browser] ========================================');
-    console.error('[Browser] Browser window is now open.');
-    console.error('[Browser] Please:');
-    console.error('[Browser]   1. Solve any Cloudflare challenges');
-    console.error('[Browser]   2. Accept the adult agreement');
-    console.error('[Browser]   3. Click "Continue" when ready');
-    console.error('[Browser] ========================================');
-
-    // Wait for user confirmation via WebSocket
-    // The message key will be translated by the frontend i18n system
-    const confirmed = await waitForUserConfirmation(
-      'javlibraryCloudflare'
-    );
-
-    if (!confirmed) {
-      throw new Error('User canceled browser initialization');
-    }
-
-    console.error('[Browser] Session initialized, browser will stay open');
-    // Keep the page open - we'll reuse it for scraping
-
-  } catch (error) {
-    console.error(`[Browser] Error: ${error.message}`);
-    if (sessionPage) await sessionPage.close();
-    throw error;
   }
+
+  const blocker = await detectBlocker(sessionPage);
+  if (!blocker) {
+    console.error('[Browser] Session still valid, no confirmation needed');
+    return;
+  }
+
+  console.error(`[Browser] Page blocked (${blocker}), waiting for user...`);
+  await askUserToUnblock();
+  console.error('[Browser] Session initialized, browser will stay open');
 }
 
 /**
- * Fetch page content using saved session (no browser needed)
+ * Fetch page content using the shared session page
  * @param {string} url - URL to fetch
  * @returns {Promise<string>} HTML content
  */
@@ -242,8 +386,16 @@ async function fetchPage(url) {
     console.error(`[JavLibrary Scrape] Fetching ${url}...`);
     await sessionPage.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
 
+    // Cloudflare can come back mid-session: let the user solve it, then retry once.
+    if (await detectBlocker(sessionPage) === 'cloudflare') {
+      console.error('[JavLibrary Scrape] Cloudflare challenge detected, waiting for user...');
+      await askUserToUnblock();
+      await sessionPage.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+    }
+
     const html = await sessionPage.content();
     _s++; // Increment counter
+    writeState({ lastUsed: Date.now() });
 
     console.error('[JavLibrary Scrape] Page fetched successfully');
     return html;
@@ -281,54 +433,44 @@ async function fetchPage(url) {
 }
 
 /**
- * Close browser instance
+ * Detach from the shared browser without closing it, so the next scrape
+ * can reuse it. The watchdog closes it after IDLE_MS of inactivity.
+ */
+async function releaseBrowser() {
+  if (!browser) return;
+  writeState({ lastUsed: Date.now(), busyPid: null });
+  try {
+    browser.removeAllListeners('disconnected');
+    await browser.disconnect();
+    console.error('[Browser] Detached from browser (left open for reuse)');
+  } catch (error) {
+    console.error(`[Browser] Error detaching from browser: ${error.message}`);
+  } finally {
+    browser = null;
+    sessionPage = null;
+    _s = 0;
+  }
+}
+
+/**
+ * Close the shared browser for good
  */
 async function closeBrowser() {
+  const state = readState();
   if (browser) {
-    console.error('[Browser] Closing browser...');
-    try {
-      // Remove disconnected listener before killing to avoid spurious "unexpectedly" log
-      browser.removeAllListeners('disconnected');
-
-      // Force kill the browser process immediately for faster shutdown
-      const browserProcess = browser.process();
-      if (browserProcess && browserProcess.pid) {
-        try {
-          // On Windows use SIGTERM, on Unix use SIGKILL
-          const signal = process.platform === 'win32' ? 'SIGTERM' : 'SIGKILL';
-          process.kill(browserProcess.pid, signal);
-          console.error('[Browser] Browser process killed');
-        } catch (killError) {
-          console.error(`[Browser] Could not kill browser process: ${killError.message}`);
-        }
-      }
-
-      // Clean up references
-      if (sessionPage) {
-        try {
-          await sessionPage.close().catch(() => {});
-        } catch (e) {}
-        sessionPage = null;
-      }
-
-      // Try to close browser gracefully (but don't wait too long)
-      try {
-        await browser.close().catch(() => {});
-      } catch (e) {}
-
-      console.error('[Browser] Browser closed successfully');
-    } catch (error) {
-      console.error(`[Browser] Error closing browser: ${error.message}`);
-    } finally {
-      browser = null;
-      sessionPage = null;
-      _s = 0; // Reset counter
-    }
+    browser.removeAllListeners('disconnected');
+    try { await browser.disconnect(); } catch (_) {}
   }
+  if (state) killPid(state.pid);
+  removeState();
+  browser = null;
+  sessionPage = null;
+  _s = 0;
 }
 
 module.exports = {
   initSession,
   fetchPage,
+  releaseBrowser,
   closeBrowser
 };

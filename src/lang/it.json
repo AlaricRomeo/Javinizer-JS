@@ -185,6 +185,7 @@
     "confirmRescrape": "Fare il rescrape di  \"{movieId}\" con {scraper}?\n\nI campi trovati verranno sostituiti.\nI campi non trovati verranno lasciati come erano.",
     "confirmEditRescrape": "Fare il rescrape di \"{movieId}\" con {scraper}?\n\nI dati estratti verranno caricati nel modulo.\nPotrai rivedere prima di salvare.",
     "editRescrapeLoaded": "✓ Dati estratti caricati. Rivedi e salva per applicare.",
+    "scraperNoData": "Lo scraper \"{scraper}\" non ha trovato dati per {code} ({reason})",
     "editRescrapeApplied": "Dati estratti caricati nel modulo. Rivedi e salva per applicare.",
     "actorRescanLoaded": "✓ Dati attori aggiornati. Rivedi e salva.",
     "actorRescanApplied": "Dati attori aggiornati nel modulo. Rivedi e salva per applicare.",

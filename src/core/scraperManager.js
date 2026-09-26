@@ -225,11 +225,23 @@ function executeScraper(scraperName, codes, emitter = null) {
 
       // Parse JSON output
       try {
-        const results = JSON.parse(stdout);
+        const parsed = JSON.parse(stdout);
+        const results = Array.isArray(parsed) ? parsed : [parsed];
         const message = `Scraper ${scraperName} completed successfully`;
         console.error(`[ScraperManager] ${message}`);
         if (emitter) emitter.emit('progress', { message });
-        resolve(Array.isArray(results) ? results : [results]);
+
+        // A scraper that fails on a single code still exits 0 and returns
+        // just { code } — surface it, or it silently looks like a success.
+        codes.forEach(c => {
+          const r = results.find(x => x && (x.code || x.dvd_id || '').toUpperCase() === c.toUpperCase());
+          if (r && (r.title || r.coverUrl || (Array.isArray(r.actor) && r.actor.length > 0))) return;
+          const reason = (r && r.error) || 'no data returned';
+          console.error(`[ScraperManager] ${scraperName} found no data for ${c}: ${reason}`);
+          if (emitter) emitter.emit('scraperWarning', { scraperName, code: c, reason });
+        });
+
+        resolve(results);
       } catch (error) {
         const message = `Failed to parse JSON from ${scraperName}: ${error.message}`;
         console.error(`[ScraperManager] ${message}`);

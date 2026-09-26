@@ -762,7 +762,11 @@ router.post("/save", async (req, res) => {
           // See protectExistingPrimaryName() — this movie's own NFO
           // displaying an alt spelling must not demote the real primary.
           protectExistingPrimaryName(actor, actorDb);
-          saveActorLocal({ ...actor, meta: { sources: ['manual'] } }, { replaceNames: true });
+          // Additive, not replaceNames: a movie's cast entry only carries the
+          // aliases this movie/scraper happened to know — replacing would wipe
+          // every alt name the actor already had. Removing alt names is done
+          // from the actor modal (POST /actors/save), which is authoritative.
+          saveActorLocal({ ...actor, meta: { sources: ['manual'] } });
           resolvedIds.push(actor.id);
         } catch (err) {
           console.error(`[Routes] Failed to persist actor ${actor.name}:`, err.message);
@@ -838,6 +842,7 @@ router.post("/edit-rescrape", async (req, res) => {
 
     emitter.on('start', data => broadcast('start', data));
     emitter.on('progress', data => broadcast('progress', data));
+    emitter.on('scraperWarning', data => broadcast('scraperWarning', data));
     emitter.on('scraperError', data => {
       req.wss.clients.forEach(client => {
         if (client.readyState === 1) {
@@ -1041,7 +1046,11 @@ router.post("/edit-rescrape/save", async (req, res) => {
         try {
           actor.id = resolveActorSaveId(actor, actorDb, normalizeActorName);
           protectExistingPrimaryName(actor, actorDb);
-          saveActorLocal({ ...actor, meta: { sources: ['manual'] } }, { replaceNames: true });
+          // Additive, not replaceNames: a movie's cast entry only carries the
+          // aliases this movie/scraper happened to know — replacing would wipe
+          // every alt name the actor already had. Removing alt names is done
+          // from the actor modal (POST /actors/save), which is authoritative.
+          saveActorLocal({ ...actor, meta: { sources: ['manual'] } });
           resolvedIds.push(actor.id);
         } catch (err) {
           console.error(`[Routes] Failed to persist actor ${actor.name}:`, err.message);
@@ -1685,7 +1694,11 @@ router.post("/scrape/save", async (req, res) => {
               // discarded instead of updating the index.
               actor.id = resolveActorSaveId(actor, actorDb, normalizeActorName);
               protectExistingPrimaryName(actor, actorDb);
-              saveActorLocal({ ...actor, meta: { sources: ['manual'] } }, { replaceNames: true });
+              // Additive, not replaceNames: a movie's cast entry only carries the
+              // aliases this movie/scraper happened to know — replacing would wipe
+              // every alt name the actor already had. Removing alt names is done
+              // from the actor modal (POST /actors/save), which is authoritative.
+              saveActorLocal({ ...actor, meta: { sources: ['manual'] } });
               resolvedIds.push(actor.id);
 
               console.error(`[Routes] Scraping actor: ${actor.name}`);
@@ -1845,6 +1858,14 @@ router.post("/scrape/start", async (req, res) => {
       req.wss.clients.forEach(client => {
         if (client.readyState === 1) {
           client.send(JSON.stringify({ event: 'progress', data, scrapeId }));
+        }
+      });
+    });
+
+    emitter.on('scraperWarning', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'scraperWarning', data, scrapeId }));
         }
       });
     });
@@ -2108,6 +2129,14 @@ router.post("/scrape/rescrape", async (req, res) => {
       req.wss.clients.forEach(client => {
         if (client.readyState === 1) {
           client.send(JSON.stringify({ event: 'progress', data, scrapeId }));
+        }
+      });
+    });
+
+    emitter.on('scraperWarning', (data) => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+          client.send(JSON.stringify({ event: 'scraperWarning', data, scrapeId }));
         }
       });
     });
