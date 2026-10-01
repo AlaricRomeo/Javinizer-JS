@@ -36,14 +36,22 @@ const { getActorsCachePath } = require('../cache-helper');
  * HTML, so it's flagged on the rejected error (isPlaceholder) rather than
  * detected up front like the other scrapers' placeholders.
  */
-function downloadImage(url, destPath) {
+function downloadImage(url, destPath, redirectsLeft = 3) {
   return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
+    const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
+    https.get(url, { headers }, (response) => {
       const location = response.headers.location;
       if (response.statusCode >= 300 && response.statusCode < 400 && location && /\/unknown\.\w+/i.test(location)) {
         const err = new Error(`Placeholder photo (redirects to ${location})`);
         err.isPlaceholder = true;
         reject(err);
+        return;
+      }
+
+      // Any other redirect: follow it (a CDN hop, not the placeholder)
+      if (response.statusCode >= 300 && response.statusCode < 400 && location && redirectsLeft > 0) {
+        response.resume();
+        downloadImage(new URL(location, url).href, destPath, redirectsLeft - 1).then(resolve, reject);
         return;
       }
 
@@ -258,13 +266,10 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
         actor.thumb = `/actors/${photoFilename}`;
       } catch (error) {
         console.error(`[javdb] Failed to download photo:`, error.message);
-        if (!error.isPlaceholder) {
-          // Still preserve URL even if download fails for an unrelated reason
-          actor.thumbUrl = photoUrl;
-          actor.thumb = photoUrl;
-        }
-        // Placeholder photo: leave thumbUrl/thumb/thumbLocal unset so the
-        // actor is treated as having no photo and other scrapers still run.
+        // Leave thumbUrl/thumb/thumbLocal unset whatever the reason: a
+        // javdatabase URL that couldn't be fetched may well be the placeholder
+        // (only detectable at fetch time), so it's never kept as the photo.
+        // The actor is treated as having no photo and other scrapers still run.
       }
     }
 

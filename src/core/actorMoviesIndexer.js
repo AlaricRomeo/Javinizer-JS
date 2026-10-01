@@ -3,12 +3,9 @@
  * scratch by reading every item's actor list straight out of its NFO.
  *
  * actor_movies has no per-row library reference — it's simply wiped and
- * rewritten wholesale every time this runs, which only ever happens right
- * after a library-path change (the one event that already invalidates
- * libraryReader's own on-disk cache — see POST /config in routes.js). A
- * plain server restart on the same path reuses that cache and never
- * touches this at all, so the cost (one NFO read per item) is paid only
- * when the library actually changes, not on every boot.
+ * rewritten wholesale every time this runs: on a library-path change (see
+ * POST /config in routes.js) and in the background on every server boot
+ * (see index.js), since in-app saves alone leave it with missing links.
  */
 const { buildItem } = require("./buildItem");
 const actorDb = require("../../scrapers/actors/actorDb");
@@ -56,4 +53,20 @@ async function rebuildActorMoviesIndex(libraryReader, onProgress) {
   return { total: items.length, links: pairs.length };
 }
 
-module.exports = { rebuildActorMoviesIndex };
+/**
+ * Run bin/rebuild-actor-movies.js as its own detached process — the scan is
+ * blocking file I/O over the whole library and would freeze the server.
+ */
+function spawnActorMoviesRebuild() {
+  const path = require("path");
+  const { spawn } = require("child_process");
+  const root = path.join(__dirname, "../..");
+  const child = spawn(process.execPath, [path.join(root, "bin/rebuild-actor-movies.js")], {
+    cwd: root,
+    detached: true,
+    stdio: "ignore"
+  });
+  child.unref();
+}
+
+module.exports = { rebuildActorMoviesIndex, spawnActorMoviesRebuild };

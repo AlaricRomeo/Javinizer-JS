@@ -224,11 +224,11 @@ app.use("/actors", (req, res) => {
       }
       filename = extFilename;
     } else {
-      // Priority: externalPath (.actors, user-curated) first, then internal cache.
-      // Search each directory fully (exact filename, then any known extension for
-      // the same actor id) before moving to the next — a stale file in the internal
-      // cache must never win over a photo that exists in externalPath under a
-      // different extension.
+      // Priority: internal cache first (single source of truth, every
+      // upload/scrape writes there), then externalPath as a fallback. Search
+      // each directory fully (exact filename, then any known extension for
+      // the same actor id) before moving to the next — externalPath is only a
+      // copy of favorites and can hold an older photo under another extension.
       const nameWithoutExt = path.basename(filename, path.extname(filename));
       const requestedExt = path.extname(filename);
       const exts = ['.webp', '.jpg', '.jpeg', '.png', '.gif'];
@@ -245,7 +245,7 @@ app.use("/actors", (req, res) => {
       if (invertedId && invertedId !== nameWithoutExt) idsToTry.push(invertedId);
 
       const searchDirs = externalActorsPath
-        ? [externalActorsPath, internalActorsPath]
+        ? [internalActorsPath, externalActorsPath]
         : [internalActorsPath];
 
       outer: for (const dir of searchDirs) {
@@ -398,6 +398,19 @@ server.listen(PORT, () => {
   } catch (err) {
     console.error('[actorDb] Duplicate-name check failed:', err.message);
   }
+
+  // actor_movies is otherwise only kept up to date by saves made in the app:
+  // NFOs edited elsewhere, or movies whose actor record didn't exist yet when
+  // they were indexed, leave it with missing links (wrong "N movies" counts).
+  // Rebuild it on every boot, delayed so it doesn't compete for disk I/O with
+  // the initial library load.
+  setTimeout(() => {
+    try {
+      require('../core/actorMoviesIndexer').spawnActorMoviesRebuild();
+    } catch (err) {
+      console.error('[actor-movies] Failed to start rebuild:', err.message);
+    }
+  }, 60000).unref();
 
   // Non-blocking: checks GitHub Releases once per server run, cached for
   // GET /item/update/check to serve without hitting the API again.

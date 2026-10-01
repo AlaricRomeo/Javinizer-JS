@@ -21,6 +21,52 @@ function toTitleCase(str) {
 // stray manual edit) might put in a name field instead of leaving it empty.
 const PLACEHOLDER_ACTOR_NAMES = new Set(['unknown', 'n/a', 'na']);
 
+// Generic "no photo" images some sources serve instead of a real photo.
+// Caught by URL when the URL itself gives it away, otherwise by the MD5 of
+// the downloaded file (e.g. xcity's per-actor-looking thumb_<ts>.jpg).
+const PLACEHOLDER_PHOTO_URL_PATTERNS = [
+  /\/noimage\.gif$/i,                 // xcity
+  /\/anonymous2\.png$/i,              // xslist
+  /\/idolimages\/full\/unknown\.\w+$/i // javdatabase (javdb scraper)
+];
+const PLACEHOLDER_PHOTO_HASHES = new Set([
+  'e3404d8210f013180ae8535372ecf44c', // xcity "No Image" thumb_<ts>.jpg
+  '5d6c3ca9ec2dbab40a91eff0b6484a82'  // xcity noimage.gif
+]);
+
+function isPlaceholderPhotoUrl(url) {
+  return !!url && PLACEHOLDER_PHOTO_URL_PATTERNS.some(re => re.test(url.split('?')[0]));
+}
+
+function isPlaceholderPhotoFile(filePath) {
+  const fs = require('fs');
+  const crypto = require('crypto');
+  try {
+    const hash = crypto.createHash('md5').update(fs.readFileSync(filePath)).digest('hex');
+    return PLACEHOLDER_PHOTO_HASHES.has(hash);
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Split a "Name (Alias)" style name (DMM/r18dev format, also full-width
+ * brackets) into the base name and its bracketed aliases:
+ * "A (B, C) (D)" -> { name: "A", aliases: ["B", "C", "D"] }.
+ *
+ * @param {string} raw
+ * @returns {{name: string, aliases: string[]}}
+ */
+function splitParenAliases(raw) {
+  const str = (raw || '').trim();
+  const aliases = [];
+  const name = str.replace(/\s*[(（]([^)）]*)[)）]/g, (_, inner) => {
+    inner.split(/[,、，]/).map(s => s.trim()).filter(Boolean).forEach(a => aliases.push(a));
+    return ' ';
+  }).replace(/\s+/g, ' ').trim();
+  return { name: name || str, aliases };
+}
+
 /**
  * True for a name that isn't real actor data — empty/whitespace, or one of
  * PLACEHOLDER_ACTOR_NAMES (case-insensitive). Such an actor should never be
@@ -488,6 +534,9 @@ module.exports = {
   toTitleCase,
   dedupeAltNames,
   isPlaceholderActorName,
+  splitParenAliases,
+  isPlaceholderPhotoUrl,
+  isPlaceholderPhotoFile,
   normalizeActorDisplayName,
   actorToNFO,
   nfoToActor

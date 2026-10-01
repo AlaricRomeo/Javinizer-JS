@@ -29,8 +29,7 @@ const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const crypto = require('crypto');
-const { createEmptyActor, removeEmptyFields, normalizeActorName } = require('../schema');
+const { createEmptyActor, removeEmptyFields, normalizeActorName, isPlaceholderPhotoFile } = require('../schema');
 const { getActorsCachePath } = require('../cache-helper');
 
 const BASE_URL = 'https://xxx.xcity.jp';
@@ -41,18 +40,9 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 // permanently block other scrapers from ever supplying the actual one.
 const PLACEHOLDER_PHOTO = 'noimage.gif';
 
-// A second xcity placeholder: a generic "No Image" graphic served from
-// .../image/person/thumb_<timestamp>.jpg — a per-actor-looking URL, so it
-// can't be caught by filename like PLACEHOLDER_PHOTO above. Caught instead
-// by content hash after download (MD5 of the known "No Image" graphic).
-const PLACEHOLDER_PHOTO_HASHES = new Set([
-  'e3404d8210f013180ae8535372ecf44c',
-]);
-
-function isPlaceholderPhotoFile(filePath) {
-  const hash = crypto.createHash('md5').update(fs.readFileSync(filePath)).digest('hex');
-  return PLACEHOLDER_PHOTO_HASHES.has(hash);
-}
+// A second xcity placeholder, a generic "No Image" graphic served from
+// .../image/person/thumb_<timestamp>.jpg, is caught by content hash after
+// download (see isPlaceholderPhotoFile in schema.js).
 
 const MONTHS = {
   january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,

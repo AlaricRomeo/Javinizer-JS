@@ -5,6 +5,7 @@
 
 const { searchCode, fetchJson, closeBrowser } = require('./browser');
 const { createEmptyMovie, removeEmptyFields } = require('../schema');
+const { splitParenAliases } = require('../../actors/schema');
 
 /**
  * Convert low-res cover URL (ps.jpg) to hi-res (pl.jpg) if available
@@ -167,6 +168,17 @@ function convertToStandardFormat(data, code) {
       }
     });
   }
+
+  // DMM names carry former stage names in brackets: "Alice (Suzuki Arisu)".
+  // Keep the base as the name and move the romaji aliases to altName, or the
+  // name never matches the local actor index. The bracket part of the kanji
+  // name is dropped: there it's often a role ("みなこ（美容師）"), not an alias.
+  allActors.forEach(actor => {
+    const romaji = splitParenAliases(actor.name);
+    const kanji = splitParenAliases(actor.altName);
+    actor.name = romaji.name;
+    actor.altName = [...romaji.aliases, kanji.name].filter(Boolean).join(', ');
+  });
 
   if (allActors.length > 0) {
     movie.actor = allActors;

@@ -686,21 +686,10 @@ router.post("/config", (req, res) => {
         scrapeReader.loadScrapeItems();
         console.log('[Config] Scrape items list reloaded');
 
-        // Rebuild actor_movies for the new library — one NFO read per item,
-        // so worth doing here (the only event that actually invalidates it)
-        // rather than on every server restart. Spawned as its own detached
-        // process (same pattern as the updater, see bin/apply-update.js):
-        // this is synchronous, blocking file I/O over the whole library,
-        // and running it in-process would freeze the single-threaded
-        // server for everyone else for the whole scan.
-        const { spawn } = require('child_process');
-        const rebuildScript = path.join(__dirname, '../../bin/rebuild-actor-movies.js');
-        const rebuildChild = spawn(process.execPath, [rebuildScript], {
-          cwd: path.join(__dirname, '../..'),
-          detached: true,
-          stdio: 'ignore'
-        });
-        rebuildChild.unref();
+        // Rebuild actor_movies for the new library right away (it's also
+        // rebuilt on every boot, see index.js) — detached process, since the
+        // scan is blocking file I/O over the whole library.
+        require('../core/actorMoviesIndexer').spawnActorMoviesRebuild();
       }
     }
 
@@ -2691,6 +2680,12 @@ router.post("/actors/save", async (req, res) => {
     // normalizeActorName(name) here would silently create a duplicate
     // record for an actor that already exists under a different id.
     actorData.id = resolveActorSaveId(actorData, actorDb, normalizeActorName);
+
+    // A movie-context save (e.g. scrape mode) sends the movie's cast entry,
+    // which carries no favorite flag — take it from the index, or a favorite's
+    // new photo would never be synced to externalPath.
+    const existingForFavorite = actorDb.getActor(actorData.id);
+    actorData.favorite = !!actorData.favorite || !!(existingForFavorite && existingForFavorite.favorite);
 
     // See protectExistingPrimaryName() — a movie-context save must not
     // demote the actor's established primary just because this movie's own

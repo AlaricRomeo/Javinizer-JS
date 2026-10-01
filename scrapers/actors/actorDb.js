@@ -20,9 +20,10 @@
 const fs = require('fs');
 const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
-const { toTitleCase, dedupeAltNames } = require('./schema');
+const { toTitleCase, dedupeAltNames, splitParenAliases, isPlaceholderPhotoUrl, isPlaceholderPhotoFile } = require('./schema');
 
 const DB_PATH = path.join(__dirname, '../../data/actors-index.db');
+const CACHE_DIR = path.join(__dirname, '../../data/actors');
 const IMAGE_EXTENSIONS = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
 
 let _db = null;
@@ -197,7 +198,42 @@ function getDb() {
     }
   }
 
+  // One-time cleanup (user_version 1): records saved before the scrapers
+  // learned to skip "no photo" placeholders still point at one, which made
+  // them look like actors with a photo, so online scrapers were never tried.
+  if (_db.prepare('PRAGMA user_version').get().user_version < 1) {
+    cleanPlaceholderPhotos(_db);
+    _db.exec('PRAGMA user_version = 1');
+  }
+
   return _db;
+}
+
+/**
+ * Clear placeholder photo references (by URL pattern or cached file hash)
+ * from every actor row, deleting placeholder files from the cache. A real
+ * cached photo is kept even when the stored URL is a placeholder (e.g. a
+ * manual upload after a placeholder scrape).
+ */
+function cleanPlaceholderPhotos(db) {
+  const rows = db.prepare('SELECT id, thumb_url, thumb_cache_file FROM actors').all();
+  const update = db.prepare('UPDATE actors SET thumb_url = ?, thumb_cache_file = ? WHERE id = ?');
+  let cleaned = 0;
+
+  for (const row of rows) {
+    const urlIsPlaceholder = isPlaceholderPhotoUrl(row.thumb_url);
+    const filePath = row.thumb_cache_file ? path.join(CACHE_DIR, row.thumb_cache_file) : '';
+    const fileIsPlaceholder = !!filePath && isPlaceholderPhotoFile(filePath);
+    if (!urlIsPlaceholder && !fileIsPlaceholder) continue;
+
+    update.run(urlIsPlaceholder ? '' : row.thumb_url, fileIsPlaceholder ? '' : row.thumb_cache_file, row.id);
+    if (fileIsPlaceholder) {
+      try { fs.rmSync(filePath, { force: true }); } catch (_) {}
+    }
+    cleaned++;
+  }
+
+  if (cleaned > 0) console.error(`[actorDb] Cleared placeholder photos from ${cleaned} actor(s)`);
 }
 
 /**
@@ -347,6 +383,9 @@ function upsertActor(actor, options = {}) {
     return incoming;
   };
 
+  // Never record a "no photo" placeholder as the actor's photo.
+  const incomingCacheFile = (actor.thumbLocal && isPlaceholderPhotoFile(path.join(CACHE_DIR, actor.thumbLocal))) ? '' : actor.thumbLocal;
+
   const existingSources = existing ? JSON.parse(existing.sources || '[]') : [];
   const incomingSources = (actor.meta && Array.isArray(actor.meta.sources)) ? actor.meta.sources : (options.source ? [options.source] : []);
   const mergedSources = Array.from(new Set([...existingSources, ...incomingSources]));
@@ -358,9 +397,9 @@ function upsertActor(actor, options = {}) {
     bust: pick(actor.bust, existing && existing.bust, 0),
     waist: pick(actor.waist, existing && existing.waist, 0),
     hips: pick(actor.hips, existing && existing.hips, 0),
-    thumb_url: pick(actor.thumbUrl, existing && existing.thumb_url, ''),
+    thumb_url: pick(isPlaceholderPhotoUrl(actor.thumbUrl) ? '' : actor.thumbUrl, existing && existing.thumb_url, ''),
     thumb_external_file: existing ? existing.thumb_external_file : '',
-    thumb_cache_file: pick(actor.thumbLocal, existing && existing.thumb_cache_file, ''),
+    thumb_cache_file: pick(incomingCacheFile, existing && existing.thumb_cache_file, ''),
     sources: JSON.stringify(mergedSources),
     created_at: existing ? existing.created_at : now,
     updated_at: now
@@ -463,16 +502,23 @@ function resolveId(name, altNameHints) {
     return row ? row.id : null;
   };
 
-  const id = tryOne(name);
-  if (id) return id;
-
   const hints = altNameHints
     ? (Array.isArray(altNameHints) ? altNameHints.join(',') : altNameHints).split(',').map(s => s.trim()).filter(Boolean)
     : [];
 
-  for (const h of hints) {
-    const hitId = tryOne(h);
-    if (hitId) return hitId;
+  // "Alice (Suzuki Arisu)" style names (DMM/r18dev) never match as a whole —
+  // try the base name and the bracketed aliases as well.
+  const { name: baseName, aliases } = splitParenAliases(name);
+  const candidates = [...new Set([name, baseName, ...aliases, ...hints].filter(Boolean))];
+
+  // A single Latin word ("Alice", "Remon") is ambiguous across actors: try
+  // every more specific candidate first.
+  const isVague = n => /^[a-z]+$/i.test(n.trim());
+  const ordered = [...candidates.filter(n => !isVague(n)), ...candidates.filter(isVague)];
+
+  for (const candidate of ordered) {
+    const id = tryOne(candidate);
+    if (id) return id;
   }
 
   return null;

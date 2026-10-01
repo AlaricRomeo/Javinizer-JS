@@ -213,7 +213,9 @@ function isActorComplete(actor) {
     const value = actor[field];
     let isEmpty = false;
 
-    if (typeof value === 'string') {
+    if (field === 'thumb') {
+      isEmpty = !hasRealPhoto(actor);
+    } else if (typeof value === 'string') {
       isEmpty = value === '';
     } else if (typeof value === 'number') {
       isEmpty = value <= 0;
@@ -245,7 +247,15 @@ function isActorComplete(actor) {
  * @returns {boolean} - True if the actor has at least a name and an image
  */
 function hasNameAndImage(actor) {
-  return !!(actor && actor.name && (actor.thumb || actor.thumbUrl || actor.thumbLocal));
+  return !!(actor && actor.name && hasRealPhoto(actor));
+}
+
+/**
+ * True if the actor has a photo that isn't a known "no photo" placeholder.
+ */
+function hasRealPhoto(actor) {
+  const { isPlaceholderPhotoUrl } = require('../../scrapers/actors/schema');
+  return [actor.thumb, actor.thumbUrl, actor.thumbLocal].some(v => v && !isPlaceholderPhotoUrl(v));
 }
 
 
@@ -561,10 +571,13 @@ async function syncLocalActor(actor, actorName, hints, emitter = null) {
  * @returns {Promise<{actorData: object|null, cached: boolean}>}
  */
 async function ensureActorCached(actorName, altNameHints, emitter = null) {
-  const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
+  const { isPlaceholderActorName, splitParenAliases } = require('../../scrapers/actors/schema');
   if (isPlaceholderActorName(actorName)) return { actorData: null, cached: false };
 
-  const hints = splitNameHints(altNameHints);
+  // "Alice (Suzuki Arisu)": use the base name, the bracketed parts are aliases.
+  const split = splitParenAliases(actorName);
+  actorName = split.name;
+  const hints = [...new Set([...splitNameHints(altNameHints), ...split.aliases])];
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const localData = await scrapeLocal(actorName, hints).catch(() => null);
 
@@ -652,8 +665,13 @@ async function scrapeActorExcludingLocal(actorName, emitter = null, altNameHints
  */
 async function getActor(actorName, forceOverwrite = false, altNameHints = [], knownId = null) {
   // "Unknown", "N/A", blank, ... aren't a real identity to look up.
-  const { isPlaceholderActorName } = require('../../scrapers/actors/schema');
+  const { isPlaceholderActorName, splitParenAliases } = require('../../scrapers/actors/schema');
   if (isPlaceholderActorName(actorName)) return null;
+
+  // "Alice (Suzuki Arisu)": use the base name, the bracketed parts are aliases.
+  const split = splitParenAliases(actorName);
+  actorName = split.name;
+  altNameHints = [...new Set([...splitNameHints(altNameHints), ...split.aliases])];
 
   // If forceOverwrite is true, skip local scraper and force remote scraping
   if (forceOverwrite) {
