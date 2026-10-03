@@ -1,3 +1,11 @@
+// Fail with a clear message on a too old Node.js (e.g. after an in-app update
+// that raised engines.node) instead of crashing later on node:sqlite
+const nodeVersion = require("../../bin/check-node-version");
+if (!nodeVersion.isSupported(process.versions.node)) {
+  console.error(`[ERROR] Node.js ${nodeVersion.requiredVersion()} or newer is required (running ${process.version}). Restart with start.sh / start.bat to download it.`);
+  process.exit(1);
+}
+
 const express = require("express");
 const path = require("path");
 const http = require("http");

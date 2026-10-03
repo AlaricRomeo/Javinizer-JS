@@ -1,19 +1,41 @@
 @echo off
+cd /d "%~dp0"
 echo ============================================
 echo    Javinizer-JS - JAV Metadata Manager
 echo ============================================
 echo.
 
-REM Check if Node.js is installed
-where node >nul 2>nul
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Node.js is not installed!
+REM Node.js: use the system one if recent enough (engines.node in package.json,
+REM checked by bin\check-node-version.js), otherwise a private copy in
+REM data\runtime\node, downloaded on first start and again whenever a new
+REM release raises the minimum version
+set "NODE_RUNTIME=%~dp0data\runtime\node"
+REM engines.node is ">=X.Y.Z": Substring(2) keeps X.Y.Z (no quotes or carets, which cmd would mangle here)
+for /f "delims=" %%v in ('powershell -NoProfile -Command "(Get-Content package.json -Raw | ConvertFrom-Json).engines.node.Substring(2)"') do set "NODE_REQUIRED=%%v"
+call :node_ok
+if errorlevel 1 (
+    if exist "%NODE_RUNTIME%\node.exe" set "PATH=%NODE_RUNTIME%;%PATH%"
+)
+call :node_ok
+if errorlevel 1 (
+    echo [INFO] Node.js %NODE_REQUIRED% or newer not found, downloading a private copy...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0bin\install-node.ps1" -Dest "%~dp0data\runtime"
+    if errorlevel 1 (
+        echo [ERROR] Failed to download Node.js!
+        echo Please install Node.js %NODE_REQUIRED% or newer from: https://nodejs.org/
+        pause
+        exit /b 1
+    )
+    set "PATH=%NODE_RUNTIME%;%PATH%"
     echo.
-    echo Please install Node.js from: https://nodejs.org/
-    echo.
+)
+call :node_ok
+if errorlevel 1 (
+    echo [ERROR] Node.js %NODE_REQUIRED% or newer is required!
     pause
     exit /b 1
 )
+for /f "delims=" %%v in ('node -v') do echo [INFO] Using Node.js %%v
 
 REM Check if dependencies are installed and up-to-date
 if not exist "node_modules\" (
@@ -103,3 +125,10 @@ REM Start the Node.js server
 node src/server/index.js
 
 pause
+exit /b
+
+REM Exit code 0 if "node" is on PATH and satisfies engines.node in package.json
+:node_ok
+where node >nul 2>nul || exit /b 1
+node bin\check-node-version.js >nul 2>nul
+exit /b %ERRORLEVEL%

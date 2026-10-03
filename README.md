@@ -236,6 +236,8 @@ start.bat
 
 The startup script prepares the required environment and launches Javinizer-js.
 
+Node.js 22.13 or newer is required. If it isn't installed (or is older), the first start downloads the latest Node.js LTS from nodejs.org into `data\runtime\node` — a private copy used only by Javinizer-js, no admin rights needed.
+
 Once running, open the web interface in your browser.
 
 ### Linux
@@ -246,14 +248,16 @@ Download or clone the project and run:
 ./start.sh
 ```
 
-The startup script prepares the required environment and dependencies.
+The startup script prepares the required environment and dependencies. As on Windows, if Node.js 22.13 or newer isn't installed, the first start downloads the latest LTS into `data/runtime/node` (no `sudo` needed).
 
-Javinizer-js can also be started manually:
+Javinizer-js can also be started manually (Node.js 22.13+):
 
 ```bash
 npm install
 npm start
 ```
+
+> **Alpine Linux (musl):** not officially tested and some features may not work properly — e.g. the browser downloaded by Puppeteer doesn't run on musl, so interactive scrapers need a system Chromium (`apk add chromium`) set as the browser path in the settings. On **ARM** Alpine systems the automatic Node.js download is not available (there is no official musl build for ARM): install Node.js 22.13+ with `apk add nodejs npm`.
 
 ### macOS
 

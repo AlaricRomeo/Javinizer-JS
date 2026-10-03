@@ -1707,7 +1707,7 @@ router.post("/scrape/save", async (req, res) => {
         }
 
         if (results.folder) {
-          actorDb.setActorsForMovie(path.basename(results.folder), resolvedIds);
+          actorDb.setActorsForMovie(results.folder, resolvedIds); // movie id = folder path
         }
 
         console.error(`[Routes] Actor scraping completed: ${actorResults.scraped} scraped, ${actorResults.failed} failed`);
@@ -3639,7 +3639,7 @@ async function copyActorsToFolder(folderPath, actors) {
     }
 
     if (found && actorId) {
-      actorDb.linkMovie(actorId, path.basename(folderPath));
+      actorDb.linkMovie(actorId, folderPath); // movie id = folder path (see LibraryReader)
     }
 
     // 3. Write full actor .nfo alongside the photo (javinizer-js internal format,
@@ -3655,6 +3655,23 @@ async function copyActorsToFolder(folderPath, actors) {
     }
 
     if (!found) skipped.push(actor.name);
+  }
+
+  // Remove orphans: anything not belonging to an actor of the current cast
+  // (actors removed from the movie, renamed, files from other tools). Not a
+  // wipe-and-recreate: a current actor whose copy failed above (e.g. a failed
+  // download) keeps the photo/.nfo it already had here.
+  const castNames = new Set(actors.filter(a => a.name).map(a => a.name));
+  for (const entry of fs.readdirSync(destFolder, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const dot = entry.name.lastIndexOf('.');
+    const baseName = dot === -1 ? entry.name : entry.name.slice(0, dot);
+    if (castNames.has(baseName)) continue;
+    try {
+      fs.unlinkSync(path.join(destFolder, entry.name));
+    } catch (err) {
+      console.error(`[copyActorsToFolder] Failed to remove orphan ${entry.name}:`, err.message);
+    }
   }
 
   return { copied, skipped };
