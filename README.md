@@ -89,7 +89,7 @@ Scraping features include:
 
 A complete movie file is **not required**.
 
-Javinizer-js identifies movies from video filenames beginning with the movie ID. This means that even a trailer or short clip can be used as a placeholder when building or preparing a library.
+Javinizer-js identifies movies from the movie ID in the video filename (see "From Unsorted Files to an Organized Library" below). This means that even a trailer or short clip can be used as a placeholder when building or preparing a library.
 
 ---
 
@@ -183,6 +183,55 @@ Other media servers supporting local NFO metadata may also work, but are not cur
 
 ---
 
+## 🗂️ From Unsorted Files to an Organized Library
+
+Like the original Javinizer, Javinizer-js covers both steps: **scraping** (downloading the metadata) and **sorting** (creating a folder per movie, moving and renaming the video). You don't need to prepare the folders yourself.
+
+There is no separate destination path: each movie is organized **inside the library folder its video is in**. A common setup is a dedicated "to sort" folder added as one of the library folders.
+
+**1. Put the videos at the top level of a library folder** (not in subfolders — videos already inside a movie folder are managed in Edit mode instead):
+
+```text
+Unsorted/
+├── ABP-420.mp4
+├── SSIS-123 1080p.mkv
+└── [site] MIDV-001.mp4
+```
+
+**2. Check the filenames.** The movie ID is recognized:
+
+* at the start of the filename, up to the first space, as it is — any ID format works there (`ABP-420.mp4`, `SSIS-123 1080p.mkv`, `010214-514.mp4`);
+* otherwise anywhere in the filename, in the usual `PREFIX-NUMBER` form (`[site] MIDV-001.mp4`, `site.com@ABP-420.mp4`, `[site] abp420.mp4` → `ABP-420`).
+
+A file whose ID isn't recognized is skipped (and logged): rename it so that it starts with the ID.
+
+**3. Scrape.** In Scrape mode, click **Scrape Now!**: metadata for every new video is downloaded and queued for review.
+
+**4. Review and save.** Check or edit each movie, then save it. Javinizer-js:
+
+* creates the movie folder, named after the **folder pattern** in the settings (placeholders: `{id}`, `{contentid}`, `{title}`, `{alternatetitle}`, `{label}`, `{maker}`, `{year}` — e.g. `{id} [{maker}] - ({year})`);
+* moves the video into it, renamed to `<ID>.<extension>`;
+* writes `<ID>.nfo`, downloads `fanart.jpg` and creates `poster.jpg` from it;
+* optionally copies the actor photos into an `actors/` subfolder.
+
+```text
+Unsorted/
+├── ABP-420 [Prestige] - (2016)/
+│   ├── ABP-420.mp4
+│   ├── ABP-420.nfo
+│   ├── fanart.jpg
+│   └── poster.jpg
+└── SSIS-123 [S1 NO.1 STYLE] - (2021)/
+    ├── SSIS-123.mkv
+    ├── SSIS-123.nfo
+    ├── fanart.jpg
+    └── poster.jpg
+```
+
+If a folder with the same name already exists in that library folder, the save is refused: nothing is overwritten.
+
+---
+
 ## 📁 Library Structure
 
 A typical library may look like this:
@@ -193,7 +242,7 @@ Library/
 │   ├── ABC-001.nfo
 │   ├── ABC-001.mp4
 │   ├── fanart.jpg
-│   └── folder.jpg
+│   └── poster.jpg
 │
 ├── ABC-002/
 │   ├── ABC-002.nfo
@@ -202,9 +251,13 @@ Library/
 │   └── folder.jpg
 ```
 
+Both `poster.jpg` (written by Javinizer-js) and `folder.jpg` (used by other tools) are recognized as the poster, so an existing library can be used as it is.
+
 The video file does not have to contain the complete movie.
 
-As long as the filename starts with a recognizable movie ID, Javinizer-js can use it to identify and manage the title.
+As long as the filename contains a recognizable movie ID, Javinizer-js can use it to identify and manage the title.
+
+The library can span **several folders** (e.g. one per genre): their contents are shown as a single library, and the same movie can be kept in more than one of them.
 
 ---
 

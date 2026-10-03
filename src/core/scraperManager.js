@@ -33,10 +33,39 @@ const MULTI_SCRAPER_VALUE = '__all__';
 // Library Reading
 // ─────────────────────────────
 
+// IDs found anywhere in a filename: "ABP-420", "T28-587", "IBW-1010Z"...
+const HYPHENATED_ID = /(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9]{0,5})-(\d{2,6}[A-Za-z]?)(?![A-Za-z0-9])/;
+// ...or without the hyphen: "abp420" (letters only before the number)
+const COMPACT_ID = /(?<![A-Za-z0-9])([A-Za-z]{2,6})(\d{2,6})(?![A-Za-z0-9])/;
+
+/**
+ * Movie ID from a video filename.
+ * - A filename that starts with something ID-like (letters/digits/hyphens,
+ *   with at least one digit) keeps it as-is, up to the first space — any ID
+ *   format works there ("ABP-420 1080p.mp4", "010214-514.mp4").
+ * - Otherwise the ID is searched anywhere in the name and normalized to
+ *   PREFIX-NUMBER: "[site] ABP-420 1080p.mkv", "site.com@ABP-420.mp4",
+ *   "[site] abp420.mp4" -> "ABP-420". A hyphenated match wins over a compact
+ *   one (in "hhd800.com@ABP-420" the site name "hhd800" is not the ID).
+ *
+ * @param {string} filename - Video filename (with extension)
+ * @returns {string} - Movie ID, or '' if none was found
+ */
+function extractMovieId(filename) {
+  const name = filename.replace(/\.[^.]+$/, '');
+  const firstToken = name.split(' ')[0];
+  if (/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(firstToken) && /\d/.test(firstToken)) {
+    return firstToken;
+  }
+
+  const match = name.match(HYPHENATED_ID) || name.match(COMPACT_ID);
+  return match ? `${match[1]}-${match[2]}`.toUpperCase() : '';
+}
+
 /**
  * Extract DVD codes from the library roots
  * - Reads ONLY video files in the root of each library path (NOT recursive)
- * - Extracts ID from filename (everything before first space or entire name if no space)
+ * - Extracts the ID from the filename (see extractMovieId)
  * - Supported video extensions: .mp4, .mkv, .avi, .wmv, .mov, .flv, .m4v, .ts
  * - Used to find video files that need to be scraped
  *
@@ -75,15 +104,11 @@ function extractCodesFromLibrary(libraryPaths) {
         return;
       }
 
-      // Extract code from filename (up to first space)
-      const spaceIndex = item.indexOf(' ');
-      const code = spaceIndex === -1 ? item : item.substring(0, spaceIndex);
-
-      // Remove file extension
-      const codeWithoutExt = code.replace(/\.[^.]+$/, '');
-
-      if (codeWithoutExt) {
-        codes.add(codeWithoutExt);
+      const code = extractMovieId(item);
+      if (code) {
+        codes.add(code);
+      } else {
+        console.error(`[ScraperManager] No movie ID found in filename: ${item}`);
       }
     });
   }
@@ -520,8 +545,7 @@ function saveToFile(code, data, sources, libraryPaths) {
     const match = items.find(entry => {
       if (!entry.isFile() || entry.name.startsWith('.')) return false;
       if (!videoExtensions.includes(path.extname(entry.name).toLowerCase())) return false;
-      const fileCode = entry.name.split(' ')[0].replace(/\.[^.]+$/, '');
-      return fileCode.toLowerCase() === code.toLowerCase();
+      return extractMovieId(entry.name).toLowerCase() === code.toLowerCase();
     });
     if (match) {
       videoFile = path.join(libraryPath, match.name);
@@ -720,4 +744,4 @@ if (require.main === module) {
 }
 
 // Export for use as module
-module.exports = { scrapeAll, extractCodesFromLibrary, executeScraper, executeScraperOrAll, mergeResults, isEmptyValue, formatTitle, MULTI_SCRAPER_VALUE };
+module.exports = { scrapeAll, extractCodesFromLibrary, extractMovieId, executeScraper, executeScraperOrAll, mergeResults, isEmptyValue, formatTitle, MULTI_SCRAPER_VALUE };
