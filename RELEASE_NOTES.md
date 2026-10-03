@@ -1,5 +1,19 @@
 # Release Notes
 
+## v2.5.2 (2026-10-04)
+
+### 🎞️ Movie ID anywhere in the filename
+
+- Scrape mode now recognizes the movie ID even when it isn't at the start of the video filename, like the original Javinizer: `[site] ABP-420 1080p.mkv`, `site.com@ABP-420.mp4`, `[site] abp420.mp4` → `ABP-420`
+- Filenames that already start with the ID work exactly as before, so any ID format is still supported there (`IBW-1010Z`, `T28-587`, `010214-514`...)
+- Files with no recognizable ID are skipped and logged
+- README: new "From Unsorted Files to an Organized Library" section describing the whole workflow, from a folder of loose files to one folder per movie
+
+### 🐛 Fixes
+
+- Windows: the automatic Node.js download introduced in v2.5.1 failed with an HTTP 400 error on Windows PowerShell 5.1 (the one preinstalled on Windows)
+- Linux/macOS: `start.sh` also works when launched as `sh start.sh`, downloads Node.js inside `data/runtime` instead of `/tmp`, reports a clear error when the downloaded Node.js can't run on an old system (glibc < 2.28), and cleans up interrupted downloads
+
 ## v2.5.1 (2026-10-03)
 
 ### 🟢 Automatic Node.js setup
