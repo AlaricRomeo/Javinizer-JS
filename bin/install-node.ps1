@@ -18,12 +18,17 @@ switch ($osArch) {
     default { throw "Unsupported architecture: $osArch (Node.js needs 64-bit Windows)" }
 }
 
-$release = Invoke-RestMethod 'https://nodejs.org/dist/index.json' |
+# Assigned first, not piped directly: Windows PowerShell 5.1 emits a JSON
+# array from Invoke-RestMethod as one single object, so Where-Object would
+# see the whole list at once (and .version would be every version)
+$index = Invoke-RestMethod 'https://nodejs.org/dist/index.json'
+$release = $index |
     Where-Object { $_.lts -and ($_.files -contains "win-$arch-zip") } |
     Select-Object -First 1
 if (-not $release) { throw "No Node.js LTS release found for win-$arch" }
 
-$version = $release.version
+$version = [string]$release.version
+if ($version -notmatch '^v\d+\.\d+\.\d+$') { throw "Unexpected Node.js version: $version" }
 $name = "node-$version-win-$arch"
 $base = "https://nodejs.org/dist/$version"
 $zip = Join-Path $Dest "$name.zip"

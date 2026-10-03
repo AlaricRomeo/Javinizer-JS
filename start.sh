@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Launched as "sh start.sh" (dash on Debian/Ubuntu): re-run with bash, the
+# script relies on bash features
+if [ -z "$BASH_VERSION" ]; then
+    exec bash "$0" "$@"
+fi
+
 echo "============================================"
 echo "   Javinizer-JS - JAV Metadata Manager"
 echo "============================================"
@@ -76,7 +82,13 @@ install_node() {
     fi
     if [ "$os" = darwin ]; then index_key="osx-$arch-tar"; else index_key="$platform"; fi
 
-    tmp=$(mktemp -d) || return 1
+    # Work inside data/runtime, not /tmp: the extracted Node.js is ~200 MB (too
+    # much for a small tmpfs) and the final mv stays on the same filesystem
+    local runtime_dir
+    runtime_dir="$(dirname "$NODE_RUNTIME")"
+    mkdir -p "$runtime_dir" || return 1
+    rm -rf "$runtime_dir"/.download.* # left over by an interrupted download
+    tmp=$(mktemp -d "$runtime_dir/.download.XXXXXX") || return 1
     fetch https://nodejs.org/dist/index.tab "$tmp/index.tab" || { rm -rf "$tmp"; return 1; }
     version=$(awk -F'\t' -v key="$index_key" 'NR > 1 && $10 != "-" && index("," $3 ",", "," key ",") { print $1; exit }' "$tmp/index.tab")
     if [ -z "$version" ]; then
@@ -103,7 +115,14 @@ install_node() {
     fi
 
     tar -xzf "$tmp/$name.tar.gz" -C "$tmp" || { rm -rf "$tmp"; return 1; }
-    mkdir -p "$(dirname "$NODE_RUNTIME")"
+
+    # The official Linux builds need glibc 2.28+ (e.g. not Ubuntu 18.04 / CentOS 7)
+    if ! "$tmp/$name/bin/node" -v &> /dev/null; then
+        echo "[ERROR] The downloaded Node.js doesn't run on this system (on Linux it needs glibc 2.28 or newer)"
+        rm -rf "$tmp"
+        return 1
+    fi
+
     rm -rf "$NODE_RUNTIME"
     mv "$tmp/$name" "$NODE_RUNTIME"
     rm -rf "$tmp"
