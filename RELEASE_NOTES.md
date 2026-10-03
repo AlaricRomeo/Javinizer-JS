@@ -1,5 +1,20 @@
 # Release Notes
 
+## v2.5.1 (2026-10-03)
+
+### 🟢 Automatic Node.js setup
+
+- `start.bat` and `start.sh` no longer require Node.js to be installed: if it's missing or older than the minimum version, the first start downloads the latest Node.js LTS from nodejs.org (checksum verified) into `data/runtime/node` — a private copy used only by Javinizer-js, no admin rights or `sudo` needed, kept across in-app updates
+- The minimum Node.js version lives in one place, `engines.node` in `package.json` (currently 22.13.0, required by `node:sqlite`): when a release raises it, the private copy is downloaded again automatically
+- The server checks it at startup too, with a clear message instead of a crash on a too old Node.js
+- Windows: x64 and ARM64; Linux and macOS: x64 and ARM64; Alpine Linux (musl): x64 only, see the README
+- `start.sh` no longer installs Node.js with the system package manager (often too old a version), works on macOS, and no longer opens the browser twice when the server is already running
+
+### 🐛 Fixes
+
+- "Copy actors to movie folder" removes orphan files from the movie's `actors` folder (actors no longer in the cast, renamed, other tools' files), while keeping the existing copy of a current actor whose new copy failed
+- Actor/movie links created by the actor copy and by scrape-mode saves used the folder name instead of the folder path introduced in v2.5.0, leaving actor movie counts wrong until the next restart
+
 ## v2.5.0 (2026-10-03)
 
 ### 📁 Multiple library folders
