@@ -105,81 +105,42 @@ app.use("/media", (req, res) => {
     return readStream.pipe(res);
   }
 
-  // Get library config
-  const config = require('../core/config').loadConfig();
-  if (config.libraryPath) {
-    // Check if requestedFile is an absolute path that starts with library path
-    if (requestedFile.startsWith(config.libraryPath)) {
-      // It's already an absolute path in the library
-      const absoluteFilePath = requestedFile;
+  // Library files: absolute paths inside a root, or relative paths resolved against each root
+  const config = require('../core/config');
+  const cfg = config.loadConfig();
+  const candidates = path.isAbsolute(requestedFile)
+    ? [requestedFile]
+    : config.getLibraryPaths(cfg).map(root => path.join(root, requestedFile));
+  const libraryFilePath = candidates.find(p => config.isInsideLibrary(cfg, p) && fs.existsSync(p));
 
-      // Security check: ensure the resolved path is within the library path
-      const libraryPathResolved = path.resolve(config.libraryPath);
-      if (path.resolve(absoluteFilePath).startsWith(libraryPathResolved) && fs.existsSync(absoluteFilePath)) {
-        const ext = path.extname(requestedFile).toLowerCase();
-        const contentTypes = {
-          '.jpg': 'image/jpeg',
-          '.jpeg': 'image/jpeg',
-          '.png': 'image/png',
-          '.webp': 'image/webp',
-          '.gif': 'image/gif'
-        };
-        const contentType = contentTypes[ext] || 'application/octet-stream';
+  if (libraryFilePath) {
+    const ext = path.extname(requestedFile).toLowerCase();
+    const contentTypes = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.webp': 'image/webp',
+      '.gif': 'image/gif'
+    };
+    const contentType = contentTypes[ext] || 'application/octet-stream';
 
-        // Set headers
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
+    // Set headers
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
 
-        // Read file and send as stream instead of using sendFile
-        const readStream = fs.createReadStream(absoluteFilePath);
+    // Read file and send as stream instead of using sendFile
+    const readStream = fs.createReadStream(libraryFilePath);
 
-        readStream.on('error', (err) => {
-          console.error(`[Media] Error reading absolute library file:`, err.message);
-          if (!res.headersSent) {
-            res.status(500).send("Error reading file");
-          }
-        });
-
-        return readStream.pipe(res);
+    readStream.on('error', (err) => {
+      console.error(`[Media] Error reading library file:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).send("Error reading file");
       }
-    } else {
-      // It's a relative path, append to library path
-      const libraryFilePath = path.join(config.libraryPath, requestedFile);
+    });
 
-      // Security check: ensure the resolved path is within the library path
-      const libraryPathResolved = path.resolve(config.libraryPath);
-      if (path.resolve(libraryFilePath).startsWith(libraryPathResolved) && fs.existsSync(libraryFilePath)) {
-        const ext = path.extname(requestedFile).toLowerCase();
-        const contentTypes = {
-          '.jpg': 'image/jpeg',
-          '.jpeg': 'image/jpeg',
-          '.png': 'image/png',
-          '.webp': 'image/webp',
-          '.gif': 'image/gif'
-        };
-        const contentType = contentTypes[ext] || 'application/octet-stream';
-
-        // Set headers
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-
-        // Read file and send as stream instead of using sendFile
-        const readStream = fs.createReadStream(libraryFilePath);
-
-        readStream.on('error', (err) => {
-          console.error(`[Media] Error reading library file:`, err.message);
-          if (!res.headersSent) {
-            res.status(500).send("Error reading file");
-          }
-        });
-
-        return readStream.pipe(res);
-      }
-    }
+    return readStream.pipe(res);
   }
 
   // File not found in any location

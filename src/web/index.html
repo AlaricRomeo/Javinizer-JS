@@ -67,10 +67,8 @@
     <!-- Config Panel -->
     <div class="config-panel">
       <h3 data-i18n="sections.libraryPath">Library Path</h3>
-      <div class="path-selector">
-        <input id="libraryPath" type="text" readonly>
-        <button id="browseLibrary" type="button" data-i18n="buttons.browse">📁</button>
-      </div>
+      <div id="libraryPathsList"></div>
+      <button id="browseLibrary" type="button" class="add-library-path" data-i18n="buttons.addLibraryPath">📁 + Add folder</button>
       <small data-i18n="messages.libraryPathHelp">Click the button to select the library folder</small>
       <p id="libraryStatus" style="margin-top: 10px; font-size: 12px; color: #666;">Loading...</p>
 

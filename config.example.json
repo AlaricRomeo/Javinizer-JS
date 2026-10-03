@@ -1,5 +1,5 @@
 {
-  "libraryPath": "/path/to/your/library",
+  "libraryPaths": ["/path/to/your/library"],
   "mode": "edit",
   "language": "en",
   "videoPlayerPath": "",

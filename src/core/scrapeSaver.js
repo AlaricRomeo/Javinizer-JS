@@ -4,6 +4,7 @@ const https = require("https");
 const http = require("http");
 const sharp = require("sharp");
 const { saveNfoFull } = require("./saveNfo");
+const { loadConfig, getLibraryPaths } = require("./config");
 
 /**
  * Saves a scraped item by creating:
@@ -177,8 +178,15 @@ class ScrapeSaver {
         return results;
       }
 
-      // 2. Create folder in the same directory as the video file
+      // 2. Create folder in the same directory as the video file, which must be
+      // a library root: a video already inside a movie folder would otherwise get
+      // a new movie folder nested inside the existing one
       const videoDir = path.dirname(videoFile);
+      const roots = getLibraryPaths(loadConfig()).map(root => path.resolve(root));
+      if (!roots.includes(path.resolve(videoDir))) {
+        results.errors.push(`Video file is not in the root of a library folder: ${videoFile}`);
+        return results;
+      }
       const folderName = this.formatFolderName(item);
       const folderPath = path.join(videoDir, folderName);
 

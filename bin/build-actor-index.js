@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const { nfoToActor } = require('../scrapers/actors/schema');
 const { getExternalActorsPath, getActorsCachePath, findLocalPhoto, loadConfig } = require('../scrapers/actors/cache-helper');
+const { getLibraryPaths } = require('../src/core/config');
 const actorDb = require('../scrapers/actors/actorDb');
 
 function indexDirectory(dirPath, { onPhoto, onActor } = {}) {
@@ -77,28 +78,30 @@ function main() {
     config = {};
   }
 
-  const libraryPath = config.libraryPath;
+  const libraryPaths = getLibraryPaths(config).filter(root => fs.existsSync(root));
   let movieFoldersScanned = 0;
   let movieActorsIndexed = 0;
 
-  if (libraryPath && fs.existsSync(libraryPath)) {
-    console.log(`\n📁 library movie folders: ${libraryPath}`);
-    const entries = fs.readdirSync(libraryPath, { withFileTypes: true });
+  if (libraryPaths.length > 0) {
+    for (const libraryPath of libraryPaths) {
+      console.log(`\n📁 library movie folders: ${libraryPath}`);
+      const entries = fs.readdirSync(libraryPath, { withFileTypes: true });
 
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const actorsDir = path.join(libraryPath, entry.name, 'actors');
-      if (!fs.existsSync(actorsDir)) continue;
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const actorsDir = path.join(libraryPath, entry.name, 'actors');
+        if (!fs.existsSync(actorsDir)) continue;
 
-      movieFoldersScanned++;
-      const movieId = entry.name;
-      movieActorsIndexed += indexDirectory(actorsDir, {
-        onActor: (id) => actorDb.linkMovie(id, movieId)
-      });
+        movieFoldersScanned++;
+        const movieId = path.join(libraryPath, entry.name); // = LibraryReader item id
+        movieActorsIndexed += indexDirectory(actorsDir, {
+          onActor: (id) => actorDb.linkMovie(id, movieId)
+        });
+      }
     }
     console.log(`   Scanned ${movieFoldersScanned} movie folder(s), indexed ${movieActorsIndexed} actor record(s)`);
   } else {
-    console.log('\n📁 library movie folders: (libraryPath not configured or missing)');
+    console.log('\n📁 library movie folders: (libraryPaths not configured or missing)');
   }
 
   console.log('\n' + '='.repeat(60));

@@ -422,7 +422,7 @@ function initNavbarSearch() {
         data.results.forEach(item => {
           const div = document.createElement('div');
           div.className = 'search-result-item';
-          div.innerHTML = `<span class="sri-id">${item.id}</span>${item.title ? `<span class="sri-title"> — ${item.title}</span>` : ''}`;
+          div.innerHTML = `<span class="sri-id">${item.name || item.id}</span>${item.root ? `<span class="sri-root"> [${item.root}]</span>` : ''}${item.title ? `<span class="sri-title"> — ${item.title}</span>` : ''}`;
           div.addEventListener('click', () => {
             input.value = '';
             dropdown.style.display = 'none';

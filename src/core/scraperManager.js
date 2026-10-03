@@ -15,7 +15,7 @@ const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
-const { loadConfig, getScrapePath } = require('./config');
+const { loadConfig, getScrapePath, getLibraryPaths } = require('./config');
 const { applyGenreRules } = require('./genreFilter');
 
 // Sentinel value for "scraper" params/dropdowns meaning "run every scraper
@@ -34,57 +34,59 @@ const MULTI_SCRAPER_VALUE = '__all__';
 // ─────────────────────────────
 
 /**
- * Extract DVD codes from library path
- * - Reads ONLY video files in the root of libraryPath (NOT recursive)
+ * Extract DVD codes from the library roots
+ * - Reads ONLY video files in the root of each library path (NOT recursive)
  * - Extracts ID from filename (everything before first space or entire name if no space)
  * - Supported video extensions: .mp4, .mkv, .avi, .wmv, .mov, .flv, .m4v, .ts
  * - Used to find video files that need to be scraped
  *
- * @param {string} libraryPath - Path to library directory containing video files
+ * @param {string[]} libraryPaths - Library roots containing video files
  * @returns {string[]} - Array of unique DVD codes
  */
-function extractCodesFromLibrary(libraryPath) {
-  if (!fs.existsSync(libraryPath)) {
-    throw new Error(`Library path not found: ${libraryPath}`);
+function extractCodesFromLibrary(libraryPaths) {
+  const roots = libraryPaths.filter(root => fs.existsSync(root));
+  if (roots.length === 0) {
+    throw new Error(`Library path not found: ${libraryPaths.join(', ')}`);
   }
 
-  const items = fs.readdirSync(libraryPath);
   const codes = new Set();
 
   // Video file extensions to look for
   const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts', '.mpg', '.mpeg'];
 
-  items.forEach(item => {
-    // Skip hidden files and directories
-    if (item.startsWith('.')) {
-      return;
-    }
+  for (const libraryPath of roots) {
+    fs.readdirSync(libraryPath).forEach(item => {
+      // Skip hidden files and directories
+      if (item.startsWith('.')) {
+        return;
+      }
 
-    const itemPath = path.join(libraryPath, item);
-    const stats = fs.statSync(itemPath);
+      const itemPath = path.join(libraryPath, item);
+      const stats = fs.statSync(itemPath);
 
-    // Skip directories - we only want video files in the root
-    if (stats.isDirectory()) {
-      return;
-    }
+      // Skip directories - we only want video files in the root
+      if (stats.isDirectory()) {
+        return;
+      }
 
-    // Check if it's a video file
-    const ext = path.extname(item).toLowerCase();
-    if (!videoExtensions.includes(ext)) {
-      return;
-    }
+      // Check if it's a video file
+      const ext = path.extname(item).toLowerCase();
+      if (!videoExtensions.includes(ext)) {
+        return;
+      }
 
-    // Extract code from filename (up to first space)
-    const spaceIndex = item.indexOf(' ');
-    const code = spaceIndex === -1 ? item : item.substring(0, spaceIndex);
+      // Extract code from filename (up to first space)
+      const spaceIndex = item.indexOf(' ');
+      const code = spaceIndex === -1 ? item : item.substring(0, spaceIndex);
 
-    // Remove file extension
-    const codeWithoutExt = code.replace(/\.[^.]+$/, '');
+      // Remove file extension
+      const codeWithoutExt = code.replace(/\.[^.]+$/, '');
 
-    if (codeWithoutExt) {
-      codes.add(codeWithoutExt);
-    }
-  });
+      if (codeWithoutExt) {
+        codes.add(codeWithoutExt);
+      }
+    });
+  }
 
   return Array.from(codes);
 }
@@ -487,9 +489,9 @@ async function executeScraperOrAll(scraperOrAll, code, emitter, config) {
  * @param {string} code - DVD code
  * @param {object} data - Scraped and merged data
  * @param {string[]} sources - List of scraper names used
- * @param {string} libraryPath - Path to library directory
+ * @param {string[]} libraryPaths - Library roots (searched in order for the video)
  */
-function saveToFile(code, data, sources, libraryPath) {
+function saveToFile(code, data, sources, libraryPaths) {
   const outputDir = getScrapePath();
 
   // Ensure output directory exists
@@ -497,50 +499,34 @@ function saveToFile(code, data, sources, libraryPath) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  // Find video file in library (recursively search subdirectories)
+  // Find the video file in the root of a library path (NOT recursive): that's
+  // the only place extractCodesFromLibrary() takes codes from. A recursive search
+  // would match the video of an already organized movie with the same code (e.g.
+  // a re-scrape of a better quality copy), and ScrapeSaver would then create the
+  // new folder inside the existing one. Its directory is where ScrapeSaver creates
+  // the movie folder, so each movie lands in the root its video came from.
+  const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts', '.mpg', '.mpeg'];
+
   let videoFile = '';
-  if (libraryPath && fs.existsSync(libraryPath)) {
-    const videoExtensions = ['.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.m4v', '.ts', '.mpg', '.mpeg'];
-
-    function findVideoRecursive(dirPath) {
-      let items;
-      try {
-        items = fs.readdirSync(dirPath);
-      } catch (error) {
-        console.error(`[ScraperManager] Cannot read directory ${dirPath}: ${error.message}`);
-        return null;
-      }
-
-      for (const item of items) {
-        if (item.startsWith('.')) continue;
-
-        const itemPath = path.join(dirPath, item);
-        let stats;
-
-        try {
-          stats = fs.statSync(itemPath);
-        } catch (error) {
-          // Skip files we can't access (Windows permissions/locks)
-          continue;
-        }
-
-        if (stats.isDirectory()) {
-          const found = findVideoRecursive(itemPath);
-          if (found) return found;
-        } else {
-          const ext = path.extname(item).toLowerCase();
-          if (videoExtensions.includes(ext)) {
-            const fileCode = item.split(' ')[0].replace(/\.[^.]+$/, '');
-            if (fileCode.toLowerCase() === code.toLowerCase()) {
-              return itemPath;
-            }
-          }
-        }
-      }
-      return null;
+  for (const libraryPath of libraryPaths) {
+    let items;
+    try {
+      items = fs.readdirSync(libraryPath, { withFileTypes: true });
+    } catch (error) {
+      console.error(`[ScraperManager] Cannot read directory ${libraryPath}: ${error.message}`);
+      continue;
     }
 
-    videoFile = findVideoRecursive(libraryPath) || '';
+    const match = items.find(entry => {
+      if (!entry.isFile() || entry.name.startsWith('.')) return false;
+      if (!videoExtensions.includes(path.extname(entry.name).toLowerCase())) return false;
+      const fileCode = entry.name.split(' ')[0].replace(/\.[^.]+$/, '');
+      return fileCode.toLowerCase() === code.toLowerCase();
+    });
+    if (match) {
+      videoFile = path.join(libraryPath, match.name);
+      break;
+    }
   }
 
   // Create wrapper structure matching WebUI expected format
@@ -660,7 +646,7 @@ async function scrapeAll(codes, emitter = null) {
       const usedScrapers = scraperResults.map(r => r.scraperName);
 
       // Save to file with wrapper structure
-      saveToFile(code, merged, usedScrapers, config.libraryPath);
+      saveToFile(code, merged, usedScrapers, getLibraryPaths(config));
     } else {
       console.error(`[ScraperManager] Skipping save for ${code}: no valid data`);
     }
@@ -682,15 +668,15 @@ async function main() {
     const config = loadConfig();
 
     // Extract codes from library path
-    const libraryPath = config.libraryPath;
+    const libraryPaths = getLibraryPaths(config);
 
-    if (!libraryPath) {
-      throw new Error('libraryPath not specified in config.json');
+    if (libraryPaths.length === 0) {
+      throw new Error('libraryPaths not specified in config.json');
     }
 
-    console.error(`[ScraperManager] Reading library: ${libraryPath}`);
+    console.error(`[ScraperManager] Reading library: ${libraryPaths.join(', ')}`);
 
-    const codes = extractCodesFromLibrary(libraryPath);
+    const codes = extractCodesFromLibrary(libraryPaths);
 
     if (codes.length === 0) {
       console.error('[ScraperManager] No files found in library');

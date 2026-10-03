@@ -178,8 +178,8 @@ async function loadConfig() {
     return;
   }
 
-  document.getElementById("libraryPath").value =
-    data.config.libraryPath || "";
+  libraryPaths = data.config.libraryPaths || [];
+  renderLibraryPaths();
 
   return data.config;
 }
@@ -228,13 +228,62 @@ async function saveConfigField(field, value) {
   }
 }
 
-// Backward compatibility wrapper
-async function saveLibraryPath(libraryPath) {
-  const success = await saveConfigField('libraryPath', libraryPath);
-  if (!success) {
-    alert(window.i18n ? window.i18n.t("messages.libraryPathSaveErrorAlert") : "Errore durante il salvataggio del percorso libreria");
+// ─────────────────────────────
+// Library roots (all form a single library)
+// ─────────────────────────────
+let libraryPaths = [];
+
+function renderLibraryPaths() {
+  const listEl = document.getElementById("libraryPathsList");
+  listEl.innerHTML = "";
+  libraryPaths.forEach((libraryPath, idx) => {
+    const row = document.createElement("div");
+    row.className = "path-selector";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.readOnly = true;
+    input.value = libraryPath;
+    input.title = libraryPath;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.textContent = "✕";
+    removeBtn.title = window.i18n ? window.i18n.t("buttons.removeLibraryPath") : "Remove";
+    removeBtn.onclick = () => saveLibraryPaths(libraryPaths.filter((_, i) => i !== idx));
+
+    row.append(input, removeBtn);
+    listEl.appendChild(row);
+  });
+}
+
+// Saves the roots, then reloads the current item from the (re-scanned) library
+async function saveLibraryPaths(newPaths) {
+  const saved = await saveConfigField('libraryPaths', newPaths);
+
+  if (!saved) {
+    showNotification(window.i18n ? window.i18n.t("messages.pathUpdateError") : "✗ Errore nel salvataggio", "error");
+    return false;
   }
-  return success;
+
+  libraryPaths = newPaths;
+  renderLibraryPaths();
+  showNotification(window.i18n ? window.i18n.t("messages.pathUpdated") : "✓ Library path aggiornato e salvato", "success");
+
+  // Ricarica il primo item della nuova libreria
+  // (the server will reload the library automatically)
+  setTimeout(async () => {
+    if (currentMode === "scrape") {
+      // In scrape mode: check availability and load first scrape item
+      await checkScrapeAvailability();
+      const loaded = await loadItem("/item/scrape/current");
+      updateDeleteButtons(loaded);
+    } else {
+      // In edit mode: load first library item
+      await loadItem("/item/current");
+    }
+  }, 500);
+  return true;
 }
 
 
@@ -293,7 +342,7 @@ async function loadDirectories(path) {
 
 // Apri browser directory
 document.getElementById("browseLibrary").onclick = async () => {
-  const currentPath = document.getElementById("libraryPath").value || "/home";
+  const currentPath = libraryPaths[libraryPaths.length - 1] || "/home";
   document.getElementById("dirBrowserModal").style.display = "block";
   await loadDirectories(currentPath);
 };
@@ -318,41 +367,24 @@ document.getElementById("dirBrowserSelect").onclick = async () => {
     return;
   }
 
-  // Aggiorna UI
-  document.getElementById("libraryPath").value = currentBrowserPath;
-  selectBtn.textContent = "⏳ Salvataggio...";
-  selectBtn.disabled = true;
-
   // Chiudi modal
   document.getElementById("dirBrowserModal").style.display = "none";
 
+  // Already one of the roots: nothing to save
+  if (libraryPaths.includes(currentBrowserPath)) {
+    showNotification(window.i18n ? window.i18n.t("messages.libraryPathAlreadyAdded") : "Folder already in library", "error");
+    return;
+  }
+
+  selectBtn.textContent = window.i18n ? window.i18n.t("messages.saving") : "⏳ Salvataggio...";
+  selectBtn.disabled = true;
+
   // Salva automaticamente
-  const saved = await saveLibraryPath(currentBrowserPath);
+  await saveLibraryPaths([...libraryPaths, currentBrowserPath]);
 
   // Ripristina bottone
   selectBtn.textContent = originalText;
   selectBtn.disabled = false;
-
-  if (saved) {
-    // Mostra notifica di successo
-    showNotification(window.i18n ? window.i18n.t("messages.pathUpdated") : "✓ Library path aggiornato e salvato", "success");
-
-    // Ricarica il primo item della nuova libreria
-    // (the server will reload the library automatically)
-    setTimeout(async () => {
-      if (currentMode === "scrape") {
-        // In scrape mode: check availability and load first scrape item
-        await checkScrapeAvailability();
-        const loaded = await loadItem("/item/scrape/current");
-        updateDeleteButtons(loaded);
-      } else {
-        // In edit mode: load first library item
-        await loadItem("/item/current");
-      }
-    }, 500);
-  } else {
-    showNotification(window.i18n ? window.i18n.t("messages.pathUpdateError") : "✗ Errore nel salvataggio", "error");
-  }
 };
 
 // Annulla
@@ -610,7 +642,7 @@ async function updateDeleteButtons(itemLoaded) {
 // Clear UI
 // ─────────────────────────────
 function clearUI() {
-  // Clear all text fields (EXCEPT libraryPath which is handled separately)
+  // Clear all text fields (library paths are handled separately)
   const textFields = [
     "id", "contentId", "title", "alternateTitle", "description",
     "director", "releaseDate", "runtime", "series", "maker", "label",
@@ -807,7 +839,7 @@ async function loadItem(url, fetchOptions = {}) {
     originalItem = JSON.parse(JSON.stringify(currentItem));
 
     // Save current item ID in session storage
-    // Use folderId for edit mode (folder name), fileId for scrape mode (JSON filename)
+    // Use folderId for edit mode (folder path), fileId for scrape mode (JSON filename)
     const itemIdToSave = currentMode === "edit" ? currentItem.folderId : currentItem.fileId;
     if (currentItem && itemIdToSave) {
       saveCurrentIndex(currentMode, itemIdToSave);
@@ -2081,9 +2113,9 @@ async function initializeApp() {
       window.applyI18nBindings();
     }
 
-    // Popola campo library path PRIMA di switchMode
-    const libraryPath = configData.config.libraryPath || "";
-    document.getElementById("libraryPath").value = libraryPath;
+    // Popola lista library paths PRIMA di switchMode
+    libraryPaths = configData.config.libraryPaths || [];
+    renderLibraryPaths();
 
     // Popola dropdown scraper per re-scraping
     if (configData.availableScrapers && configData.availableScrapers.movies) {
@@ -2186,9 +2218,8 @@ async function playVideo() {
         }
       }
     } else if (currentMode === "edit") {
-      // In edit mode, construct video path from library path + folder name
-      const libraryPath = document.getElementById("libraryPath").value;
-      if (libraryPath && currentItem.folderId) {
+      // In edit mode, look up the movie folder (in whichever library root holds it)
+      if (libraryPaths.length > 0 && currentItem.folderId) {
         // Look for video files in the movie folder
         const response = await fetch(`/item/videos/${encodeURIComponent(currentItem.folderId)}`);
         const data = await response.json();
@@ -2742,7 +2773,7 @@ async function handleScrapingEvent(progressDiv, modal, eventType, data) {
       } else if (currentItem && currentItem.folderId && currentMode === 'edit') {
         // Edit mode uses folderId
         console.log('[actorsUpdated] Reloading item by folderId:', currentItem.folderId);
-        loadItem(`/item/edit/${currentItem.folderId}`);
+        loadItem(`/item/by-id/${encodeURIComponent(currentItem.folderId)}`);
       } else {
         // Fallback to current if ID is not available
         console.log('[actorsUpdated] Fallback to current');

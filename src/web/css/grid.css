@@ -215,6 +215,12 @@ body {
   color: white;
 }
 
+.status-badge.status-root {
+  background: #6c757d;
+  color: white;
+  text-transform: none;
+}
+
 .item-filename {
   font-size: 12px;
   color: #888;

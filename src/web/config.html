@@ -289,7 +289,7 @@
             // Collect field priorities
             const fieldPriorities = collectFieldPriorities();
 
-            // Get current config to preserve libraryPath and mode
+            // Get current config to preserve libraryPaths and mode
             const currentConfigResponse = await fetch('/item/config');
             const currentConfigData = await currentConfigResponse.json();
             const currentConfig = currentConfigData.config || currentConfigData;
@@ -324,7 +324,7 @@
             const genreRules = document.getElementById('genreRules').value;
 
             const newConfig = {
-                libraryPath: currentConfig.libraryPath || '',  // Preserve existing libraryPath
+                libraryPaths: currentConfig.libraryPaths || [],  // Preserve existing library roots
                 mode: currentConfig.mode || 'scrape',  // Preserve current mode
                 language: currentConfig.language || 'en',  // Preserve language
                 videoPlayerPath: videoPlayerPath || '',

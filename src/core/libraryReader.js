@@ -3,17 +3,22 @@ const path = require("path");
 const { getLibraryCachePath, getLibraryPositionPath } = require("./config");
 
 class LibraryReader {
-  constructor(rootPath, actorsPath = null) {
-    this.rootPath = rootPath;
+  /**
+   * @param {string[]} rootPaths - Library roots; their items form one library.
+   *   Item id = absolute folder path, so the same folder name can exist in more
+   *   than one root (e.g. the same movie in two genre folders) and both show up.
+   */
+  constructor(rootPaths, actorsPath = null) {
+    this.rootPaths = rootPaths || [];
     this.actorsPath = actorsPath; // Path to exclude from library (actors cache)
     this.items = [];
     this.currentIndex = -1;
     this.totalScanned = 0; // Track how many folders we've scanned
-    this.allFolders = []; // All folder names (not loaded yet)
+    this.allFolders = []; // All {root, name} folder entries (not loaded yet)
     this.fullyLoaded = false; // Whether we've scanned all folders
     this.cachePath = getLibraryCachePath();
     this.positionPath = getLibraryPositionPath();
-    this._cachedById = null; // Map of id -> cached item, used while (re)loading
+    this._cachedByPath = null; // Map of folder path -> cached item, used while (re)loading
     this.filterIds = null; // Set of item ids, or null when no filter is active
     this._pendingRestoreId = null; // Item id to resume on, from a previous server run
     this._lastPersistedIndex = null; // Last currentIndex written to disk, to avoid redundant writes
@@ -28,7 +33,7 @@ class LibraryReader {
     this.totalScanned = 0;
     this.allFolders = [];
     this.fullyLoaded = false;
-    this._cachedById = null;
+    this._cachedByPath = null;
     this.filterIds = null;
     this._pendingRestoreId = null;
     this._lastPersistedIndex = null;
@@ -70,13 +75,13 @@ class LibraryReader {
   }
 
   /**
-   * Loads the persisted index from disk, if it matches the current rootPath
+   * Loads the persisted index from disk, if it matches the current rootPaths
    */
   _loadDiskCache() {
     try {
       if (!fs.existsSync(this.cachePath)) return null;
       const cache = JSON.parse(fs.readFileSync(this.cachePath, "utf8"));
-      if (cache.rootPath !== this.rootPath || !Array.isArray(cache.items)) return null;
+      if (!this._sameRoots(cache) || !Array.isArray(cache.items)) return null;
       return cache;
     } catch (err) {
       return null;
@@ -92,7 +97,7 @@ class LibraryReader {
       const dir = path.dirname(this.cachePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(this.cachePath, JSON.stringify({
-        rootPath: this.rootPath,
+        rootPaths: this.rootPaths,
         items: this.items,
         savedAt: Date.now()
       }), "utf8");
@@ -102,13 +107,13 @@ class LibraryReader {
   }
 
   /**
-   * Loads the persisted "last viewed item" pointer, if it matches the current rootPath
+   * Loads the persisted "last viewed item" pointer, if it matches the current rootPaths
    */
   _loadPosition() {
     try {
       if (!fs.existsSync(this.positionPath)) return null;
       const pos = JSON.parse(fs.readFileSync(this.positionPath, "utf8"));
-      if (pos.rootPath !== this.rootPath || !pos.currentItemId) return null;
+      if (!this._sameRoots(pos) || !pos.currentItemId) return null;
       return pos;
     } catch (err) {
       return null;
@@ -125,7 +130,7 @@ class LibraryReader {
       const dir = path.dirname(this.positionPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(this.positionPath, JSON.stringify({
-        rootPath: this.rootPath,
+        rootPaths: this.rootPaths,
         currentItemId: itemId
       }), "utf8");
     } catch (err) {
@@ -134,29 +139,38 @@ class LibraryReader {
   }
 
   /**
-   * Update root path and actors path, resetting cache
+   * Whether a persisted file (cache/position) was written for the current roots.
+   * Files from before multi-root support carry a single `rootPath`.
    */
-  updatePaths(rootPath, actorsPath = null) {
-    this.rootPath = rootPath;
+  _sameRoots(saved) {
+    const roots = Array.isArray(saved.rootPaths) ? saved.rootPaths : saved.rootPath ? [saved.rootPath] : null;
+    return roots !== null && JSON.stringify(roots) === JSON.stringify(this.rootPaths);
+  }
+
+  /**
+   * Update root paths and actors path, resetting cache
+   */
+  updatePaths(rootPaths, actorsPath = null) {
+    this.rootPaths = rootPaths || [];
     this.actorsPath = actorsPath;
     this.reset();
   }
 
   /**
-   * Scans the root and finds only valid folders
+   * Scans all roots and finds only valid folders
    * (a folder is valid if it contains at least one .nfo file)
    *
    * For large libraries (>500 folders), loads incrementally to avoid blocking.
    * batchSize is a floor, not a ceiling: once it's satisfied, the loop keeps going
    * within timeBudgetMs — a cached folder costs a Map lookup, not a disk seek, so
-   * a warm cache (same rootPath as last run) typically finishes the whole library
+   * a warm cache (same rootPaths as last run) typically finishes the whole library
    * in one call instead of needing dozens of polls. A cold scan (new/changed
    * directory, no matching cache) still yields after batchSize+timeBudgetMs, same
    * as before, keeping the server responsive during a real scan.
    */
   loadLibrary(batchSize = 100, timeBudgetMs = 150) {
-    // Verify that the path exists
-    if (!fs.existsSync(this.rootPath)) {
+    const roots = this.rootPaths.filter(root => fs.existsSync(root));
+    if (roots.length === 0) {
       this.items = [];
       this.currentIndex = -1;
       this.allFolders = [];
@@ -165,14 +179,23 @@ class LibraryReader {
       return;
     }
 
-    // If first load, get all folder names
+    // If first load, get all folder names from every root
     if (this.allFolders.length === 0) {
-      const entries = fs.readdirSync(this.rootPath, { withFileTypes: true });
-      this.allFolders = entries
-        .filter(entry => entry.isDirectory())
-        .filter(entry => !entry.name.startsWith('.')) // Exclude hidden folders
-        .map(entry => entry.name)
-        .sort((a, b) => a.localeCompare(b));
+      for (const root of roots) {
+        let entries;
+        try {
+          entries = fs.readdirSync(root, { withFileTypes: true });
+        } catch (err) {
+          console.error(`[LibraryReader] Cannot read root ${root}:`, err.message);
+          continue;
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory() || entry.name.startsWith('.')) continue; // Exclude hidden folders
+          this.allFolders.push({ root, name: entry.name });
+        }
+      }
+      // Stable sort: same-name folders keep the configured root order
+      this.allFolders.sort((a, b) => a.name.localeCompare(b.name));
 
       this.totalScanned = 0;
       this.items = [];
@@ -181,7 +204,7 @@ class LibraryReader {
       // Reuse the persisted index from a previous run (e.g. server restart)
       // so unchanged folders don't need a full readdir scan again
       const diskCache = this._loadDiskCache();
-      this._cachedById = diskCache ? new Map(diskCache.items.map(item => [item.id, item])) : null;
+      this._cachedByPath = diskCache ? new Map(diskCache.items.map(item => [item.path, item])) : null;
 
       // Resume on the item that was current before the server last stopped
       const savedPosition = this._loadPosition();
@@ -195,8 +218,8 @@ class LibraryReader {
 
     let i = startIdx;
     for (; i < this.allFolders.length; i++) {
-      const folderName = this.allFolders[i];
-      const folderPath = path.join(this.rootPath, folderName);
+      const { root, name: folderName } = this.allFolders[i];
+      const folderPath = path.join(root, folderName);
 
       // Exclusion Rule 2: Skip if this is the actors cache path
       if (this.actorsPath && path.resolve(folderPath) === path.resolve(this.actorsPath)) {
@@ -206,10 +229,11 @@ class LibraryReader {
       // Trust a cached entry for a folder that's still there under the same name —
       // no verification I/O. A renamed/deleted NFO inside it self-heals on the next
       // real access (getCurrent/getItem/library-list already handle that).
-      const cachedItem = this._cachedById && this._cachedById.get(folderName);
+      const cachedItem = this._cachedByPath && this._cachedByPath.get(folderPath);
       let fromCache = false;
       if (cachedItem) {
-        this.items.push(cachedItem);
+        // Caches written before ids became paths carry id = folder name
+        this.items.push({ ...cachedItem, id: folderPath });
         fromCache = true;
       } else {
         try {
@@ -221,7 +245,7 @@ class LibraryReader {
           // Exclusion Rule 3: Skip folders with multiple NFO files (likely actor cache)
           if (nfoFiles.length === 1) {
             this.items.push({
-              id: folderName,
+              id: folderPath,
               path: folderPath,
               nfo: path.join(folderPath, nfoFiles[0])
             });
@@ -250,7 +274,10 @@ class LibraryReader {
     // Resume the previously-current item once it's been loaded; give up once the
     // whole library is in and it still hasn't turned up (e.g. it was removed).
     if (this._pendingRestoreId) {
-      const idx = this.items.findIndex(item => item.id === this._pendingRestoreId);
+      // A position saved before ids became paths holds the bare folder name
+      const idx = this.items.findIndex(item =>
+        item.id === this._pendingRestoreId || path.basename(item.id) === this._pendingRestoreId
+      );
       if (idx !== -1) {
         this.currentIndex = idx;
         this._lastPersistedIndex = idx;
@@ -265,7 +292,7 @@ class LibraryReader {
 
     if (this.fullyLoaded) {
       this._saveDiskCache();
-      this._cachedById = null;
+      this._cachedByPath = null;
     }
 
     return {

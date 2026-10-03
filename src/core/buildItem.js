@@ -1,3 +1,4 @@
+const path = require("path");
 const { readNfo } = require("./readNfo");
 const { mapNfoToModel } = require("./nfoMapper");
 const { enrichModelWithLocalMedia } = require("./localMediaMapper");
@@ -27,8 +28,10 @@ async function buildItem(item, actorCache) {
   // 3. enrich with local data
   model = enrichModelWithLocalMedia(model, item, actorCache || new Map());
 
-  // 4. add folder ID for save operations (folder name, not video code)
+  // 4. add folder ID for save operations (absolute folder path, not video code)
+  // and the library root's name, to tell apart the same movie in two roots
   model.folderId = item.id;
+  model.libraryRoot = path.basename(path.dirname(item.path));
 
   return model;
 }

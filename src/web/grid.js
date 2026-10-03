@@ -218,7 +218,9 @@ function allLoadedItems() {
 }
 
 async function applySearchQuery(rawQuery) {
-  const query = (rawQuery || '').toLowerCase().trim();
+  // Not lowercased: boolean operators (AND / OR / NOT) are uppercase-only,
+  // see src/core/searchQuery.js — the server lowercases the terms itself
+  const query = (rawQuery || '').trim();
   currentSearchQuery = query;
   hideGridFilterBadge();
 
@@ -284,7 +286,8 @@ function itemMatchesQuery(item, query) {
     ...actorNames
   ].filter(Boolean).join(' ').toLowerCase();
 
-  return searchText.includes(query);
+  // Plain substring only: boolean queries are evaluated server-side, for library items
+  return searchText.includes(query.toLowerCase());
 }
 
 function sortByStatus(list) {
@@ -491,6 +494,7 @@ function createItemCard(item) {
     <div class="item-info">
       <div class="item-header">
         <div class="item-id">${item.id || 'Unknown ID'}</div>
+        ${item.libraryRoot ? `<span class="status-badge status-root"></span>` : ''}
         ${statusBadge}
       </div>
       ${!isNotMatched ? `<div class="item-filename">${item.filename || ''}</div>` : ''}
@@ -503,19 +507,35 @@ function createItemCard(item) {
       ` : ''}
       ${!isNotMatched ? `
         <div class="item-actions">
-          <button class="btn btn-primary" onclick="selectItem('${item.folderId || item.id || item.filename}')">
+          <button class="btn btn-primary" data-action="select">
             <span data-i18n="buttons.select">SELECT</span>
           </button>
-          <button class="btn btn-play" onclick="playItem('${item.folderId || item.id || item.filename}')" title="Play">
+          <button class="btn btn-play" data-action="play" title="Play">
             ▶
           </button>
-          <button class="btn btn-danger" onclick="deleteItem('${item.id}', '${item.mode || 'scrape'}')">
+          <button class="btn btn-danger" data-action="delete">
             🗑️
           </button>
         </div>
       ` : ''}
     </div>
   `;
+
+  // Wired here, not as inline onclick: library ids are folder paths and may
+  // contain quotes that would break an inline JS string
+  const identifier = item.folderId || item.id || item.filename;
+  const rootBadge = card.querySelector('.status-root');
+  if (rootBadge) {
+    rootBadge.textContent = item.libraryRoot;
+    rootBadge.title = item.folderId || '';
+  }
+  const actionBtn = (action) => card.querySelector(`[data-action="${action}"]`);
+  if (actionBtn('select')) {
+    actionBtn('select').onclick = () => selectItem(identifier);
+    actionBtn('play').onclick = () => playItem(identifier);
+    // Library items are deleted by folder (two roots can hold the same movie id)
+    actionBtn('delete').onclick = () => deleteItem(item.mode === 'edit' ? item.folderId : item.id, item.mode || 'scrape');
+  }
 
   // An actor name on a movie card jumps to exactly that actor's own known
   // movies — see applyActorMoviesFilter in navbar-loader.js, which (since
@@ -574,7 +594,7 @@ async function deleteItem(identifier, mode) {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: itemId })
+      body: JSON.stringify(itemMode === 'scrape' ? { filename: itemId } : { folderId: itemId })
     });
 
     const result = await response.json();

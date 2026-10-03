@@ -211,6 +211,12 @@ body {
 .config-panel .path-selector {
   display: flex;
   gap: 8px;
+  margin-bottom: 6px;
+}
+.config-panel .add-library-path {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
 }
 .config-panel .path-selector input {
   flex: 1;

@@ -532,7 +532,8 @@ function resolveId(name, altNameHints) {
  * folder's own copy are deliberately NOT resolution sources: both can
  * silently disagree with the cache (externalPath is a separately
  * user-curated mirror the app doesn't control the freshness of; a movie
- * folder's copy is per-library-root) — either one "winning" here is exactly
+ * folder's copy is a per-movie snapshot in <movie>/actors/ taken when it
+ * was saved) — either one "winning" here is exactly
  * how a stale photo gets served after the real one was updated.
  * Self-heals: clears the pointer if the file no longer exists on disk.
  *

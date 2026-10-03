@@ -1,4 +1,4 @@
-const { loadConfig, saveConfig, getScrapePath } = require("../core/config");
+const { loadConfig, saveConfig, getScrapePath, getLibraryPaths, isInsideLibrary, resolveLibraryFolder } = require("../core/config");
 const { buildItem } = require("../core/buildItem");
 const express = require("express");
 const router = express.Router();
@@ -14,6 +14,7 @@ const LibraryReader = require("../core/libraryReader");
 const ScrapeReader = require("../core/scrapeReader");
 const ScrapeSaver = require("../core/scrapeSaver");
 const { saveNfoPatch } = require("../core/saveNfo");
+const { compileSearchQuery } = require("../core/searchQuery");
 const { cleanupTempDirectory } = require("../core/utils");
 const updateManager = require("../core/updateManager");
 
@@ -21,7 +22,7 @@ const updateManager = require("../core/updateManager");
 
 // Load config and initialize library reader
 const config = loadConfig();
-const libraryReader = new LibraryReader(config.libraryPath, config.actorsPath);
+const libraryReader = new LibraryReader(getLibraryPaths(config), config.actorsPath);
 
 // ScrapeReader instance
 const scrapeReader = new ScrapeReader();
@@ -173,11 +174,12 @@ router.get("/by-id/:id", async (req, res) => {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Find item by ID - try exact match first, then partial match
+    // Find item by ID (= folder path) - try exact match first, then partial
+    // match on the folder name only (never on the root part of the path)
     const findId = () => {
       let idx = libraryReader.items.findIndex(item => item.id === id);
-      if (idx === -1) idx = libraryReader.items.findIndex(item => item.id.includes(id));
-      if (idx === -1) idx = libraryReader.items.findIndex(item => item.id.toLowerCase().includes(id.toLowerCase()));
+      if (idx === -1) idx = libraryReader.items.findIndex(item => path.basename(item.id).includes(id));
+      if (idx === -1) idx = libraryReader.items.findIndex(item => path.basename(item.id).toLowerCase().includes(id.toLowerCase()));
       return idx;
     };
 
@@ -449,68 +451,79 @@ function getSearchIndex() {
   if (!libraryReader.fullyLoaded) libraryReader.loadAll();
   // Rebuild if library changed
   if (!_searchIndex || _searchIndex.length !== libraryReader.items.length) {
-    const actorDb = require('../../scrapers/actors/actorDb');
     const aliasCache = new Map();
-    _searchIndex = libraryReader.items.map(item => {
-      let title = '';
-      let genres = [];
-      let actors = [];
-      try {
-        const content = fs.readFileSync(item.nfo, 'utf8');
-        const titleMatch = content.match(/<title>([\s\S]*?)<\/title>/i);
-        if (titleMatch) title = titleMatch[1].trim();
-
-        genres = [...content.matchAll(/<genre>([\s\S]*?)<\/genre>/gi)]
-          .map(m => m[1].trim())
-          .filter(Boolean);
-
-        const actorNames = (content.match(/<actor>[\s\S]*?<\/actor>/gi) || [])
-          .map(block => {
-            const m = block.match(/<name>([\s\S]*?)<\/name>/i);
-            return m ? m[1].trim() : null;
-          })
-          .filter(Boolean);
-
-        // Resolve through the actor index so every known alias is searchable
-        // here, not just whichever name variant happens to be literally
-        // written into this specific movie's own NFO (see actorDb.resolveAliases).
-        // aliasCache memoizes per rebuild — the same actor recurs across many
-        // movies, so this keeps a full-library rebuild from doing one SQLite
-        // round trip per (movie, actor) pair instead of per unique actor.
-        const aliasSet = new Set();
-        actorNames.forEach(n => {
-          const key = n.toLowerCase();
-          let aliases = aliasCache.get(key);
-          if (!aliases) {
-            aliases = actorDb.resolveAliases(n);
-            aliasCache.set(key, aliases);
-          }
-          aliases.forEach(a => aliasSet.add(a));
-        });
-        actors = Array.from(aliasSet);
-      } catch (_) {}
-      return { id: item.id, title, genres, actors };
-    });
+    _searchIndex = libraryReader.items.map(item => buildSearchEntry(item, aliasCache));
   }
   return _searchIndex;
 }
 
 /**
- * Matches the search index against a lowercase, trimmed query.
- * Shared by /search (dropdown) and /filter (navigation).
+ * Search index entry for one library item, read straight from its NFO.
+ */
+function buildSearchEntry(item, aliasCache) {
+  const actorDb = require('../../scrapers/actors/actorDb');
+  let title = '';
+  let genres = [];
+  let actors = [];
+  try {
+    const content = fs.readFileSync(item.nfo, 'utf8');
+    const titleMatch = content.match(/<title>([\s\S]*?)<\/title>/i);
+    if (titleMatch) title = titleMatch[1].trim();
+
+    genres = [...content.matchAll(/<genre>([\s\S]*?)<\/genre>/gi)]
+      .map(m => m[1].trim())
+      .filter(Boolean);
+
+    const actorNames = (content.match(/<actor>[\s\S]*?<\/actor>/gi) || [])
+      .map(block => {
+        const m = block.match(/<name>([\s\S]*?)<\/name>/i);
+        return m ? m[1].trim() : null;
+      })
+      .filter(Boolean);
+
+    // Resolve through the actor index so every known alias is searchable
+    // here, not just whichever name variant happens to be literally
+    // written into this specific movie's own NFO (see actorDb.resolveAliases).
+    // aliasCache memoizes per rebuild — the same actor recurs across many
+    // movies, so this keeps a full-library rebuild from doing one SQLite
+    // round trip per (movie, actor) pair instead of per unique actor.
+    const aliasSet = new Set();
+    actorNames.forEach(n => {
+      const key = n.toLowerCase();
+      let aliases = aliasCache.get(key);
+      if (!aliases) {
+        aliases = actorDb.resolveAliases(n);
+        aliasCache.set(key, aliases);
+      }
+      aliases.forEach(a => aliasSet.add(a));
+    });
+    actors = Array.from(aliasSet);
+  } catch (_) {}
+  return { id: item.id, name: path.basename(item.id), root: path.basename(path.dirname(item.path)), title, genres, actors };
+}
+
+/**
+ * Re-read one item's entry after its NFO was saved — the index is otherwise
+ * only rebuilt when the number of library items changes, so edited genres,
+ * titles or actors would stay stale until a restart.
+ */
+function refreshSearchEntry(item) {
+  if (!_searchIndex) return;
+  const idx = _searchIndex.findIndex(entry => entry.id === item.id);
+  if (idx !== -1) _searchIndex[idx] = buildSearchEntry(item, new Map());
+}
+
+/**
+ * Matches the search index against a trimmed query — plain substring or
+ * boolean (AND / OR / NOT / ! / parentheses, see src/core/searchQuery.js).
+ * Shared by /search (dropdown), /library-search (grid) and /filter (navigation).
  */
 function matchSearchIndex(q) {
-  const index = getSearchIndex();
-  return index.filter(item =>
-    item.id.toLowerCase().includes(q) ||
-    item.title.toLowerCase().includes(q) ||
-    item.genres.some(g => g.toLowerCase().includes(q)) ||
-    item.actors.some(a => a.toLowerCase().includes(q))
-  );
+  return getSearchIndex().filter(compileSearchQuery(q));
 }
 
 router.get("/search", (req, res) => {
-  const q = (req.query.q || '').toLowerCase().trim();
+  const q = (req.query.q || '').trim();
   if (q.length < 1) return res.json({ ok: true, results: [], total: 0 });
 
   const matches = matchSearchIndex(q);
@@ -540,6 +553,7 @@ async function buildLibrarySearchResults(matchedItems) {
         return {
           id: builtItem.id,
           folderId: builtItem.folderId,
+          libraryRoot: builtItem.libraryRoot,
           filename: builtItem.filename,
           title: builtItem.title,
           coverUrl: localCoverUrl,
@@ -572,7 +586,7 @@ router.get("/library-search", async (req, res) => {
       const idSet = new Set(idsParam.split(',').map(s => s.trim()).filter(Boolean));
       matchedItems = libraryReader.items.filter(item => idSet.has(item.id));
     } else {
-      const q = (req.query.q || '').toLowerCase().trim();
+      const q = (req.query.q || '').trim();
       if (!q) return res.json({ ok: true, items: [] });
 
       const matches = matchSearchIndex(q);
@@ -619,7 +633,7 @@ router.post("/filter", async (req, res) => {
     if (Array.isArray(req.body.ids) && req.body.ids.length > 0) {
       matchIds = req.body.ids;
     } else {
-      const q = (req.body.q || '').toLowerCase().trim();
+      const q = (req.body.q || '').trim();
       if (!q) return res.json(fail('Query required'));
 
       const matches = matchSearchIndex(q);
@@ -653,8 +667,8 @@ router.post("/config", (req, res) => {
 
     // Keep existing values if not specified
     const currentConfig = loadConfig();
-    if (!newConfig.libraryPath && currentConfig.libraryPath) {
-      newConfig.libraryPath = currentConfig.libraryPath;
+    if (!Array.isArray(newConfig.libraryPaths) && !newConfig.libraryPath) {
+      newConfig.libraryPaths = currentConfig.libraryPaths;
     }
     if (!newConfig.language) {
       newConfig.language = currentConfig.language || "en";
@@ -671,12 +685,13 @@ router.post("/config", (req, res) => {
 
     saveConfig(newConfig);
 
-    // 🔁 Reset library cache if libraryPath or actorsPath changed
-    const libraryPathChanged = newConfig.libraryPath && newConfig.libraryPath !== currentConfig.libraryPath;
+    // 🔁 Reset library cache if libraryPaths or actorsPath changed
+    const newRoots = getLibraryPaths(newConfig);
+    const libraryPathChanged = JSON.stringify(newRoots) !== JSON.stringify(getLibraryPaths(currentConfig));
     const actorsPathChanged = newConfig.actorsPath !== currentConfig.actorsPath;
 
     if (libraryPathChanged || actorsPathChanged) {
-      libraryReader.updatePaths(newConfig.libraryPath, newConfig.actorsPath);
+      libraryReader.updatePaths(newRoots, newConfig.actorsPath);
       libraryReader.loadLibrary();
       console.log('[Config] Library cache reset due to path change');
 
@@ -710,14 +725,14 @@ router.post("/save", async (req, res) => {
       return res.json({ ok: false, error: "No changes" });
     }
 
-    // Priority: use folderId (folder name) if provided, fallback to itemId for backwards compatibility
+    // Priority: use folderId (folder path) if provided, fallback to itemId for backwards compatibility
     const searchId = folderId || itemId;
 
     if (!searchId) {
       return res.json({ ok: false, error: "Item ID missing" });
     }
 
-    // Find the item by folder ID (folder name like "010214-514")
+    // Find the item by folder ID (absolute folder path)
     const item = libraryReader.findById(searchId);
     if (!item) {
       return res.json({ ok: false, error: `Item not found: ${searchId}` });
@@ -733,6 +748,7 @@ router.post("/save", async (req, res) => {
     }
 
     await saveNfoPatch(item.nfo, changes);
+    refreshSearchEntry(item);
 
     // Persist any actor edits (name, alt name, birthdate, measurements, ...) into
     // the persistent index — the movie's own NFO only ever stores name/altname/
@@ -1021,6 +1037,7 @@ router.post("/edit-rescrape/save", async (req, res) => {
 
     const { saveNfoFull } = require('../core/saveNfo');
     await saveNfoFull(libraryItem.nfo, item);
+    refreshSearchEntry(libraryItem);
 
     // Persist any actor edits into the persistent index — see the analogous
     // comment in POST /save for why this can't be skipped.
@@ -1378,6 +1395,7 @@ router.get("/library-list", async (req, res) => {
           return {
             id: builtItem.id,
             folderId: builtItem.folderId,
+            libraryRoot: builtItem.libraryRoot,
             filename: builtItem.filename,
             title: builtItem.title,
             coverUrl: localCoverUrl, // Prefer local cover
@@ -1486,40 +1504,23 @@ router.post("/scrape-delete", (req, res) => {
 // POST /library-delete - Delete library item (move video back to library root, delete folder)
 router.post("/library-delete", (req, res) => {
   try {
-    const { filename } = req.body;
-    if (!filename) {
-      return res.json(fail('Filename required'));
+    const { folderId } = req.body;
+    if (!folderId) {
+      return res.json(fail('folderId required'));
     }
 
     const cfg = loadConfig();
-    const libraryPath = cfg.libraryPath;
-
-    if (!libraryPath || !fs.existsSync(libraryPath)) {
-      return res.json(fail('Library path not configured or not found'));
-    }
-
-    // Find the NFO file: {ID}.nfo in any subfolder
-    const folders = fs.readdirSync(libraryPath, { withFileTypes: true })
-      .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'));
-
-    let nfoPath = null;
-    let folderPath = null;
-
-    for (const folder of folders) {
-      const potentialNfoPath = path.join(libraryPath, folder.name, `${filename}.nfo`);
-      if (fs.existsSync(potentialNfoPath)) {
-        nfoPath = potentialNfoPath;
-        folderPath = path.join(libraryPath, folder.name);
-        break;
-      }
-    }
-
-    if (!nfoPath || !folderPath) {
+    const item = libraryReader.findById(folderId);
+    if (!item) {
       return res.json(fail('Item not found'));
     }
 
-    // SAFETY CHECK: Ensure folder is inside library path
-    if (!folderPath.startsWith(libraryPath)) {
+    const folderPath = item.path;
+    // The video goes back to the root this movie folder lives in
+    const libraryPath = path.dirname(folderPath);
+
+    // SAFETY CHECK: Ensure folder is directly inside a library root
+    if (!getLibraryPaths(cfg).some(root => path.resolve(root) === path.resolve(libraryPath))) {
       return res.json(fail('Security error: folder path is outside library'));
     }
 
@@ -1539,6 +1540,12 @@ router.post("/library-delete", (req, res) => {
           if (!fs.existsSync(videoPath)) {
             console.error(`[library-delete] ERROR: Video file not found: ${videoPath}`);
             return res.json(fail('Video file not found in folder'));
+          }
+
+          // SAFETY CHECK: Never overwrite a video already in the library root
+          if (fs.existsSync(targetPath)) {
+            console.error(`[library-delete] ERROR: Target already exists: ${targetPath}`);
+            return res.json(fail('A video with the same name already exists in the library root'));
           }
 
           // Move video back to library root
@@ -1578,8 +1585,7 @@ router.post("/library-delete", (req, res) => {
     }
 
     // Remove item from libraryReader cache
-    const folderName = path.basename(folderPath);
-    const index = libraryReader.items.findIndex(item => item.id === folderName);
+    const index = libraryReader.items.findIndex(i => i.id === folderPath);
     if (index !== -1) {
       libraryReader.items.splice(index, 1);
       if (libraryReader.currentIndex >= libraryReader.items.length) {
@@ -1767,16 +1773,16 @@ router.post("/scrape/start", async (req, res) => {
     // Get config - always reload fresh config to ensure we use the current library path
     const config = loadConfig();
 
-    // Extract codes from library path
-    const libraryPath = config.libraryPath;
+    // Extract codes from all library roots
+    const libraryPaths = getLibraryPaths(config);
 
-    if (!libraryPath) {
-      return res.json({ ok: false, error: 'libraryPath not specified in config.json' });
+    if (libraryPaths.length === 0) {
+      return res.json({ ok: false, error: 'libraryPaths not specified in config.json' });
     }
 
-    console.error(`[Routes] Scraping starting with library path: ${libraryPath}`);
+    console.error(`[Routes] Scraping starting with library paths: ${libraryPaths.join(', ')}`);
 
-    const codes = extractCodesFromLibrary(libraryPath);
+    const codes = extractCodesFromLibrary(libraryPaths);
 
     if (codes.length === 0) {
       return res.json({ ok: false, error: 'No files found in library' });
@@ -2505,6 +2511,7 @@ router.post("/genre-rules/apply-library", async (req, res) => {
 
         if (JSON.stringify(before) !== JSON.stringify(after)) {
           await saveNfoPatch(item.nfo, { genres: after });
+          refreshSearchEntry(item);
           updated++;
         }
       } catch (err) {
@@ -3014,12 +3021,12 @@ router.get("/actors/:id/movies", async (req, res) => {
     // that array is lazily/partially loaded (see libraryReader.loadLibrary's
     // batching) and would falsely read as "doesn't exist" for anything not
     // loaded yet, wrongly pruning perfectly valid links.
-    const { libraryPath } = loadConfig();
+    const cfg = loadConfig();
 
     const movieIds = actorDb.getMoviesForActor(actorId);
     const live = [];
     for (const movieId of movieIds) {
-      if (libraryPath && fs.existsSync(path.join(libraryPath, movieId))) {
+      if (resolveLibraryFolder(cfg, movieId)) {
         live.push(movieId);
       } else {
         actorDb.unlinkMovie(actorId, movieId);
@@ -3383,10 +3390,9 @@ router.post("/open-folder", async (req, res) => {
 
     const resolvedPath = path.resolve(folderPath);
     const cfg = loadConfig();
-    const libraryPath = cfg.libraryPath ? path.resolve(cfg.libraryPath) : null;
 
-    // Only allow opening folders inside the configured library path
-    if (!libraryPath || (resolvedPath !== libraryPath && !resolvedPath.startsWith(libraryPath + path.sep))) {
+    // Only allow opening folders inside a configured library root
+    if (!isInsideLibrary(cfg, resolvedPath)) {
       return res.json({ ok: false, error: 'Folder path is not inside the library path' });
     }
 
@@ -3448,15 +3454,9 @@ router.get("/scrape/video/:itemId", async (req, res) => {
 router.get("/library-cover/:folderId", async (req, res) => {
   try {
     const folderId = req.params.folderId;
-    const config = loadConfig();
+    const folderPath = resolveLibraryFolder(loadConfig(), folderId);
 
-    if (!config.libraryPath) {
-      return res.status(404).send('Library path not configured');
-    }
-
-    const folderPath = path.join(config.libraryPath, folderId);
-
-    if (!fs.existsSync(folderPath)) {
+    if (!folderPath) {
       return res.status(404).send('Folder not found');
     }
 
@@ -3504,16 +3504,10 @@ router.get("/library-cover/:folderId", async (req, res) => {
 router.get("/videos/:folderId", async (req, res) => {
   try {
     const folderId = req.params.folderId;
-    const config = loadConfig();
+    const folderPath = resolveLibraryFolder(loadConfig(), folderId);
 
-    if (!config.libraryPath) {
-      return res.json({ ok: false, error: 'Library path not configured' });
-    }
-
-    const folderPath = path.join(config.libraryPath, folderId);
-
-    if (!fs.existsSync(folderPath)) {
-      return res.json({ ok: false, error: `Folder does not exist: ${folderPath}` });
+    if (!folderPath) {
+      return res.json({ ok: false, error: `Folder does not exist: ${folderId}` });
     }
 
     // Get all video files in the folder
@@ -3728,14 +3722,9 @@ router.post("/actors/copy-to-movie", async (req, res) => {
       return res.json({ ok: false, error: 'folderId and actors array required' });
     }
 
-    const config = loadConfig();
-    if (!config.libraryPath) {
-      return res.json({ ok: false, error: 'Library path not configured' });
-    }
-
-    const folderPath = path.join(config.libraryPath, folderId);
-    if (!fs.existsSync(folderPath)) {
-      return res.json({ ok: false, error: `Movie folder does not exist: ${folderPath}` });
+    const folderPath = resolveLibraryFolder(loadConfig(), folderId);
+    if (!folderPath) {
+      return res.json({ ok: false, error: `Movie folder does not exist: ${folderId}` });
     }
 
     const { copied, skipped } = await copyActorsToFolder(folderPath, actors);

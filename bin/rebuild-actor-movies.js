@@ -5,7 +5,7 @@
  * of its NFO (see src/core/actorMoviesIndexer.js).
  *
  * Runs as its own process, spawned detached by the server whenever
- * libraryPath changes (see POST /config in src/server/routes.js) — never
+ * libraryPaths change (see POST /config in src/server/routes.js) — never
  * in-process, since a full scan does synchronous, blocking file I/O for
  * every item and would otherwise freeze the single-threaded server for the
  * whole run (seconds on a warm OS cache, up to tens of seconds cold on a
@@ -14,19 +14,20 @@
  * Safe to re-run manually too: node bin/rebuild-actor-movies.js
  */
 const path = require("path");
-const { loadConfig } = require("../src/core/config");
+const { loadConfig, getLibraryPaths } = require("../src/core/config");
 const LibraryReader = require("../src/core/libraryReader");
 const { rebuildActorMoviesIndex } = require("../src/core/actorMoviesIndexer");
 
 async function main() {
   const config = loadConfig();
-  if (!config.libraryPath) {
-    console.error("[rebuild-actor-movies] No libraryPath configured, nothing to do");
+  const libraryPaths = getLibraryPaths(config);
+  if (libraryPaths.length === 0) {
+    console.error("[rebuild-actor-movies] No libraryPaths configured, nothing to do");
     process.exit(1);
   }
 
-  console.log(`[rebuild-actor-movies] Scanning ${config.libraryPath}...`);
-  const libraryReader = new LibraryReader(config.libraryPath, config.actorsPath);
+  console.log(`[rebuild-actor-movies] Scanning ${libraryPaths.join(", ")}...`);
+  const libraryReader = new LibraryReader(libraryPaths, config.actorsPath);
 
   const start = Date.now();
   const { total, links } = await rebuildActorMoviesIndex(libraryReader, msg =>
