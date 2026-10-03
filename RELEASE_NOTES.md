@@ -1,5 +1,34 @@
 # Release Notes
 
+## v2.5.0 (2026-10-03)
+
+### 📁 Multiple library folders
+
+- The library can now span several folders (e.g. one per genre), like Jellyfin or Kodi: add or remove them from the Library Folders list on the main page — their contents form a single library
+- The same movie can live in more than one folder: every copy is shown, and grid cards and search results carry a badge with the name of the folder it comes from
+- Scrape mode reads the videos to scrape from every library folder, and each movie is saved in the folder its video came from
+- Existing configs are migrated automatically (`libraryPath` → `libraryPaths`), and the library cache is reused, so the first start after the update doesn't rescan everything
+
+### 🔎 Boolean search
+
+- Search (navbar, grid, Next/Previous filter) supports `AND`, `OR`, `NOT` / `!`, parentheses and quoted terms — e.g. `solowork AND !planning`, `(solowork OR vr) AND !planning`, `"big tits" AND "yua mikami"`
+- Operators are uppercase; a query without operators works exactly as before
+- Edited genres, titles and actors are searchable right after saving, without a restart
+
+### 🎭 Actors and scrapers
+
+- javlibrary: keeps a browser open between scrapes and asks for the Cloudflare check only when actually blocked; cast aliases are parsed
+- A warning is shown when a scraper returns no data for a code
+- Actor movie counts are rebuilt in the background on every start
+- Placeholder photos are never stored, so online scrapers keep looking for a real one
+- "Name (Alias)" cast names are split into name and aliases; existing alt names are no longer wiped by movie saves
+
+### 🐛 Fixes
+
+- Re-scraping a movie already in the library no longer moves the old video into a folder nested inside the existing one
+- Deleting a library item never overwrites a video with the same name in the library folder
+- Actor updates in Edit mode reload the current movie correctly
+
 ## v2.4.3 (2026-09-12)
 
 ### 🔀 Re-scrape with all configured scrapers
