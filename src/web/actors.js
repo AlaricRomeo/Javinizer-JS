@@ -9,6 +9,9 @@ let currentActor = null;
 let isNewActor = false;
 let favoritesOnly = true;
 let duplicateGroups = [];
+// Cache-buster for local thumbnails: bumped on each actors reload so edited
+// photos show up, but stable across filter/search re-renders.
+let thumbVersion = Date.now();
 
 // ============================================
 // Initialization
@@ -160,6 +163,7 @@ async function loadActors() {
     }
 
     actors = data.actors || [];
+    thumbVersion = Date.now();
     applyFilters();
 
   } catch (error) {
@@ -194,11 +198,46 @@ function renderActors() {
   document.getElementById('emptyState').style.display = 'none';
   grid.style.display = 'grid';
   grid.innerHTML = '';
+  renderedCount = 0;
+  renderNextBatch();
+}
 
-  filteredActors.forEach(actor => {
-    const card = createActorCard(actor);
-    grid.appendChild(card);
-  });
+// Cards are rendered in batches as the user scrolls: each card triggers an
+// image load and a /movies fetch, so rendering thousands at once freezes the page.
+const ACTORS_BATCH_SIZE = 60;
+let renderedCount = 0;
+let batchSentinel = null;
+let batchObserver = null;
+
+function renderNextBatch() {
+  const grid = document.getElementById('actorsGrid');
+  const fragment = document.createDocumentFragment();
+  const end = Math.min(renderedCount + ACTORS_BATCH_SIZE, filteredActors.length);
+
+  for (let i = renderedCount; i < end; i++) {
+    fragment.appendChild(createActorCard(filteredActors[i]));
+  }
+  renderedCount = end;
+  grid.appendChild(fragment);
+
+  if (!batchSentinel) {
+    batchSentinel = document.createElement('div');
+    batchSentinel.style.height = '1px';
+    batchObserver = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting) && renderedCount < filteredActors.length) {
+        renderNextBatch();
+      }
+    }, { rootMargin: '600px' });
+    batchObserver.observe(batchSentinel);
+  }
+  // Keep the sentinel right after the grid so it re-triggers after each batch
+  grid.after(batchSentinel);
+  batchSentinel.style.display = renderedCount < filteredActors.length ? '' : 'none';
+
+  // If the sentinel is still visible (tall screen), the observer won't fire again
+  // without a change: re-observe to force a fresh intersection check.
+  batchObserver.unobserve(batchSentinel);
+  batchObserver.observe(batchSentinel);
 }
 
 function createActorCard(actor) {
@@ -219,6 +258,7 @@ function createActorCard(actor) {
     // Try to load local file with common extensions
     const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
     const img = document.createElement('img');
+    img.loading = 'lazy';
     // Se c'è il nome usa il nome
     if (actor.name) {
       img.alt = actor.name;
@@ -237,7 +277,7 @@ function createActorCard(actor) {
     const tryNextExtension = () => {
       if (currentExtIndex < extensions.length) {
         // Add timestamp to bypass cache
-        img.src = `/actors/${actor.id}.${extensions[currentExtIndex]}?t=${Date.now()}`;
+        img.src = `/actors/${actor.id}.${extensions[currentExtIndex]}?t=${thumbVersion}`;
         currentExtIndex++;
       } else if (actor.thumb) {
         // All local attempts failed, try remote thumb URL
