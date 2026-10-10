@@ -393,6 +393,63 @@ function isEmptyValue(value) {
          (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
 }
 
+/**
+ * Union of several actor lists, in priority order: one site may know more of
+ * the cast than another, so actors are summed, never dropped. Two entries are
+ * the same actor when any of their names/alt names match (case-, whitespace-
+ * and 2-word-order-insensitive); the first occurrence wins, later ones only
+ * fill its empty fields and add alt names.
+ *
+ * @param {Array<object[]|undefined>} lists - Actor arrays, highest priority first
+ * @returns {object[]}
+ */
+function mergeActors(lists) {
+  const { dedupeAltNames } = require('../../scrapers/actors/schema');
+  const normalize = s => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const keysOf = actor => {
+    const names = [actor.name, ...(actor.altName || '').split(',')].map(normalize).filter(Boolean);
+    const keys = new Set();
+    if (actor.id) keys.add(`id:${actor.id}`);
+    names.forEach(n => {
+      keys.add(n);
+      const parts = n.split(' ');
+      if (parts.length === 2) keys.add(`${parts[1]} ${parts[0]}`);
+    });
+    return keys;
+  };
+
+  const result = [];
+  const resultKeys = [];
+
+  lists.forEach(list => {
+    if (!Array.isArray(list)) return;
+    list.forEach(actor => {
+      if (!actor || !actor.name) return;
+      const keys = keysOf(actor);
+      const idx = resultKeys.findIndex(existing => [...keys].some(k => existing.has(k)));
+
+      if (idx === -1) {
+        result.push({ ...actor });
+        resultKeys.push(keys);
+        return;
+      }
+
+      const target = result[idx];
+      Object.keys(actor).forEach(field => {
+        if (field !== 'altName' && isEmptyValue(target[field]) && !isEmptyValue(actor[field])) {
+          target[field] = actor[field];
+        }
+      });
+      const altNames = [...(target.altName || '').split(','), ...(actor.altName || '').split(','), actor.name]
+        .map(s => s.trim()).filter(Boolean);
+      target.altName = dedupeAltNames(target.name, altNames).join(', ');
+      keys.forEach(k => resultKeys[idx].add(k));
+    });
+  });
+
+  return result;
+}
+
 function mergeResults(code, scraperResults, config) {
   const { createEmptyMovie } = require('../../scrapers/movies/schema');
   const merged = createEmptyMovie(code);
@@ -402,6 +459,14 @@ function mergeResults(code, scraperResults, config) {
   // Primary scraper = first in global order that actually returned results
   const primaryName = globalOrder.find(name => scraperResults.some(r => r.scraperName === name));
   const primaryResult = primaryName ? scraperResults.find(r => r.scraperName === primaryName) : null;
+
+  // Actors are summed across scrapers (primary, then fieldPriorities, then the rest)
+  const actorPriority = getFieldPriority('actor', config).filter(n => n !== primaryName);
+  const actorOrder = [
+    ...(primaryResult ? [primaryResult] : []),
+    ...actorPriority.map(name => scraperResults.find(r => r.scraperName === name)).filter(Boolean),
+    ...scraperResults.filter(r => r.scraperName !== primaryName && !actorPriority.includes(r.scraperName))
+  ];
 
   // Collect all available fields
   const allFields = new Set();
@@ -414,6 +479,11 @@ function mergeResults(code, scraperResults, config) {
   });
 
   allFields.forEach(fieldName => {
+    if (fieldName === 'actor') {
+      merged.actor = mergeActors(actorOrder.map(r => r.data.actor));
+      return;
+    }
+
     // Step 1: primary scraper always wins for fields it found
     if (primaryResult && primaryResult.data[fieldName] !== undefined) {
       const value = primaryResult.data[fieldName];
@@ -750,4 +820,4 @@ if (require.main === module) {
 }
 
 // Export for use as module
-module.exports = { scrapeAll, extractCodesFromLibrary, extractMovieId, executeScraper, executeScraperOrAll, mergeResults, isEmptyValue, formatTitle, MULTI_SCRAPER_VALUE };
+module.exports = { scrapeAll, extractCodesFromLibrary, extractMovieId, executeScraper, executeScraperOrAll, mergeResults, mergeActors, isEmptyValue, formatTitle, MULTI_SCRAPER_VALUE };

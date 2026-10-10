@@ -2735,7 +2735,7 @@ async function handleScrapingEvent(progressDiv, modal, eventType, data) {
       } else if (data.movieId) {
         // Reload the same movie to show updated data
         console.log('[complete] Reloading specific movie:', data.movieId);
-        await loadItem(`/item/scrape/by-id/${data.movieId}`);
+        await loadItem(`/item/scrape/by-id/${encodeURIComponent(data.movieId)}`);
         appendProgress(progressDiv, `🔄 Reloaded ${data.movieId} with updated data`, 'info');
       } else {
         // Auto-reload scrape items dopo completamento batch scraping
@@ -2769,7 +2769,7 @@ async function handleScrapingEvent(progressDiv, modal, eventType, data) {
       if (currentItem && currentItem.fileId && currentMode === 'scrape') {
         // Reload the specific item by its fileId to maintain navigation position
         console.log('[actorsUpdated] Reloading item by fileId:', currentItem.fileId);
-        loadItem(`/item/scrape/${currentItem.fileId}`);
+        loadItem(`/item/scrape/by-id/${encodeURIComponent(currentItem.fileId)}`);
       } else if (currentItem && currentItem.folderId && currentMode === 'edit') {
         // Edit mode uses folderId
         console.log('[actorsUpdated] Reloading item by folderId:', currentItem.folderId);

@@ -533,7 +533,7 @@ async function fillMissingFromOnline(actor, emitter = null) {
       continue;
     }
 
-    FILLABLE.forEach(f => { if (isEmpty(actor[f]) && !isEmpty(result[f])) actor[f] = result[f]; });
+    FILLABLE.forEach(f => { if (needsFill(f, actor[f]) && canFill(f, actor[f], result[f])) actor[f] = result[f]; });
     foldNameVariants(actor, [result.name, ...splitNameHints(result.altName), ...(result.otherNames || [])]);
     actor.meta = { ...(actor.meta || {}), sources: [scraperName] };
     if (emitter) emitter.emit('progress', { message: `[${scraperName}] ✓ Missing fields filled for ${actor.name}` });
@@ -969,6 +969,8 @@ async function updateMovieActorData() {
 
         // Save updated movie JSON (preserve wrapper if it exists)
         if (movieUpdated) {
+          // Enrichment can reveal that two cast entries are the same actor
+          movieData.actor = require('./scraperManager').mergeActors([movieData.actor]);
           const dataToSave = hasWrapper ? fileData : movieData;
           fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2), 'utf-8');
           updated++;
@@ -1194,6 +1196,8 @@ async function processSingleMovieActors(movieId, emitter = null) {
 
       // Save updated movie JSON (preserve wrapper if it exists)
       if (updated) {
+        // Enrichment can reveal that two cast entries are the same actor
+        movieData.actor = require('./scraperManager').mergeActors([movieData.actor]);
         const dataToSave = hasWrapper ? fileData : movieData;
         fs.writeFileSync(movieFile, JSON.stringify(dataToSave, null, 2), 'utf-8');
         movieUpdated = 1;
@@ -1403,6 +1407,8 @@ async function processMultipleMoviesActors(movieIds, emitter = null) {
 
         // Save updated movie JSON (preserve wrapper if it exists)
         if (updated) {
+          // Enrichment can reveal that two cast entries are the same actor
+          movieData.actor = require('./scraperManager').mergeActors([movieData.actor]);
           const dataToSave = hasWrapper ? fileData : movieData;
           fs.writeFileSync(movieFile, JSON.stringify(dataToSave, null, 2), 'utf-8');
           moviesUpdated++;
@@ -1476,6 +1482,26 @@ async function batchProcessActors(emitter = null) {
 }
 
 /**
+ * Set an actor's central-index id and favorite flag (in place), the same way
+ * localMediaMapper.js does on a library load — freshly scraped actors and
+ * scrape-mode JSON don't carry them, so the favorite star would stay unlit
+ * until the movie is reloaded from its NFO.
+ *
+ * @param {object} actor - Actor from a canonical model (modified in place)
+ * @returns {object} - The same actor
+ */
+function applyActorIndexFields(actor) {
+  if (!actor || !actor.name) return actor;
+  const actorDb = require('../../scrapers/actors/actorDb');
+  const dbActor = actorDb.findActorByName(actor.name);
+  if (dbActor) {
+    actor.id = dbActor.id;
+    actor.favorite = dbActor.favorite;
+  }
+  return actor;
+}
+
+/**
  * Scrape actors and enrich an in-memory actor array.
  * Used by edit-mode rescrape where there is no scrape JSON file on disk.
  *
@@ -1541,7 +1567,12 @@ async function enrichActorArray(actors, emitter = null) {
     } catch (err) {
       console.error(`[ActorScraperManager] enrichActorArray failed for ${actor.name}: ${err.message}`);
     }
+    applyActorIndexFields(actor);
   }
+
+  // Enrichment can reveal that two cast entries are the same actor
+  const deduped = require('./scraperManager').mergeActors([actors]);
+  actors.splice(0, actors.length, ...deduped);
 
   return summary;
 }
@@ -1555,5 +1586,6 @@ module.exports = {
   batchProcessActors,
   processSingleMovieActors,
   processMultipleMoviesActors,
-  enrichActorArray
+  enrichActorArray,
+  applyActorIndexFields
 };

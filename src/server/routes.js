@@ -811,7 +811,7 @@ router.post("/save", async (req, res) => {
 // ─────────────────────────────
 router.post("/edit-rescrape", async (req, res) => {
   const { EventEmitter } = require('events');
-  const { executeScraperOrAll, formatTitle } = require('../core/scraperManager');
+  const { executeScraperOrAll, formatTitle, mergeActors } = require('../core/scraperManager');
 
   try {
     const { folderId, scraper } = req.body;
@@ -910,6 +910,9 @@ router.post("/edit-rescrape", async (req, res) => {
             mergedData[field] = value;
           }
         });
+
+        // Actors are summed, never dropped: the movie keeps those the scraper didn't find
+        mergedData.actor = mergeActors([newData.actor, existingModel.actor]);
 
         const { applyGenreRules } = require('../core/genreFilter');
         if (mergedData.genres && editRescrapeCfg.genreRules) {
@@ -1103,6 +1106,19 @@ router.post("/edit-rescrape/save", async (req, res) => {
 // SCRAPE MODE ROUTES
 // ─────────────────────────────
 
+/**
+ * Scrape item as sent to the client, with fileId for session tracking and
+ * each actor's index id/favorite flag (the scrape JSON doesn't store them).
+ * Actors are copied, not modified in the in-memory scrape item.
+ */
+function scrapeItemResponse(item) {
+  const { applyActorIndexFields } = require('../core/actorScraperManager');
+  const actor = Array.isArray(item.data.actor)
+    ? item.data.actor.map(a => applyActorIndexFields({ ...a }))
+    : item.data.actor;
+  return { ...item.data, actor, fileId: item.id };
+}
+
 // GET /scrape/current
 router.get("/scrape/current", (req, res) => {
   try {
@@ -1111,7 +1127,7 @@ router.get("/scrape/current", (req, res) => {
       return res.json(ok(null));
     }
     // Return data with fileId for session tracking
-    const result = { ...item.data, fileId: item.id };
+    const result = scrapeItemResponse(item);
     res.json(ok(result));
   } catch (err) {
     res.json(fail(err.message));
@@ -1126,7 +1142,7 @@ router.get("/scrape/next", (req, res) => {
       return res.json(ok(null));
     }
     // Return data with fileId for session tracking
-    const result = { ...item.data, fileId: item.id };
+    const result = scrapeItemResponse(item);
     res.json(ok(result));
   } catch (err) {
     res.json(fail(err.message));
@@ -1141,7 +1157,7 @@ router.get("/scrape/prev", (req, res) => {
       return res.json(ok(null));
     }
     // Return data with fileId for session tracking
-    const result = { ...item.data, fileId: item.id };
+    const result = scrapeItemResponse(item);
     res.json(ok(result));
   } catch (err) {
     res.json(fail(err.message));
@@ -1177,7 +1193,7 @@ router.get("/scrape/by-id/:id", (req, res) => {
       if (!item) {
         return res.json(ok(null));
       }
-      const result = { ...item.data, fileId: item.id };
+      const result = scrapeItemResponse(item);
       return res.json(ok(result));
     }
 
@@ -1189,7 +1205,7 @@ router.get("/scrape/by-id/:id", (req, res) => {
       return res.json(ok(null));
     }
 
-    const result = { ...item.data, fileId: item.id };
+    const result = scrapeItemResponse(item);
     res.json(ok(result));
   } catch (err) {
     console.error('[/scrape/by-id] Error:', err);
@@ -2085,7 +2101,7 @@ router.post("/actors/search", async (req, res) => {
 // ─────────────────────────────
 router.post("/scrape/rescrape", async (req, res) => {
   const { EventEmitter } = require('events');
-  const { executeScraperOrAll, formatTitle, MULTI_SCRAPER_VALUE } = require('../core/scraperManager');
+  const { executeScraperOrAll, formatTitle, mergeActors, MULTI_SCRAPER_VALUE } = require('../core/scraperManager');
 
   try {
     const { movieId, scraper } = req.body;
@@ -2255,6 +2271,9 @@ router.post("/scrape/rescrape", async (req, res) => {
             mergedData[field] = value;
           }
         });
+
+        // Actors are summed, never dropped: the movie keeps those the scraper didn't find
+        mergedData.actor = mergeActors([newData.actor, existingWrapper.data && existingWrapper.data.actor]);
 
         // Ensure 'id' matches movieId
         mergedData.id = movieId;
