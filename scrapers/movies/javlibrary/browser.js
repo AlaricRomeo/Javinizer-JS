@@ -300,13 +300,29 @@ async function waitForUserConfirmation(message) {
     const onData = (data) => {
       try {
         const response = JSON.parse(data.toString().trim());
-        process.stdin.removeListener('data', onData);
-        process.stdin.pause();
+        cleanup();
         resolve(response.response === true);
       } catch (error) {
         console.error(`[Browser] Error parsing response: ${error.message}`);
+        cleanup();
         resolve(false);
       }
+    };
+
+    // Poll the page: as soon as the usable javlibrary page shows up, go on
+    // without waiting for the click and tell the UI to close the dialog.
+    const poll = setInterval(async () => {
+      if (!sessionPage || await detectBlocker(sessionPage) !== null) return;
+      cleanup();
+      console.error('[Browser] JavLibrary page detected, continuing automatically');
+      console.log('__PROMPT_DONE__');
+      resolve(true);
+    }, 2000);
+
+    const cleanup = () => {
+      clearInterval(poll);
+      process.stdin.removeListener('data', onData);
+      process.stdin.pause();
     };
 
     process.stdin.on('data', onData);

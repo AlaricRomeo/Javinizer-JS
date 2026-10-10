@@ -857,6 +857,11 @@ router.post("/edit-rescrape", async (req, res) => {
       });
     });
     emitter.on('error', data => broadcast('error', data));
+    emitter.on('promptDone', data => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) client.send(JSON.stringify({ event: 'promptDone', data, scrapeId }));
+      });
+    });
     emitter.on('prompt', data => {
       const promptId = Date.now().toString();
       req.wss.clients.forEach(client => {
@@ -1889,6 +1894,11 @@ router.post("/scrape/start", async (req, res) => {
       });
     });
 
+    emitter.on('promptDone', data => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) client.send(JSON.stringify({ event: 'promptDone', data, scrapeId }));
+      });
+    });
     emitter.on('prompt', (data) => {
       // Store callback for this prompt
       const promptId = Date.now().toString();
@@ -2155,6 +2165,11 @@ router.post("/scrape/rescrape", async (req, res) => {
       });
     });
 
+    emitter.on('promptDone', data => {
+      req.wss.clients.forEach(client => {
+        if (client.readyState === 1) client.send(JSON.stringify({ event: 'promptDone', data, scrapeId }));
+      });
+    });
     emitter.on('prompt', (data) => {
       const promptId = Date.now().toString();
       req.wss.clients.forEach(client => {

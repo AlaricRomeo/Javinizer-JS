@@ -207,6 +207,12 @@ function executeScraper(scraperName, codes, emitter = null) {
         }
       }
 
+      // Scraper resolved the prompt on its own: let the UI close the dialog
+      if (stdoutBuffer.includes('__PROMPT_DONE__\n')) {
+        stdoutBuffer = stdoutBuffer.replace(/__PROMPT_DONE__\n/g, '');
+        if (emitter) emitter.emit('promptDone', { scraperName });
+      }
+
       // Accumulate non-prompt content for final JSON parsing
       // (stdoutBuffer now only contains non-prompt data after the while loop)
       stdout = stdoutBuffer;

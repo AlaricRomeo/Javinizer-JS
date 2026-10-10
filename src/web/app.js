@@ -2784,6 +2784,10 @@ async function handleScrapingEvent(progressDiv, modal, eventType, data) {
       // Note: Close button will be shown by subsequent 'complete' event
       break;
 
+    case 'promptDone':
+      if (dismissActivePrompt) dismissActivePrompt();
+      break;
+
     case 'prompt': {
       const translatedMessage = window.i18n && window.i18n.t(`messages.${data.message}`) !== `messages.${data.message}`
         ? window.i18n.t(`messages.${data.message}`)
@@ -2796,7 +2800,15 @@ async function handleScrapingEvent(progressDiv, modal, eventType, data) {
       const continueBtn = window.i18n ? window.i18n.t('buttons.continue') : 'Continue';
       const promptCancelBtn = window.i18n ? window.i18n.t('buttons.cancel') : 'Cancel';
 
-      const userResponse = await showConfirmDialog(dialogTitle, translatedMessage, continueBtn, promptCancelBtn);
+      const userResponse = await showConfirmDialog(dialogTitle, translatedMessage, continueBtn, promptCancelBtn, false,
+        dismiss => { dismissActivePrompt = dismiss; });
+      dismissActivePrompt = null;
+
+      // Dismissed by the scraper itself (promptDone): it's no longer waiting for an answer
+      if (userResponse === null) {
+        appendProgress(progressDiv, window.i18n ? window.i18n.t('messages.promptAutoContinue') : '✅ Continuing automatically...', 'success');
+        break;
+      }
 
       if (scrapingWebSocket && scrapingWebSocket.readyState === WebSocket.OPEN) {
         scrapingWebSocket.send(JSON.stringify({
@@ -2816,6 +2828,9 @@ async function handleScrapingEvent(progressDiv, modal, eventType, data) {
   }
 }
 
+// Closes the open scraper prompt dialog (set while a 'prompt' dialog is shown)
+let dismissActivePrompt = null;
+
 /**
  * Show a confirm dialog (interactive prompt)
  * @param {string} title - Dialog title
@@ -2823,9 +2838,10 @@ async function handleScrapingEvent(progressDiv, modal, eventType, data) {
  * @param {string} confirmText - Confirm button text (default: 'OK')
  * @param {string} cancelText - Cancel button text (default: 'Cancel')
  * @param {boolean} destructiveCancel - If true, makes cancel button red (for destructive actions)
- * @returns {Promise<boolean>} - True if confirmed, false if canceled
+ * @param {Function} onOpen - Optional, receives a function that closes the dialog resolving null
+ * @returns {Promise<boolean|null>} - True if confirmed, false if canceled, null if dismissed via onOpen
  */
-function showConfirmDialog(title, message, confirmText = 'OK', cancelText = 'Cancel', destructiveCancel = false) {
+function showConfirmDialog(title, message, confirmText = 'OK', cancelText = 'Cancel', destructiveCancel = false, onOpen = null) {
   return new Promise((resolve) => {
     // Create modal overlay
     const overlay = document.createElement('div');
@@ -2928,6 +2944,13 @@ function showConfirmDialog(title, message, confirmText = 'OK', cancelText = 'Can
 
     // Show dialog
     document.body.appendChild(overlay);
+
+    if (onOpen) {
+      onOpen(() => {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        resolve(null);
+      });
+    }
   });
 }
 
