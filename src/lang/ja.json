@@ -96,6 +96,7 @@
     "actorNamePlaceholder": "女優名を入力",
     "altName": "別名",
     "altNamePlaceholder": "例: Noa, 旧芸名",
+    "birthdatePlaceholder": "YYYY-MM-DD または YYYY",
     "role": "女優",
     "defaultOrder": "デフォルト順"
   },

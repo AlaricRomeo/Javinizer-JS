@@ -289,7 +289,8 @@ function _getFormData() {
     role: (document.getElementById('actorEditRole')?.value || '').trim(),
     thumb: thumbField?.value.trim() || '',
     uploadedFile: thumbField?.dataset.uploadedFile || null,
-    birthdate: document.getElementById('actorEditBirthdate')?.value || '',
+    // YYYY-MM-DD, or YYYY when only the year is known (javguru)
+    birthdate: (v => /^\d{4}(-\d{2}-\d{2})?$/.test(v) ? v : '')((document.getElementById('actorEditBirthdate')?.value || '').trim()),
     height: parseInt(document.getElementById('actorEditHeight')?.value) || 0,
     bust: parseInt(document.getElementById('actorEditBust')?.value) || 0,
     waist: parseInt(document.getElementById('actorEditWaist')?.value) || 0,
@@ -444,7 +445,10 @@ async function searchActor() {
         [foundNameAsAlt, result.actor.altName, ...(result.actor.otherNames || [])].flatMap(v => (v || '').split(',')).map(v => v.trim())
       ).join(', ');
       if (combinedAltName) _setField('actorEditAltName', combinedAltName);
-      fill('actorEditBirthdate', result.actor.birthdate);
+      // A year-only birthdate (javguru) is upgraded by any full date found.
+      const curBirthdate = document.getElementById('actorEditBirthdate')?.value || '';
+      if (/^\d{4}$/.test(curBirthdate) && /^\d{4}-\d{2}-\d{2}$/.test(result.actor.birthdate || '')) _setField('actorEditBirthdate', result.actor.birthdate);
+      else fill('actorEditBirthdate', result.actor.birthdate);
       if (shouldOverwrite(document.getElementById('actorEditHeight')?.value, result.actor.height) && result.actor.height > 0) _setField('actorEditHeight', result.actor.height);
       if (shouldOverwrite(document.getElementById('actorEditBust')?.value, result.actor.bust) && result.actor.bust > 0) _setField('actorEditBust', result.actor.bust);
       if (shouldOverwrite(document.getElementById('actorEditWaist')?.value, result.actor.waist) && result.actor.waist > 0) _setField('actorEditWaist', result.actor.waist);

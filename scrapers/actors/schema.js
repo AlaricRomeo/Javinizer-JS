@@ -137,6 +137,18 @@ function dedupeAltNames(name, altNames) {
 }
 
 /**
+ * True for a year-only birthdate ("1998"), as stored by scrapers that only
+ * publish the age (javguru). A full YYYY-MM-DD from any other source always
+ * replaces it, regardless of scraper priority.
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+function isPartialBirthdate(value) {
+  return /^\d{4}$/.test((value || '').trim());
+}
+
+/**
  * Normalize actor name to slug ID format
  * - Converts to lowercase
  * - Removes special characters
@@ -203,7 +215,7 @@ function createEmptyActor(name) {
     // ─────────────────────────────
     // Physical attributes
     // ─────────────────────────────
-    birthdate: '',             // Format: YYYY-MM-DD
+    birthdate: '',             // Format: YYYY-MM-DD (or YYYY when only the year is known)
     height: 0,                 // Height in cm (number)
     bust: 0,                   // Bust in cm (number)
     waist: 0,                  // Waist in cm (number)
@@ -534,6 +546,7 @@ module.exports = {
   toTitleCase,
   dedupeAltNames,
   isPlaceholderActorName,
+  isPartialBirthdate,
   splitParenAliases,
   isPlaceholderPhotoUrl,
   isPlaceholderPhotoFile,

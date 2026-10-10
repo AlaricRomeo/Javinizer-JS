@@ -24,7 +24,9 @@ scrapers/actors/
 │   └── run.js
 ├── javdb/                 # javdatabase.com (Puppeteer)
 │   └── run.js
-└── xcity/                 # xxx.xcity.jp (fetch + cheerio)
+├── xcity/                 # xxx.xcity.jp (fetch + cheerio)
+│   └── run.js
+└── javguru/               # jav.guru (fetch + cheerio)
     └── run.js
 
 data/actors/
@@ -105,6 +107,16 @@ Scrape da xxx.xcity.jp (JAV Idol Listing)
 - Estrae: nome, data di nascita, altezza, misure (B/W/H), foto
 - Non fornisce `altName` (nessun nome giapponese in pagina)
 
+### Jav Guru Scraper
+Scrape da jav.guru (molte attrici assenti dagli altri scraper)
+- Path: `scrapers/actors/javguru/run.js`
+- Profilo: `https://jav.guru/actress/{slug}/` (slug dal nome, nessuna ricerca)
+- Usa `fetch` + `cheerio` (nessun browser/FlareSolverr richiesto)
+- Estrae: nome, alias (giapponese → `altName`, altri → `otherNames`), altezza, foto
+- Nessuna data di nascita, solo l'età: salva l'anno stimato (`YYYY`, ±1).
+  Una data completa da qualsiasi altro scraper ha sempre la precedenza
+- Le foto si scaricano da jav.guru, non dal CDN (protetto da Cloudflare)
+
 ## Configurazione (config.json)
 
 ```json
@@ -113,7 +125,7 @@ Scrape da xxx.xcity.jp (JAV Idol Listing)
     "actors": {
       "enabled": true,
       "externalPath": null,
-      "scrapers": ["local", "javdb", "xcity"]
+      "scrapers": ["local", "javdb", "xcity", "javguru"]
     }
   }
 }

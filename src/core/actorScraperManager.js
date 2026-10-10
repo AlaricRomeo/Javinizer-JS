@@ -13,7 +13,7 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { normalizeActorName, actorToNFO, nfoToActor } = require('../../scrapers/actors/schema');
+const { normalizeActorName, actorToNFO, nfoToActor, isPartialBirthdate } = require('../../scrapers/actors/schema');
 const { getActorsCachePath, findLocalPhoto } = require('../../scrapers/actors/cache-helper');
 const actorDb = require('../../scrapers/actors/actorDb');
 const { loadConfig, getScrapePath } = require('./config');
@@ -215,6 +215,8 @@ function isActorComplete(actor) {
 
     if (field === 'thumb') {
       isEmpty = !hasRealPhoto(actor);
+    } else if (field === 'birthdate') {
+      isEmpty = !value || isPartialBirthdate(value);
     } else if (typeof value === 'string') {
       isEmpty = value === '';
     } else if (typeof value === 'number') {
@@ -302,6 +304,20 @@ function mergeActorData(actorName, scraperResults, scraperPriority) {
       });
       if (allNames.size > 0) {
         merged.otherNames = Array.from(allNames);
+      }
+      return;
+    }
+
+    // Birthdate: a full date from any scraper beats a year-only one
+    // (javguru), whatever the priority order.
+    if (fieldName === 'birthdate') {
+      const ordered = scraperPriority
+        .map(name => scraperResults.find(r => r.scraperName === name && r.data && r.data.birthdate))
+        .filter(Boolean);
+      const best = ordered.find(r => !isPartialBirthdate(r.data.birthdate)) || ordered[0];
+      if (best) {
+        merged.birthdate = best.data.birthdate;
+        if (!sources.includes(best.scraperName)) sources.push(best.scraperName);
       }
       return;
     }
@@ -517,11 +533,14 @@ async function fillMissingFromOnline(actor, emitter = null) {
   const variants = extractNameVariants([{ scraperName: 'local', data: actor }]);
   const FILLABLE = ['birthdate', 'height', 'bust', 'waist', 'hips'];
   const isEmpty = v => v === undefined || v === null || v === '' || (typeof v === 'number' && v <= 0);
+  // A year-only birthdate still wants a full date, but only a full one may replace it.
+  const needsFill = (f, v) => isEmpty(v) || (f === 'birthdate' && isPartialBirthdate(v));
+  const canFill = (f, current, incoming) => !isEmpty(incoming) && (isEmpty(current) || !needsFill(f, incoming));
 
   if (emitter) emitter.emit('progress', { message: `[Actor Scrape] New names for ${actor.name}, searching online for missing fields` });
 
   for (const scraperName of scrapers) {
-    if (!FILLABLE.some(f => isEmpty(actor[f]))) break;
+    if (!FILLABLE.some(f => needsFill(f, actor[f]))) break;
 
     const result = await executeActorScraper(scraperName, actor.name, variants);
     if (!result) continue;

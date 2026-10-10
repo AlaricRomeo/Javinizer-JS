@@ -97,6 +97,7 @@
     "actorNamePlaceholder": "Enter actor name",
     "altName": "Alternate name",
     "altNamePlaceholder": "e.g. Noa, Former Stage Name",
+    "birthdatePlaceholder": "YYYY-MM-DD or YYYY",
     "role": "Actress",
     "defaultOrder": "Default order"
   },

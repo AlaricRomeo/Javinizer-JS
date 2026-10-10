@@ -18,7 +18,8 @@
       "scrapers": [
         "local",
         "javdb",
-        "xcity"
+        "xcity",
+        "javguru"
       ],
       "externalPath": "",
       "copyToMovieFolder": false

@@ -20,7 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
-const { toTitleCase, dedupeAltNames, splitParenAliases, isPlaceholderPhotoUrl, isPlaceholderPhotoFile } = require('./schema');
+const { toTitleCase, dedupeAltNames, splitParenAliases, isPlaceholderPhotoUrl, isPlaceholderPhotoFile, isPartialBirthdate } = require('./schema');
 
 const DB_PATH = path.join(__dirname, '../../data/actors-index.db');
 const CACHE_DIR = path.join(__dirname, '../../data/actors');
@@ -392,7 +392,11 @@ function upsertActor(actor, options = {}) {
 
   const row = {
     id: actor.id,
-    birthdate: pick(actor.birthdate, existing && existing.birthdate, ''),
+    // A scraper's year-only birthdate never downgrades a stored full date
+    // (a manual edit from the actor form still can).
+    birthdate: (!options.replaceNames && isPartialBirthdate(actor.birthdate) && existing && existing.birthdate && !isPartialBirthdate(existing.birthdate))
+      ? existing.birthdate
+      : pick(actor.birthdate, existing && existing.birthdate, ''),
     height: pick(actor.height, existing && existing.height, 0),
     bust: pick(actor.bust, existing && existing.bust, 0),
     waist: pick(actor.waist, existing && existing.waist, 0),
@@ -786,7 +790,8 @@ function mergeActors(winnerId, loserId, fieldOverrides = {}) {
       if (fieldOverrides[f] !== undefined) {
         merged[f] = fieldOverrides[f];
       } else {
-        const winnerEmpty = winner[f] === '' || winner[f] === 0 || winner[f] === null;
+        const winnerEmpty = winner[f] === '' || winner[f] === 0 || winner[f] === null ||
+          (f === 'birthdate' && isPartialBirthdate(winner[f]) && loser[f] && !isPartialBirthdate(loser[f]));
         merged[f] = (winnerEmpty && loser[f]) ? loser[f] : winner[f];
       }
     });

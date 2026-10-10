@@ -97,6 +97,7 @@
     "actorNamePlaceholder": "Inserisci il nome dell'attore",
     "altName": "Nome alternativo",
     "altNamePlaceholder": "es. Noa, Vecchio Nome d'Arte",
+    "birthdatePlaceholder": "AAAA-MM-GG o AAAA",
     "role": "Actress",
     "defaultOrder": "Ordine predefinito"
   },
