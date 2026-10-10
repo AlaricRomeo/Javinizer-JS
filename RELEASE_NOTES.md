@@ -1,5 +1,25 @@
 # Release Notes
 
+## v2.6.0 (2026-10-10)
+
+### 🎭 New actor scraper: Jav Guru
+
+- New `javguru` actor scraper for [jav.guru](https://jav.guru), which knows many actresses the other scrapers can't find: name, aliases (Japanese name included), height and photo
+- jav.guru only publishes the age, so the birth year alone is stored (e.g. `2003`, may be off by one); a full birthdate from any other scraper always replaces it, whatever the scraper order
+- New installs have it enabled, last in the actor scrapers list. Existing installs: add `javguru` to the actor scrapers in the Config page (e.g. `local, javdb, xcity, javguru`)
+- The birthdate field in the actor editor now accepts either `YYYY-MM-DD` or just the year `YYYY`
+
+### 🎬 Actors summed across scrapers
+
+- When several video scrapers are used, the cast is now the union of all of them instead of only the primary scraper's: one site often lists actresses another one misses. Entries that are the same actress under different spellings or alt names are merged into one
+- Re-scraping a movie (scrape or edit mode) keeps the actors already in the movie that the new scrape didn't find
+- The favorite star of an actor is lit right after scraping, without reloading the movie
+
+### ⚡ Improvements
+
+- JavLibrary: after solving the Cloudflare challenge in the browser window, scraping continues by itself as soon as the JavLibrary page is visible, no need to click Continue
+- Actors page: actors are rendered in batches while scrolling, so "All" mode no longer freezes the page with large libraries
+
 ## v2.5.2 (2026-10-04)
 
 ### 🎞️ Movie ID anywhere in the filename
