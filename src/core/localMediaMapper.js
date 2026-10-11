@@ -107,6 +107,15 @@ function enrichModelWithLocalMedia(model, item, actorCache) {
         // (localThumb below, this movie's own copied-in photo, still wins
         // over both as the more specific override).
         if (dbActor.thumb) actor.thumb = dbActor.thumb;
+
+        // The movie NFO only carries name/altname/role/thumb — fill the
+        // rest of the actor card from the central record so the edit modal
+        // shows the same data as the actors page.
+        if (!actor.altName && dbActor.altName) actor.altName = dbActor.altName;
+        for (const k of ['birthdate', 'height', 'bust', 'waist', 'hips']) {
+          if (!actor[k] && dbActor[k]) actor[k] = dbActor[k];
+        }
+        if (!actor.meta && dbActor.meta) actor.meta = dbActor.meta;
       }
 
       if (actorFiles.length > 0) {
