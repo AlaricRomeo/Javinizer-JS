@@ -110,7 +110,7 @@ async function searchCode(code) {
     if (!browser) await initBrowser();
 
     // Navigate to r18.dev homepage
-    await page.goto('https://r18.dev/', { waitUntil: 'networkidle0', timeout: 7500 });
+    await page.goto('https://r18.dev/', { waitUntil: 'networkidle2', timeout: 15000 });
 
     // Type code into search box
     await page.waitForSelector('#lookup', { timeout: 5000 });
@@ -121,7 +121,7 @@ async function searchCode(code) {
 
     // Click search and wait for navigation
     const [response] = await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 7500 }),
+      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }),
       page.click('input[type="submit"]')
     ]);
 
@@ -159,7 +159,7 @@ async function fetchJson(contentId) {
     if (!browser) await initBrowser();
 
     // Navigate to JSON URL
-    await page.goto(jsonUrl, { waitUntil: 'networkidle0', timeout: 7500 });
+    await page.goto(jsonUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
     // Extract JSON from page body
     const jsonText = await page.evaluate(() => document.body.textContent);

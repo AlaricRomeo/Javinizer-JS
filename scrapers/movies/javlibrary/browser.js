@@ -400,13 +400,13 @@ async function fetchPage(url) {
 
   try {
     console.error(`[JavLibrary Scrape] Fetching ${url}...`);
-    await sessionPage.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+    await sessionPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     // Cloudflare can come back mid-session: let the user solve it, then retry once.
     if (await detectBlocker(sessionPage) === 'cloudflare') {
       console.error('[JavLibrary Scrape] Cloudflare challenge detected, waiting for user...');
       await askUserToUnblock();
-      await sessionPage.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+      await sessionPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     }
 
     const html = await sessionPage.content();
