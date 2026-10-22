@@ -1,5 +1,12 @@
 # Release Notes
 
+## v2.6.1 (2026-10-23)
+
+### 🐛 Fixes
+
+- JavLibrary and R18.dev scrapers returned no data: both sites now keep a network connection open, so every page load timed out even after Cloudflare was passed. Pages are now read as soon as they are usable
+- Movie actor modal: shows the full actor data from the central actor database
+
 ## v2.6.0 (2026-10-10)
 
 ### 🎭 New actor scraper: Jav Guru
