@@ -3,7 +3,7 @@
  */
 
 const { initSession, fetchPage, releaseBrowser } = require('./browser');
-const { parseHTML } = require('./parse');
+const { parseHTML, japanesePageUrl } = require('./parse');
 
 let sessionInitialized = false;
 
@@ -48,6 +48,16 @@ async function scrapeSingle(code) {
       if (result.needsRedirect) {
         console.error('[JavLibrary Scrape] Redirect loop detected, aborting');
         return { code };
+      }
+    }
+
+    // Actors' Japanese names come from the Japanese version of the page
+    const jaUrl = result.actor ? japanesePageUrl(html) : null;
+    if (jaUrl) {
+      try {
+        result = parseHTML(html, code, await fetchPage(jaUrl));
+      } catch (error) {
+        console.error(`[JavLibrary Scrape] Japanese names skipped: ${error.message}`);
       }
     }
 

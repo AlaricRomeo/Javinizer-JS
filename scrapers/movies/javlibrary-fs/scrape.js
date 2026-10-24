@@ -4,7 +4,7 @@
  */
 
 const { fetchWithFlareSolverr, destroySession } = require('./flaresolverr');
-const { parseHTML } = require('./parse');
+const { parseHTML, japanesePageUrl } = require('./parse');
 
 /**
  * Build javlibrary URL from code
@@ -47,6 +47,16 @@ async function scrapeSingle(code) {
       if (result.needsRedirect) {
         console.error('[JavLibrary-FS Scrape] Redirect loop detected, aborting');
         return { code };
+      }
+    }
+
+    // Actors' Japanese names come from the Japanese version of the page
+    const jaUrl = result.actor ? japanesePageUrl(html) : null;
+    if (jaUrl) {
+      try {
+        result = parseHTML(html, code, await fetchWithFlareSolverr(jaUrl));
+      } catch (error) {
+        console.error(`[JavLibrary-FS Scrape] Japanese names skipped: ${error.message}`);
       }
     }
 

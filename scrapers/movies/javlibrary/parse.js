@@ -43,12 +43,50 @@ function extractFirstResultUrl(html) {
 }
 
 /**
+ * Cast of a detail page, in any language.
+ * Alternate stage names are sibling spans in the shared .cast container,
+ * e.g. <span class="cast"><span class="star"><a href="vl_star.php?s=ID">A</a></span> <span id="alias...">(B)</span></span>
+ * @param {string} html - Detail page HTML
+ * @returns {{starId: string, name: string, aliases: string[]}[]}
+ */
+function parseCast(html) {
+  const $ = cheerio.load(html);
+  const cast = [];
+  $('.star a[href*="vl_star.php"]').each((i, el) => {
+    const name = $(el).text().trim();
+    if (!name) return;
+    const starId = ($(el).attr('href').match(/[?&]s=([^&]+)/) || [])[1] || '';
+    const aliases = [];
+    $(el).closest('.cast').find('span[id^="alias"]').each((_, aliasEl) => {
+      const alias = $(aliasEl).text().trim().replace(/^\(|\)$/g, '').trim();
+      if (alias) aliases.push(alias);
+    });
+    cast.push({ starId, name, aliases });
+  });
+  return cast;
+}
+
+/**
+ * URL of the Japanese version of a detail page, from its canonical link
+ * (e.g. //www.javlibrary.com/en/javment3rm.html -> https://www.javlibrary.com/ja/javment3rm.html)
+ * @param {string} html - Detail page HTML
+ * @returns {string|null}
+ */
+function japanesePageUrl(html) {
+  const $ = cheerio.load(html);
+  const canonical = $('link[rel="canonical"]').attr('href') || '';
+  if (!/\/[a-z]{2}\/[^/]+\.html$/.test(canonical)) return null;
+  return canonical.replace(/^\/\//, 'https://').replace(/\/[a-z]{2}\/([^/]+)$/, '/ja/$1');
+}
+
+/**
  * Parse javlibrary HTML page
  * @param {string} html - HTML content
  * @param {string} code - Movie code
+ * @param {string} [jaHtml] - Japanese version of the same page, for the actors' Japanese names
  * @returns {object} Standard format movie object or { needsRedirect: url } if on search results
  */
-function parseHTML(html, code) {
+function parseHTML(html, code, jaHtml) {
   const $ = cheerio.load(html);
 
   // Check if we're on a search results page instead of a detail page
@@ -115,27 +153,15 @@ function parseHTML(html, code) {
     });
     if (genres.length > 0) movie.genres = genres;
 
-    // Actors - convert to standard format with actor objects
-    const actors = [];
-    $('.star a[href*="vl_star.php"]').each((i, el) => {
-      const name = $(el).text().trim();
-      if (name) {
-        // Alternate stage names are sibling spans in the shared .cast container,
-        // e.g. <span class="cast"><span class="star"><a>A</a></span> <span id="alias...">(B)</span></span>
-        const aliases = [];
-        $(el).closest('.cast').find('span[id^="alias"]').each((_, aliasEl) => {
-          const alias = $(aliasEl).text().trim().replace(/^\(|\)$/g, '').trim();
-          if (alias) aliases.push(alias);
-        });
-
-        actors.push({
-          name: name,
-          altName: aliases.join(', '),
-          role: 'Actress',
-          thumb: ''
-        });
-      }
-    });
+    // Actors - convert to standard format with actor objects.
+    // The Japanese page (same star ids) adds the kanji/kana names as aliases.
+    const japaneseNames = new Map(jaHtml ? parseCast(jaHtml).map(c => [c.starId, [c.name, ...c.aliases]]) : []);
+    const actors = parseCast(html).map(({ starId, name, aliases }) => ({
+      name,
+      altName: [...new Set([...aliases, ...(japaneseNames.get(starId) || [])])].join(', '),
+      role: 'Actress',
+      thumb: ''
+    }));
     if (actors.length > 0) movie.actor = actors;
 
     // Cover/Thumbnail
@@ -165,5 +191,6 @@ function parseHTML(html, code) {
 }
 
 module.exports = {
-  parseHTML
+  parseHTML,
+  japanesePageUrl
 };
