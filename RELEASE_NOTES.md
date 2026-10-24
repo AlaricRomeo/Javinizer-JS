@@ -1,5 +1,15 @@
 # Release Notes
 
+## v2.6.2 (2026-10-24)
+
+### ⚡ Improvements
+
+- JavLibrary / JavLibrary-FS: each actor now also gets the Japanese name (and Japanese aliases) as alt names, read from the Japanese version of the movie page. This helps match the same actress across scrapers and sites. Each movie now loads two JavLibrary pages instead of one
+
+### 🐛 Fixes
+
+- R18.dev: no more empty results when the site is slow (longer timeouts, one retry); movies not on R18.dev are skipped right away instead of waiting for a timeout
+
 ## v2.6.1 (2026-10-23)
 
 ### 🐛 Fixes
