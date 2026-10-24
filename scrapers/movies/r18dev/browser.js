@@ -10,6 +10,7 @@ let browser = null;
 let page = null;
 let _s = 0; // Session usage counter
 const _m = 80; // Max operations per session
+const NAV_TIMEOUT = 45000; // r18.dev can take 10+ s to answer
 
 /**
  * Make HTTPS request with browser headers
@@ -94,7 +95,7 @@ async function initBrowser() {
 /**
  * Search for a code and get the content ID using browser
  * @param {string} code - DVD code (e.g., "SDDM-943")
- * @returns {Promise<string>} Content ID (e.g., "jur618")
+ * @returns {Promise<string|null>} Content ID (e.g., "jur618"), null if not on r18.dev
  */
 async function searchCode(code) {
   console.error(`[R18Dev] Searching for: ${code}`);
@@ -110,7 +111,7 @@ async function searchCode(code) {
     if (!browser) await initBrowser();
 
     // Navigate to r18.dev homepage
-    await page.goto('https://r18.dev/', { waitUntil: 'networkidle2', timeout: 15000 });
+    await page.goto('https://r18.dev/', { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT });
 
     // Type code into search box
     await page.waitForSelector('#lookup', { timeout: 5000 });
@@ -119,11 +120,23 @@ async function searchCode(code) {
 
     console.error('[R18Dev] Submitting search via browser...');
 
-    // Click search and wait for navigation
-    const [response] = await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }),
-      page.click('input[type="submit"]')
-    ]);
+    // Click search: a hit navigates to the detail page, a miss shows
+    // "Video not found." on the same page (no navigation to wait for)
+    const navigation = page.waitForNavigation({ waitUntil: 'networkidle2', timeout: NAV_TIMEOUT });
+    const notFound = page.waitForFunction(
+      () => document.body.innerText.includes('Video not found'),
+      { timeout: NAV_TIMEOUT }
+    ).then(() => 'notFound');
+    await page.click('input[type="submit"]');
+    const outcome = await Promise.race([navigation, notFound]);
+    navigation.catch(() => {});
+    notFound.catch(() => {});
+
+    if (outcome === 'notFound') {
+      console.error(`[R18Dev] Video not found: ${code}`);
+      _s++;
+      return null;
+    }
 
     // Check if we got redirected to a detail page
     const url = page.url();
@@ -158,8 +171,13 @@ async function fetchJson(contentId) {
   try {
     if (!browser) await initBrowser();
 
-    // Navigate to JSON URL
-    await page.goto(jsonUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    // Navigate to JSON URL (the site is slow at times: one retry)
+    try {
+      await page.goto(jsonUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+    } catch (error) {
+      console.error(`[R18Dev] JSON load failed (${error.message}), retrying...`);
+      await page.goto(jsonUrl, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+    }
 
     // Extract JSON from page body
     const jsonText = await page.evaluate(() => document.body.textContent);

@@ -212,6 +212,7 @@ async function scrapeSingle(code) {
 
   // Search for the code to get content ID
   const contentId = await searchCode(code);
+  if (!contentId) return { code };
 
   // Fetch the JSON data
   const data = await fetchJson(contentId);
