@@ -5,10 +5,14 @@
 ### ⚡ Improvements
 
 - JavLibrary / JavLibrary-FS: each actor now also gets the Japanese name (and Japanese aliases) as alt names, read from the Japanese version of the movie page. This helps match the same actress across scrapers and sites. Each movie now loads two JavLibrary pages instead of one
+- Actors from several scrapers are merged more reliably: the same actress under different spellings (e.g. `Ohara Tomomi` / `Yumi Ohara` / `大原友美`, `Kudou Rara` / `Lala Kudo`) is recognised through the central actor database and common romanization variants
+- Actor scrapers are no longer asked again and again for the same missing fields (birthdate, measurements...): each scraper is retried for an actor only after a set number of days, 30 by default, set in the Config page ("Missing-field retry"). Editing an actor by hand resets it
 
 ### 🐛 Fixes
 
 - R18.dev: no more empty results when the site is slow (longer timeouts, one retry); movies not on R18.dev are skipped right away instead of waiting for a timeout
+- Re-scraping a movie no longer piles up duplicate actors: the new cast replaces the old one, and an old actor is kept only if the actor database knows it
+- xslist: "Age N" is no longer saved as an actor name or alias (it made unrelated actresses of the same age look like the same person); existing ones are cleaned up automatically
 
 ## v2.6.1 (2026-10-23)
 
