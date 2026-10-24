@@ -522,14 +522,33 @@ function knownNamesLower(actor) {
 }
 
 /**
+ * Online actor scrapers allowed to be asked again for an actor's missing
+ * fields: those never asked, or asked more than missingFieldsRetryDays ago
+ * (default 30). Each scraper has its own date, so a newly enabled one is
+ * tried right away.
+ *
+ * @param {string} actorId
+ * @returns {string[]}
+ */
+function missingFieldScrapersDue(actorId) {
+  const config = loadConfig();
+  const scrapers = (config.scrapers?.actors?.scrapers || ['javdb']).filter(s => s !== 'local');
+  const days = Number(config.scrapers?.actors?.missingFieldsRetryDays ?? 30);
+  if (!actorId || !(days > 0)) return scrapers;
+
+  const checks = actorDb.getMissingChecks(actorId);
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  return scrapers.filter(name => !checks[name] || Date.parse(checks[name]) < cutoff);
+}
+
+/**
  * Fill only the still-empty physical fields of an already-local actor from
  * online scrapers, trying every known name. Never overwrites existing data
  * or the photo; a result is ignored unless it shares at least one name
  * with the actor (guards against a homonym match). Saves the actor.
  */
 async function fillMissingFromOnline(actor, emitter = null) {
-  const config = loadConfig();
-  const scrapers = (config.scrapers?.actors?.scrapers || ['javdb']).filter(s => s !== 'local');
+  const scrapers = missingFieldScrapersDue(actor.id);
   const variants = extractNameVariants([{ scraperName: 'local', data: actor }]);
   const FILLABLE = ['birthdate', 'height', 'bust', 'waist', 'hips'];
   const isEmpty = v => v === undefined || v === null || v === '' || (typeof v === 'number' && v <= 0);
@@ -543,6 +562,7 @@ async function fillMissingFromOnline(actor, emitter = null) {
     if (!FILLABLE.some(f => needsFill(f, actor[f]))) break;
 
     const result = await executeActorScraper(scraperName, actor.name, variants);
+    if (actor.id) actorDb.markMissingChecked(actor.id, scraperName);
     if (!result) continue;
 
     const known = knownNamesLower(actor);
@@ -565,14 +585,15 @@ async function fillMissingFromOnline(actor, emitter = null) {
  * An actor already known locally (with photo) was just seen again, e.g. in
  * a movie's cast: record the name the movie uses plus any alias hints.
  * If that brought in names never tried before and the actor still has
- * empty fields, search online with all names to fill them.
+ * empty fields, search online with all names to fill them (only the
+ * scrapers whose retry period has passed).
  */
 async function syncLocalActor(actor, actorName, hints, emitter = null) {
   const before = knownNamesLower(actor);
   const changed = foldNameVariants(actor, [actorName, ...hints]);
   const addedNames = [...knownNamesLower(actor)].some(n => !before.has(n));
 
-  if (addedNames && !isActorComplete(actor)) {
+  if (addedNames && !isActorComplete(actor) && missingFieldScrapersDue(actor.id).length > 0) {
     await fillMissingFromOnline(actor, emitter);
   } else if (changed) {
     saveActorLocal(actor);

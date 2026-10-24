@@ -263,6 +263,8 @@
     "enableActorScraping": "女優スクレイプを有効化",
     "actorScrapingHelp": "有効にすると、映画保存時に女優データがスクレイプされキャッシュされます。",
     "externalActorsPath": "お気に入り女優のコピー先（オプション）",
+    "missingFieldsRetryDays": "欠落フィールドの再試行間隔（日）",
+    "missingFieldsRetryDaysHelp": "同じ女優スクレイパーに欠落フィールドを再度問い合わせるまでの日数（スクレイパーごとに日付を記録）。0 = 常に再試行。ローカルデータ上書き時は無視されます。",
     "externalActorsPathPlaceholder": "/mnt/storage/actors",
     "externalActorsPathHelp": "女優データは常に**./data/actors**に保存されます。設定すると、お気に入りに登録された女優のみ（NFO＋写真）がこのパスにも追加でコピーされます — 編集時は更新、お気に入り解除時は削除されます。他のメディアサーバー（例：Jellyfin、Plex）や他のJavinizer-JSインスタンスとお気に入りの女優を共有するのに便利です。",
     "actorScraperNames": "女優スクレイパー名（カンマ区切り）",

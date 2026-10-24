@@ -22,7 +22,8 @@
         "javguru"
       ],
       "externalPath": "",
-      "copyToMovieFolder": false
+      "copyToMovieFolder": false,
+      "missingFieldsRetryDays": 30
     }
   },
 

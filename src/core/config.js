@@ -45,7 +45,8 @@ function loadConfig() {
           enabled: true,
           scrapers: ["local", "javdb", "xcity", "xslist-fs", "javguru"],
           externalPath: "",
-          copyToMovieFolder: false
+          copyToMovieFolder: false,
+          missingFieldsRetryDays: 30
         }
       },
       genreRules: "",

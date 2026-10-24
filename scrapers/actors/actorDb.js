@@ -20,7 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const { DatabaseSync } = require('node:sqlite');
-const { toTitleCase, dedupeAltNames, splitParenAliases, isPlaceholderPhotoUrl, isPlaceholderPhotoFile, isPartialBirthdate } = require('./schema');
+const { toTitleCase, dedupeAltNames, splitParenAliases, stripAgeSuffix, isPlaceholderPhotoUrl, isPlaceholderPhotoFile, isPartialBirthdate } = require('./schema');
 
 const DB_PATH = path.join(__dirname, '../../data/actors-index.db');
 const CACHE_DIR = path.join(__dirname, '../../data/actors');
@@ -176,6 +176,9 @@ function getDb() {
   if (!actorsCols.includes('favorite')) {
     _db.exec('ALTER TABLE actors ADD COLUMN favorite INTEGER DEFAULT 0');
   }
+  if (!actorsCols.includes('missing_checked')) {
+    _db.exec("ALTER TABLE actors ADD COLUMN missing_checked TEXT DEFAULT '{}'");
+  }
 
   // The 'other' name kind was folded into 'alt' (no more primary/alt/other
   // split, just primary/alt) — self-heal any row still on the old kind.
@@ -206,7 +209,40 @@ function getDb() {
     _db.exec('PRAGMA user_version = 1');
   }
 
+  // One-time cleanup (user_version 2): xslist "Age N" suffixes saved as
+  // names made unrelated actors of the same age look like aliases.
+  if (_db.prepare('PRAGMA user_version').get().user_version < 2) {
+    cleanAgeNames(_db);
+    _db.exec('PRAGMA user_version = 2');
+  }
+
   return _db;
+}
+
+/**
+ * Remove "Age N" names and strip "/Age N" suffixes from every actor's names
+ * (see stripAgeSuffix()). A primary name that would become empty is kept.
+ */
+function cleanAgeNames(db) {
+  const rows = db.prepare("SELECT id, actor_id, name, kind FROM actor_names WHERE name_lower LIKE '%age%'").all();
+  let cleaned = 0;
+
+  for (const row of rows) {
+    const stripped = stripAgeSuffix(row.name);
+    if (stripped === row.name.trim() || (row.kind === 'primary' && !stripped)) continue;
+
+    if (row.kind === 'primary') {
+      const displayName = toTitleCase(stripped);
+      db.prepare('UPDATE OR IGNORE actor_names SET name = ?, name_lower = ?, name_inverted_lower = ? WHERE id = ?')
+        .run(displayName, displayName.toLowerCase(), invertName(displayName).toLowerCase(), row.id);
+    } else {
+      db.prepare('DELETE FROM actor_names WHERE id = ?').run(row.id);
+      insertNameIfNew(db, row.actor_id, stripped, row.kind);
+    }
+    cleaned++;
+  }
+
+  if (cleaned > 0) console.log(`[actorDb] Cleaned ${cleaned} "Age N" actor name(s)`);
 }
 
 /**
@@ -285,6 +321,7 @@ function buildActor(actorRow) {
  * setPrimaryName() for that.
  */
 function insertNameIfNew(db, actorId, name, kind) {
+  name = stripAgeSuffix(name);
   if (!name) return;
   const displayName = toTitleCase(name);
   const nameLower = displayName.toLowerCase().trim();
@@ -483,6 +520,42 @@ function findActorRowByName(name) {
  */
 function findActorByName(name) {
   return buildActor(findActorRowByName(name));
+}
+
+/**
+ * When each online scraper was last asked for this actor's missing fields.
+ *
+ * @param {string} actorId
+ * @returns {Object<string, string>} - { scraperName: ISO date }
+ */
+function getMissingChecks(actorId) {
+  const row = getDb().prepare('SELECT missing_checked FROM actors WHERE id = ?').get(actorId);
+  try {
+    return row ? JSON.parse(row.missing_checked || '{}') : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Record that a scraper was just asked for this actor's missing fields.
+ *
+ * @param {string} actorId
+ * @param {string} scraperName
+ */
+function markMissingChecked(actorId, scraperName) {
+  const checks = getMissingChecks(actorId);
+  checks[scraperName] = new Date().toISOString();
+  getDb().prepare('UPDATE actors SET missing_checked = ? WHERE id = ?').run(JSON.stringify(checks), actorId);
+}
+
+/**
+ * Forget every missing-field check date, so all scrapers may be asked again.
+ *
+ * @param {string} actorId
+ */
+function clearMissingChecks(actorId) {
+  getDb().prepare("UPDATE actors SET missing_checked = '{}' WHERE id = ?").run(actorId);
 }
 
 function getActorRow(actorId) {
@@ -891,6 +964,9 @@ module.exports = {
   findActorByName,
   findActorRowByName,
   getActor,
+  getMissingChecks,
+  markMissingChecked,
+  clearMissingChecks,
   resolveId,
   resolvePhotoSource,
   linkMovie,

@@ -138,6 +138,12 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="missingFieldsRetryDays" data-i18n="config.missingFieldsRetryDays"></label>
+                        <input type="number" id="missingFieldsRetryDays" name="missingFieldsRetryDays" min="0" step="1">
+                        <div class="info-text" data-i18n="config.missingFieldsRetryDaysHelp"></div>
+                    </div>
+
+                    <div class="form-group">
                         <label for="actorsScrapers" data-i18n="config.actorScraperNames">Actor Scraper Names (comma-separated)</label>
                         <input type="text" id="actorsScrapers" name="actorsScrapers" placeholder="e.g. javdb">
                         <div class="info-text">
@@ -300,6 +306,8 @@
             const actorsScrapersInput = document.getElementById('actorsScrapers').value.trim();
             const actorsScrapers = actorsScrapersInput ? actorsScrapersInput.split(',').map(s => s.trim()).filter(Boolean) : ['javdb'];
             const copyActorsToMovieFolder = document.getElementById('copyActorsToMovieFolder').checked;
+            const retryDaysInput = parseInt(document.getElementById('missingFieldsRetryDays').value, 10);
+            const missingFieldsRetryDays = Number.isNaN(retryDaysInput) || retryDaysInput < 0 ? 30 : retryDaysInput;
 
             // Collect video player path
             const videoPlayerPath = document.getElementById('videoPlayerPath').value.trim();
@@ -339,7 +347,8 @@
                         enabled: actorsEnabled,
                         scrapers: actorsScrapers,
                         externalPath: actorsPath || '',
-                        copyToMovieFolder: copyActorsToMovieFolder
+                        copyToMovieFolder: copyActorsToMovieFolder,
+                        missingFieldsRetryDays: missingFieldsRetryDays
                     }
                 },
                 fieldPriorities: fieldPriorities
@@ -439,6 +448,9 @@
                 document.getElementById('actorsPath').value = actorsPath;
                 document.getElementById('actorsScrapers').value = actorsScrapersArray.join(', ');
                 document.getElementById('copyActorsToMovieFolder').checked = copyActorsToMovieFolderValue;
+                document.getElementById('missingFieldsRetryDays').value =
+                    (config.scrapers && config.scrapers.actors && config.scrapers.actors.missingFieldsRetryDays != null)
+                        ? config.scrapers.actors.missingFieldsRetryDays : 30;
                 document.getElementById('videoPlayerPath').value = videoPlayerPath;
                 document.getElementById('browserPath').value = browserPath;
                 document.getElementById('scrapeFolderPattern').value = scrapeFolderPattern;

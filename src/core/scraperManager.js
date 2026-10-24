@@ -404,16 +404,24 @@ function isEmptyValue(value) {
  * @returns {object[]}
  */
 function mergeActors(lists) {
-  const { dedupeAltNames } = require('../../scrapers/actors/schema');
-  const normalize = s => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const { dedupeAltNames, stripAgeSuffix } = require('../../scrapers/actors/schema');
+  const actorDb = require('../../scrapers/actors/actorDb');
+  const normalize = s => stripAgeSuffix(s).toLowerCase().replace(/\s+/g, ' ');
+  // Romanization variants of the same Japanese name: Kudou/Kudo, Kuu/Ku, Lala/Rara
+  const foldRomaji = n => n.replace(/ou|oo/g, 'o').replace(/uu/g, 'u').replace(/l/g, 'r');
   const keysOf = actor => {
     const names = [actor.name, ...(actor.altName || '').split(',')].map(normalize).filter(Boolean);
     const keys = new Set();
     if (actor.id) keys.add(`id:${actor.id}`);
+    // The central actor DB bridges spellings no string rule can (Ohara Tomomi = 大原友美)
+    const dbId = actorDb.resolveId(actor.name, actor.altName);
+    if (dbId) keys.add(`id:${dbId}`);
     names.forEach(n => {
-      keys.add(n);
-      const parts = n.split(' ');
-      if (parts.length === 2) keys.add(`${parts[1]} ${parts[0]}`);
+      [n, foldRomaji(n)].forEach(variant => {
+        keys.add(variant);
+        const parts = variant.split(' ');
+        if (parts.length === 2) keys.add(`${parts[1]} ${parts[0]}`);
+      });
     });
     return keys;
   };
@@ -448,6 +456,35 @@ function mergeActors(lists) {
   });
 
   return result;
+}
+
+/**
+ * Actor list of a rescrape. The new cast (already summed across scrapers)
+ * replaces the old one; an old actor the scrape didn't find survives only if
+ * the central actor DB knows it (found by another site, or added by hand),
+ * since a bare unknown name is usually a variant of one just scraped. Every
+ * actor is resolved to its DB id first, so name variants of the same person
+ * collapse into one. An empty scrape keeps the old cast untouched.
+ *
+ * @param {object[]|undefined} newActors - Actors from the new scrape
+ * @param {object[]|undefined} oldActors - Actors already on the movie
+ * @returns {object[]}
+ */
+function mergeRescrapeActors(newActors, oldActors) {
+  const fresh = Array.isArray(newActors) ? newActors.filter(a => a && a.name) : [];
+  const old = Array.isArray(oldActors) ? oldActors.filter(a => a && a.name) : [];
+  if (fresh.length === 0) return old;
+
+  const actorDb = require('../../scrapers/actors/actorDb');
+  const withDbId = actor => {
+    const { id, ...rest } = actor;
+    const dbId = actorDb.resolveId(actor.name, actor.altName);
+    return dbId ? { ...rest, id: dbId } : rest;
+  };
+
+  const resolvedNew = fresh.map(withDbId);
+  const knownOld = old.map(withDbId).filter(a => a.id);
+  return mergeActors([resolvedNew, knownOld]);
 }
 
 function mergeResults(code, scraperResults, config) {
@@ -820,4 +857,4 @@ if (require.main === module) {
 }
 
 // Export for use as module
-module.exports = { scrapeAll, extractCodesFromLibrary, extractMovieId, executeScraper, executeScraperOrAll, mergeResults, mergeActors, isEmptyValue, formatTitle, MULTI_SCRAPER_VALUE };
+module.exports = { scrapeAll, extractCodesFromLibrary, extractMovieId, executeScraper, executeScraperOrAll, mergeResults, mergeActors, mergeRescrapeActors, isEmptyValue, formatTitle, MULTI_SCRAPER_VALUE };

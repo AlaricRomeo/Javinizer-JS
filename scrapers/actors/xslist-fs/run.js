@@ -31,7 +31,7 @@ const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { createEmptyActor, removeEmptyFields, normalizeActorName } = require('../schema');
+const { createEmptyActor, removeEmptyFields, normalizeActorName, stripAgeSuffix } = require('../schema');
 const { getActorsCachePath } = require('../cache-helper');
 const { fetchWithFlareSolverr, getClearanceHeaders } = require('./flaresolverr');
 
@@ -170,12 +170,12 @@ async function scrapeDetailPage(detailUrl, actorName) {
   const h1Text = $('h1').first().text().trim();
   const kanjiMatch = h1Text.match(/\(([^)]+)\)\s*$/);
   if (kanjiMatch) {
-    actor.altName = kanjiMatch[1].replace(/\s*\/\s*Age\s*\d+\s*$/i, '').trim();
+    actor.altName = stripAgeSuffix(kanjiMatch[1]);
   }
 
   // Aliases (kana readings, other stage names)
   const aliases = $('[itemprop="additionalName"]')
-    .map((_, el) => $(el).text().trim())
+    .map((_, el) => stripAgeSuffix($(el).text()))
     .get()
     .filter(Boolean);
   if (aliases.length > 0) {

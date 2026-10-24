@@ -279,6 +279,8 @@
     "actorScrapingHelp": "When enabled, actor data will be scraped and cached during movie save.",
     "copyActorsToMovieFolder": "Copy actors to movie folder",
     "copyActorsToMovieFolderHelp": "When enabled, actor thumbnails are automatically copied to the movie's actors/ subfolder on save.",
+    "missingFieldsRetryDays": "Missing-field retry (days)",
+    "missingFieldsRetryDaysHelp": "How long to wait before asking the same actor scraper again for an actor's missing fields (each scraper has its own date). 0 = always retry. Ignored when overwriting local data.",
     "externalActorsPath": "Copy favorite actors to (optional)",
     "externalActorsPathPlaceholder": "/mnt/storage/actors",
     "externalActorsPathHelp": "Actors are always stored in **./data/actors**. When set, actors marked as favorite are additionally copied (NFO + photo) to this path — updated on edit, removed if unfavorited. Useful for sharing favorite actors with other media servers (e.g., Jellyfin, Plex) or other Javinizer-JS instances.",

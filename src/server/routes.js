@@ -811,7 +811,7 @@ router.post("/save", async (req, res) => {
 // ─────────────────────────────
 router.post("/edit-rescrape", async (req, res) => {
   const { EventEmitter } = require('events');
-  const { executeScraperOrAll, formatTitle, mergeActors } = require('../core/scraperManager');
+  const { executeScraperOrAll, formatTitle, mergeRescrapeActors } = require('../core/scraperManager');
 
   try {
     const { folderId, scraper } = req.body;
@@ -911,8 +911,8 @@ router.post("/edit-rescrape", async (req, res) => {
           }
         });
 
-        // Actors are summed, never dropped: the movie keeps those the scraper didn't find
-        mergedData.actor = mergeActors([newData.actor, existingModel.actor]);
+        // The new cast replaces the old one; only actors known to the actor DB survive
+        mergedData.actor = mergeRescrapeActors(newData.actor, existingModel.actor);
 
         const { applyGenreRules } = require('../core/genreFilter');
         if (mergedData.genres && editRescrapeCfg.genreRules) {
@@ -2101,7 +2101,7 @@ router.post("/actors/search", async (req, res) => {
 // ─────────────────────────────
 router.post("/scrape/rescrape", async (req, res) => {
   const { EventEmitter } = require('events');
-  const { executeScraperOrAll, formatTitle, mergeActors, MULTI_SCRAPER_VALUE } = require('../core/scraperManager');
+  const { executeScraperOrAll, formatTitle, mergeRescrapeActors, MULTI_SCRAPER_VALUE } = require('../core/scraperManager');
 
   try {
     const { movieId, scraper } = req.body;
@@ -2272,8 +2272,8 @@ router.post("/scrape/rescrape", async (req, res) => {
           }
         });
 
-        // Actors are summed, never dropped: the movie keeps those the scraper didn't find
-        mergedData.actor = mergeActors([newData.actor, existingWrapper.data && existingWrapper.data.actor]);
+        // The new cast replaces the old one; only actors known to the actor DB survive
+        mergedData.actor = mergeRescrapeActors(newData.actor, existingWrapper.data && existingWrapper.data.actor);
 
         // Ensure 'id' matches movieId
         mergedData.id = movieId;
@@ -2866,6 +2866,8 @@ router.post("/actors/save", async (req, res) => {
     // dropped from the index instead of lingering forever (insertNameIfNew
     // only ever adds).
     saveActorLocal(actorData, { replaceNames: true });
+    // A manual edit (e.g. new names) restarts every scraper's missing-field retry period
+    actorDb.clearMissingChecks(actorData.id);
 
     // Copy NFO (and photo) to externalPath when this actor is a favorite,
     // overwriting any previous copy so edits stay in sync.

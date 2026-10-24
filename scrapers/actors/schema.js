@@ -68,6 +68,18 @@ function splitParenAliases(raw) {
 }
 
 /**
+ * Drop an "Age N" suffix (or a whole "Age N" name) that xslist shows in place
+ * of a kanji name, e.g. "ほしのしほ/Age 29" -> "ほしのしほ", "Age 24" -> "".
+ * Left in, it becomes an alias shared by unrelated actors of the same age.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+function stripAgeSuffix(name) {
+  return (name || '').replace(/\s*[/／]?\s*Age\s*\d+\s*$/i, '').trim();
+}
+
+/**
  * True for a name that isn't real actor data — empty/whitespace, or one of
  * PLACEHOLDER_ACTOR_NAMES (case-insensitive). Such an actor should never be
  * searched/scraped, saved into the actor cache, or kept in a movie's own
@@ -548,6 +560,7 @@ module.exports = {
   isPlaceholderActorName,
   isPartialBirthdate,
   splitParenAliases,
+  stripAgeSuffix,
   isPlaceholderPhotoUrl,
   isPlaceholderPhotoFile,
   normalizeActorDisplayName,
