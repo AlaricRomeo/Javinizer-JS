@@ -30,7 +30,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { createEmptyActor, removeEmptyFields, normalizeActorName, isPlaceholderPhotoFile } = require('../schema');
-const { getActorsCachePath } = require('../cache-helper');
+const { getActorsCachePath, scrapedPhotoName } = require('../cache-helper');
 
 const BASE_URL = 'https://jav.guru';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -141,7 +141,7 @@ async function scrapeProfile(searchName, actorName) {
     const urlExtension = photoUrl.match(/\.(webp|jpg|jpeg|png|gif)(\?|$)/i);
     const extension = urlExtension ? urlExtension[1].toLowerCase() : 'jpg';
 
-    const photoFilename = `${actor.id}.${extension}`;
+    const photoFilename = scrapedPhotoName('javguru', actor.id, extension);
     const photoPath = path.join(actorsPath, photoFilename);
 
     if (!fs.existsSync(actorsPath)) {

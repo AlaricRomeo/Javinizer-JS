@@ -23,7 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { createEmptyActor, removeEmptyFields, normalizeActorName } = require('../schema');
-const { getActorsCachePath } = require('../cache-helper');
+const { getActorsCachePath, scrapedPhotoName } = require('../cache-helper');
 
 
 /**
@@ -244,7 +244,7 @@ async function scrapeJavDB(actorName, tryInvertedName = false, browser = null) {
       const urlExtension = photoUrl.match(/\.(webp|jpg|jpeg|png|gif)(\?|$)/i);
       const extension = urlExtension ? urlExtension[1].toLowerCase() : 'jpg';
 
-      const photoFilename = `${actor.id}.${extension}`;
+      const photoFilename = scrapedPhotoName('javdb', actor.id, extension);
       const photoPath = path.join(actorsPath, photoFilename);
 
       // Ensure actors directory exists

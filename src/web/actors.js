@@ -250,7 +250,7 @@ function createActorCard(actor) {
   thumb.className = 'actor-thumb';
 
   // Thumbnail loading strategy:
-  // 1. Try local file in actors cache: /actors/{actor.id}.{ext}
+  // 1. Try local file in actors cache: thumbLocal, then /actors/{actor.id}.{ext}
   // 2. Fallback to actor.thumb URL
   // 3. Fallback to placeholder
 
@@ -272,12 +272,18 @@ function createActorCard(actor) {
       img.alt = 'Actor';
     }
 
+    // The file recorded in the index wins: it isn't always "{id}.{ext}"
+    // (e.g. after a merge), and a stale "{id}.{ext}" may still exist.
+    const candidates = [
+      ...(actor.thumbLocal ? [`/actors/${actor.thumbLocal}`] : []),
+      ...extensions.map(ext => `/actors/${actor.id}.${ext}`)
+    ];
     let currentExtIndex = 0;
 
     const tryNextExtension = () => {
-      if (currentExtIndex < extensions.length) {
+      if (currentExtIndex < candidates.length) {
         // Add timestamp to bypass cache
-        img.src = `/actors/${actor.id}.${extensions[currentExtIndex]}?t=${thumbVersion}`;
+        img.src = `${candidates[currentExtIndex]}?t=${thumbVersion}`;
         currentExtIndex++;
       } else if (actor.thumb) {
         // All local attempts failed, try remote thumb URL

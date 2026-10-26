@@ -164,6 +164,14 @@ function getDb() {
     CREATE INDEX IF NOT EXISTS idx_actor_names_inverted ON actor_names(name_inverted_lower);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_actor_names_one_primary ON actor_names(actor_id) WHERE kind = 'primary';
 
+    -- Names removed from an actor as "not the same person" (removeName()):
+    -- never re-added by a later scrape or movie cast.
+    CREATE TABLE IF NOT EXISTS actor_rejected_names (
+      actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+      name_lower TEXT NOT NULL,
+      PRIMARY KEY (actor_id, name_lower)
+    );
+
     CREATE TABLE IF NOT EXISTS actor_movies (
       actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
       movie_id TEXT NOT NULL,
@@ -326,6 +334,7 @@ function insertNameIfNew(db, actorId, name, kind) {
   const displayName = toTitleCase(name);
   const nameLower = displayName.toLowerCase().trim();
   if (!nameLower) return;
+  if (db.prepare('SELECT 1 FROM actor_rejected_names WHERE actor_id = ? AND name_lower = ?').get(actorId, nameLower)) return;
   const invertedLower = invertName(displayName).toLowerCase().trim();
   db.prepare(`
     INSERT INTO actor_names (actor_id, name, name_lower, name_inverted_lower, kind)
@@ -774,6 +783,13 @@ function findDuplicateGroups() {
  */
 function deleteActor(actorId) {
   const db = getDb();
+  // Its names were rejected on other actors only to tell them apart from
+  // this one: with it gone, those rejections go too. Its own rejections
+  // cascade with the actor row.
+  db.prepare(`
+    DELETE FROM actor_rejected_names
+    WHERE name_lower IN (SELECT name_lower FROM actor_names WHERE actor_id = ?)
+  `).run(actorId);
   db.prepare('DELETE FROM actors WHERE id = ?').run(actorId);
 }
 
@@ -812,7 +828,8 @@ function resolveAliases(name) {
 /**
  * Remove a single alt name from an actor — e.g. to resolve a false
  * duplicate-name match (findDuplicateNames()) that turned out to just be an
- * unwanted alias rather than the same person. Never removes the primary
+ * unwanted alias rather than the same person. The name is remembered as
+ * rejected, so insertNameIfNew() never adds it back. Never removes the primary
  * name (that's a rename, not a removal — use setPrimaryName() for that).
  *
  * @returns {boolean} true if a row was actually removed
@@ -824,6 +841,9 @@ function removeName(actorId, name) {
   const result = db.prepare(
     "DELETE FROM actor_names WHERE actor_id = ? AND name_lower = ? AND kind != 'primary'"
   ).run(actorId, nameLower);
+  if (result.changes > 0) {
+    db.prepare('INSERT OR IGNORE INTO actor_rejected_names (actor_id, name_lower) VALUES (?, ?)').run(actorId, nameLower);
+  }
   return result.changes > 0;
 }
 

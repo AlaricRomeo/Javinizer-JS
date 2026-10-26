@@ -32,7 +32,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { createEmptyActor, removeEmptyFields, normalizeActorName, stripAgeSuffix } = require('../schema');
-const { getActorsCachePath } = require('../cache-helper');
+const { getActorsCachePath, scrapedPhotoName } = require('../cache-helper');
 const { fetchWithFlareSolverr, getClearanceHeaders } = require('./flaresolverr');
 
 const BASE_URL = 'https://xslist.org';
@@ -211,7 +211,7 @@ async function scrapeDetailPage(detailUrl, actorName) {
     const urlExtension = photoUrl.match(/\.(webp|jpg|jpeg|png|gif)(\?|$)/i);
     const extension = urlExtension ? urlExtension[1].toLowerCase() : 'jpg';
 
-    const photoFilename = `${actor.id}.${extension}`;
+    const photoFilename = scrapedPhotoName('xslist-fs', actor.id, extension);
     const photoPath = path.join(actorsPath, photoFilename);
 
     if (!fs.existsSync(actorsPath)) {

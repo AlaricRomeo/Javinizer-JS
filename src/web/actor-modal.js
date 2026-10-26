@@ -233,12 +233,19 @@ function updateActorPreview(url, forceRemote = false) {
   if (unifiedCurrentActor && (unifiedCurrentActor.id || unifiedCurrentActor.name)) {
     const actorId = unifiedCurrentActor.id || _normalizeActorId(unifiedCurrentActor.name);
     const extensions = ['webp', 'jpg', 'jpeg', 'png', 'gif'];
+    // The cache file given/recorded for the actor wins over guessing "{id}.{ext}"
+    const { thumbLocal } = unifiedCurrentActor;
+    const candidates = [
+      ...(url && url.startsWith('/actors/') ? [url.split('?')[0]] : []),
+      ...(thumbLocal ? [`/actors/${thumbLocal}`] : []),
+      ...extensions.map(ext => `/actors/${actorId}.${ext}`)
+    ];
     const ts = Date.now();
     let extIndex = 0;
 
     const tryNext = () => {
-      if (extIndex < extensions.length) {
-        previewImg.src = `/actors/${actorId}.${extensions[extIndex++]}?t=${ts}`;
+      if (extIndex < candidates.length) {
+        previewImg.src = `${candidates[extIndex++]}?t=${ts}`;
       } else if (url && url.trim() !== '') {
         previewImg.src = url;
         previewImg.onerror = () => { previewImg.style.display = 'none'; placeholder.style.display = 'block'; };

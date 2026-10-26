@@ -272,9 +272,10 @@ async function scrape(codes) {
         results.push({ code, error: error.message });
       }
 
-      // Small delay between requests to be respectful
+      // Pause before the next movie: a batch at full speed gets the site
+      // to rate-limit us.
       if (i < codes.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
     }
 

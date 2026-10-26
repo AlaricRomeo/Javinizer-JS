@@ -57,6 +57,7 @@ async function scrapeSingle(code) {
       try {
         result = parseHTML(html, code, await fetchPage(jaUrl));
       } catch (error) {
+        if (error.code === 'RATE_LIMITED') throw error;
         console.error(`[JavLibrary Scrape] Japanese names skipped: ${error.message}`);
       }
     }
@@ -65,6 +66,8 @@ async function scrapeSingle(code) {
     return result;
 
   } catch (error) {
+    // Batch-level stops: the caller marks the remaining codes as failed
+    if (error.code === 'RATE_LIMITED' || error.code === 'SESSION_LIMIT') throw error;
     console.error(`[JavLibrary Scrape] Failed: ${error.message}`);
     // On failure, return minimal object with just code
     return { code };
@@ -117,14 +120,22 @@ async function scrape(codes) {
           }
           break;
         }
+        if (error.code === 'RATE_LIMITED') {
+          console.error('[JavLibrary Scrape] Rate limited by the site, stopping the batch. Try again later.');
+          for (let j = i; j < codes.length; j++) {
+            results.push({ code: codes[j], error: error.message });
+          }
+          break;
+        }
         // Don't throw - add error result and continue
         console.error(`[JavLibrary Scrape] Failed: ${error.message}`);
         results.push({ code, error: error.message });
       }
 
-      // Small delay between requests to be respectful
+      // Pause before the next movie (each one is 2-3 page loads): a batch at
+      // full speed gets the site to rate-limit us (Cloudflare 1015).
       if (i < codes.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 4000));
       }
     }
 

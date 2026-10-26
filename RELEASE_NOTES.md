@@ -1,5 +1,15 @@
 # Release Notes
 
+## v2.6.4 (2026-10-26)
+
+### 🐛 Fixes
+
+- Actor photos: a scraper could overwrite another actress's photo (when an alias matched her id) or leave a second photo for the same actress. Scraped photos are now staged and only the chosen one is kept as `{id}.{ext}`; leftovers are cleaned up
+- An alias removed by hand from an actor ("not the same person") is remembered and never added back by later scrapes
+- JavLibrary: when the site rate-limits (Cloudflare 1015) the batch stops instead of marking every remaining movie as "not found"; longer pause between movies (4s) to avoid it
+- R18.dev: longer pause between movies (3s)
+- Adding or removing a library folder keeps the item being shown, unless it was in the removed folder
+
 ## v2.6.3 (2026-10-24)
 
 ### ⚡ Improvements

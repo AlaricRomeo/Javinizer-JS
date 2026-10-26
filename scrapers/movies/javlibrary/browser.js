@@ -254,6 +254,7 @@ async function initBrowser() {
 async function detectBlocker(page) {
   try {
     return await page.evaluate(() => {
+      if (/error 1015|you are being rate limited/i.test(document.body ? document.body.innerText : '')) return 'ratelimit';
       if (/just a moment|attention required/i.test(document.title || '')) return 'cloudflare';
       if (document.querySelector('#challenge-form, #challenge-running, .cf-turnstile, iframe[src*="challenges.cloudflare.com"]')) return 'cloudflare';
       const adult = document.querySelector('#adultwarningprompt, .btnAdultAgree, #btnAdultAgree');
@@ -407,6 +408,14 @@ async function fetchPage(url) {
       console.error('[JavLibrary Scrape] Cloudflare challenge detected, waiting for user...');
       await askUserToUnblock();
       await sessionPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    }
+
+    // Cloudflare 1015: the site banned us for a while. Stop the batch
+    // instead of reading every remaining page as "not found".
+    if (await detectBlocker(sessionPage) === 'ratelimit') {
+      const e = new Error('Rate limited by JavLibrary (Cloudflare 1015)');
+      e.code = 'RATE_LIMITED';
+      throw e;
     }
 
     const html = await sessionPage.content();

@@ -14,7 +14,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { normalizeActorName, actorToNFO, nfoToActor, isPartialBirthdate } = require('../../scrapers/actors/schema');
-const { getActorsCachePath, findLocalPhoto } = require('../../scrapers/actors/cache-helper');
+const { getActorsCachePath, findLocalPhoto, SCRAPED_PHOTO_PREFIX } = require('../../scrapers/actors/cache-helper');
 const actorDb = require('../../scrapers/actors/actorDb');
 const { loadConfig, getScrapePath } = require('./config');
 
@@ -72,6 +72,62 @@ function saveActorLocal(actor, options = {}) {
   } catch (error) {
     console.error(`[ActorScraperManager] Failed to save actor ${actor.id}:`, error.message);
   }
+}
+
+// ─────────────────────────────
+// Scraped Photo Staging
+// ─────────────────────────────
+
+const isScrapedPhoto = f => typeof f === 'string' && f.startsWith(SCRAPED_PHOTO_PREFIX);
+
+/**
+ * Move the scraper photo chosen for this actor from its staging name (see
+ * scrapedPhotoName()) to "{actor.id}.{ext}", replacing any previous photo
+ * of this actor under another extension. Mutates actor in place.
+ */
+function promoteScrapedPhoto(actor) {
+  if (!isScrapedPhoto(actor.thumbLocal)) return;
+  const cachePath = getActorsCachePath();
+  const src = path.join(cachePath, actor.thumbLocal);
+  if (!fs.existsSync(src)) { actor.thumbLocal = ''; return; }
+
+  const ext = path.extname(actor.thumbLocal);
+  // The previous photo may not be named "{id}.{ext}" (e.g. after a merge)
+  const previous = (actorDb.getActor(actor.id) || {}).thumbLocal;
+  const oldFiles = ['.webp', '.jpg', '.jpeg', '.png', '.gif'].map(e => `${actor.id}${e}`);
+  if (previous && !isScrapedPhoto(previous)) oldFiles.push(previous);
+  oldFiles.forEach(f => {
+    const old = path.join(cachePath, f);
+    if (fs.existsSync(old)) fs.unlinkSync(old);
+  });
+  fs.renameSync(src, path.join(cachePath, `${actor.id}${ext}`));
+  actor.thumbLocal = `${actor.id}${ext}`;
+  actor.thumb = `/actors/${actor.thumbLocal}`;
+}
+
+/**
+ * Delete staging photos older than 10 minutes: left behind by a scraper
+ * that finished after its timeout, when nobody was waiting for its result.
+ */
+function sweepStaleScrapedPhotos() {
+  const cachePath = getActorsCachePath();
+  if (!fs.existsSync(cachePath)) return;
+  const cutoff = Date.now() - 10 * 60 * 1000;
+  fs.readdirSync(cachePath).filter(isScrapedPhoto).forEach(f => {
+    const p = path.join(cachePath, f);
+    try { if (fs.statSync(p).mtimeMs < cutoff) fs.unlinkSync(p); } catch (_) {}
+  });
+}
+
+/**
+ * Delete the staging photos of scraper results that weren't promoted.
+ */
+function discardScrapedPhotos(results) {
+  results.forEach(r => {
+    if (!r || !isScrapedPhoto(r.thumbLocal)) return;
+    const p = path.join(getActorsCachePath(), r.thumbLocal);
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  });
 }
 
 // ─────────────────────────────
@@ -401,6 +457,7 @@ async function runScrapers(actorName, enabledScrapers, actorId, emitter, initial
   if (emitter) emitter.emit('progress', { message: `  📂 Scrapers: ${enabledScrapers.join(', ')}` });
 
   const scraperResults = [];
+  sweepStaleScrapedPhotos();
 
   for (const scraperName of enabledScrapers) {
     if (emitter) emitter.emit('progress', { message: `[${scraperName}] Searching for: ${actorName}` });
@@ -454,6 +511,8 @@ async function runScrapers(actorName, enabledScrapers, actorId, emitter, initial
   // trusting a scraper's id instead used to silently create a duplicate
   // actor record whenever a remote scraper's name formatting didn't match.
   merged.id = actorId;
+  promoteScrapedPhoto(merged);
+  discardScrapedPhotos(scraperResults.map(r => r.data));
 
   // Fold in any name variant we tried (local index + caller-supplied hints, e.g.
   // a movie's own alt name for this actor) that isn't already captured by
@@ -557,6 +616,7 @@ async function fillMissingFromOnline(actor, emitter = null) {
   const canFill = (f, current, incoming) => !isEmpty(incoming) && (isEmpty(current) || !needsFill(f, incoming));
 
   if (emitter) emitter.emit('progress', { message: `[Actor Scrape] New names for ${actor.name}, searching online for missing fields` });
+  sweepStaleScrapedPhotos();
 
   for (const scraperName of scrapers) {
     if (!FILLABLE.some(f => needsFill(f, actor[f]))) break;
@@ -564,6 +624,8 @@ async function fillMissingFromOnline(actor, emitter = null) {
     const result = await executeActorScraper(scraperName, actor.name, variants);
     if (actor.id) actorDb.markMissingChecked(actor.id, scraperName);
     if (!result) continue;
+    // Only fields are filled here, never the photo
+    discardScrapedPhotos([result]);
 
     const known = knownNamesLower(actor);
     const resultNames = [...knownNamesLower(result)];

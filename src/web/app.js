@@ -270,17 +270,21 @@ async function saveLibraryPaths(newPaths) {
   renderLibraryPaths();
   showNotification(window.i18n ? window.i18n.t("messages.pathUpdated") : "✓ Library path aggiornato e salvato", "success");
 
-  // Ricarica il primo item della nuova libreria
+  // Stay on the item being shown if it's still in the library; by-id falls
+  // back to the first item when it isn't (e.g. its folder was removed)
   // (the server will reload the library automatically)
+  const keepId = currentMode === "scrape" ? currentItem?.fileId : currentItem?.folderId;
   setTimeout(async () => {
     if (currentMode === "scrape") {
-      // In scrape mode: check availability and load first scrape item
       await checkScrapeAvailability();
-      const loaded = await loadItem("/item/scrape/current");
+      const loaded = await loadItem(keepId
+        ? `/item/scrape/by-id/${encodeURIComponent(keepId)}`
+        : "/item/scrape/current");
       updateDeleteButtons(loaded);
     } else {
-      // In edit mode: load first library item
-      await loadItem("/item/current");
+      await loadItem(keepId
+        ? `/item/by-id/${encodeURIComponent(keepId)}`
+        : "/item/current");
     }
   }, 500);
   return true;

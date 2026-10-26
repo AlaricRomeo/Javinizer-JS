@@ -49,6 +49,20 @@ function findLocalPhoto(dirPath, actorId) {
 }
 
 /**
+ * Staging filename for a photo a scraper just downloaded. Scrapers never
+ * write "{id}.{ext}" directly: their id comes from the name they matched,
+ * which can be an alias equal to another actor's id (overwriting that
+ * actor's photo) or differ from the local id (leaving a second, different
+ * photo for the same actor). The manager promotes the chosen one to
+ * "{actorId}.{ext}" and deletes the rest.
+ */
+const SCRAPED_PHOTO_PREFIX = 'scrape_';
+
+function scrapedPhotoName(scraperName, actorId, ext) {
+  return `${SCRAPED_PHOTO_PREFIX}${scraperName}_${actorId}.${ext}`;
+}
+
+/**
  * Get the "copy favorite actors to" path (user-configured, optional).
  * Not read by any scraper — only used as a copy destination when an actor
  * is marked favorite. Returns null if not configured.
@@ -246,6 +260,8 @@ module.exports = {
   getActorsCachePath,
   getExternalActorsPath,
   findLocalPhoto,
+  SCRAPED_PHOTO_PREFIX,
+  scrapedPhotoName,
   loadFromCache,
   isActorComplete,
   mergeActorData,
