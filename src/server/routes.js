@@ -3322,6 +3322,43 @@ router.post("/actors/upload-image", upload.single('image'), async (req, res) => 
   }
 });
 
+// On macOS, resolve a .app bundle to the Mach-O binary inside Contents/MacOS
+// (name taken from CFBundleExecutable). Returns the input unchanged otherwise.
+function resolveMacAppExecutable(playerPath) {
+  if (process.platform !== 'darwin' || !playerPath.toLowerCase().endsWith('.app')) return playerPath;
+  try {
+    const appPath = path.resolve(playerPath);
+    const macOsDir = path.join(appPath, 'Contents', 'MacOS');
+    if (!fs.existsSync(macOsDir)) return playerPath;
+
+    let binaryName = path.basename(appPath, '.app');
+    try {
+      const fromPlist = require('child_process').execFileSync(
+        'plutil',
+        ['-extract', 'CFBundleExecutable', 'raw', '-o', '-', path.join(appPath, 'Contents', 'Info.plist')],
+        { encoding: 'utf8' }
+      ).trim();
+      if (fromPlist) binaryName = fromPlist;
+    } catch {
+      // Fall back to the bundle name
+    }
+
+    const preferred = path.join(macOsDir, binaryName);
+    if (fs.existsSync(preferred) && fs.statSync(preferred).isFile()) return preferred;
+
+    // Last resort: first executable file in Contents/MacOS
+    const fallback = fs.readdirSync(macOsDir, { withFileTypes: true })
+      .filter(entry => entry.isFile() && !entry.name.startsWith('.'))
+      .map(entry => path.join(macOsDir, entry.name))
+      .find(candidate => {
+        try { fs.accessSync(candidate, fs.constants.X_OK); return true; } catch { return false; }
+      });
+    return fallback || playerPath;
+  } catch {
+    return playerPath;
+  }
+}
+
 // ─────────────────────────────
 // POST /item/play-video
 // Play video using configured video player
@@ -3341,9 +3378,11 @@ router.post("/play-video", async (req, res) => {
     const { spawn } = require('child_process');
     const pathModule = require('path');
 
+    const playerExecutable = resolveMacAppExecutable(videoPlayerPath);
+
     // Sanitize paths to prevent command injection
     // Resolve to absolute paths to ensure they're within allowed directories
-    const sanitizedPlayerPath = pathModule.resolve(videoPlayerPath);
+    const sanitizedPlayerPath = pathModule.resolve(playerExecutable);
 
     // Additional security check: ensure paths start with expected directories
     const allowedPaths = [
@@ -3360,9 +3399,12 @@ router.post("/play-video", async (req, res) => {
         allowedPaths.push(process.env.LOCALAPPDATA);
       }
     }
-    // On macOS, add /Applications
+    // On macOS, add /Applications, other mounted volumes and Homebrew paths
     if (process.platform === 'darwin') {
       allowedPaths.push('/Applications');
+      allowedPaths.push('/Volumes');
+      allowedPaths.push('/usr/local/bin');
+      allowedPaths.push('/opt/homebrew/bin');
     }
     // On Linux, add standard binary paths
     if (process.platform === 'linux') {
@@ -3373,7 +3415,7 @@ router.post("/play-video", async (req, res) => {
 
     // For video player path, check if it looks like a full path (contains path separator)
     // Only validate paths that look like full paths, allow executables in PATH
-    if (videoPlayerPath.includes(pathModule.sep)) {
+    if (playerExecutable.includes(pathModule.sep)) {
       const isPathAllowed = (testPath, allowedList) => {
         return allowedList.some(allowed => testPath.startsWith(allowed + pathModule.sep) || testPath === allowed);
       };
@@ -3386,6 +3428,16 @@ router.post("/play-video", async (req, res) => {
       if (!fs.existsSync(sanitizedPlayerPath)) {
         return res.json({ ok: false, error: `Video player does not exist: ${sanitizedPlayerPath}` });
       }
+      if (!fs.statSync(sanitizedPlayerPath).isFile()) {
+        return res.json({ ok: false, error: `Video player path is not an executable file: ${sanitizedPlayerPath}` });
+      }
+      if (process.platform !== 'win32') {
+        try {
+          fs.accessSync(sanitizedPlayerPath, fs.constants.X_OK);
+        } catch {
+          return res.json({ ok: false, error: `Video player is not executable: ${sanitizedPlayerPath}` });
+        }
+      }
     }
 
     // For video path, we trust the path provided by our own server API
@@ -3396,10 +3448,19 @@ router.post("/play-video", async (req, res) => {
 
     // Try to execute the video player
     // Use the original paths (not sanitized) to allow executables in PATH
-    const child = spawn(videoPlayerPath, [videoPath], {
+    const child = spawn(playerExecutable, [videoPath], {
       detached: true,
       stdio: 'ignore'
     });
+
+    // Spawn failures (ENOENT/EACCES) are async: without a listener they crash the server
+    const spawnError = await new Promise(resolve => {
+      child.once('spawn', () => resolve(null));
+      child.once('error', err => resolve(err));
+    });
+    if (spawnError) {
+      return res.json({ ok: false, error: `Failed to launch video player: ${spawnError.message}` });
+    }
 
     // Unref to allow the main process to exit without waiting for the video player
     child.unref();

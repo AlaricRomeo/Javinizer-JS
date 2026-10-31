@@ -193,7 +193,8 @@
             <h3 style="margin-top:0;" data-i18n="messages.selectFile">Select Executable</h3>
             <div style="display:flex; gap:10px; margin-bottom:15px; align-items:center;">
                 <button id="fileBrowserUp" type="button">⬆ Up</button>
-                <input id="fileBrowserPath" type="text" readonly style="flex:1; background:#f0f0f0;">
+                <input id="fileBrowserPath" type="text" style="flex:1;">
+                <button id="fileBrowserGo" type="button" data-i18n="buttons.go">Go</button>
             </div>
             <div id="fileBrowserList" style="flex:1; overflow-y:auto; border:1px solid #ddd; padding:10px; border-radius:4px; margin-bottom:15px; max-height:400px;"></div>
             <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -510,9 +511,11 @@
         // ── File Browser (for browser executable path) ──
         let fileBrowserCurrentPath = '';
         let fileBrowserCallback = null;
+        let fileBrowserAllowApp = false; // macOS: allow selecting .app bundles (video player only)
 
-        async function openFileBrowser(initialPath, callback) {
+        async function openFileBrowser(initialPath, callback, allowApp = false) {
             fileBrowserCallback = callback;
+            fileBrowserAllowApp = allowApp;
             document.getElementById('fileBrowserModal').style.display = 'flex';
             await loadFileBrowserDir(initialPath || '');
         }
@@ -536,6 +539,18 @@
                 div.onmouseover = () => div.style.backgroundColor = '#e9ecef';
                 div.onmouseout = () => div.style.backgroundColor = 'transparent';
                 div.onclick = () => loadFileBrowserDir(dir.path);
+                if (fileBrowserAllowApp && dir.name.toLowerCase().endsWith('.app')) {
+                    const useBtn = document.createElement('button');
+                    useBtn.type = 'button';
+                    useBtn.textContent = i18n.t('buttons.useApp');
+                    useBtn.style.cssText = 'float: right; padding: 2px 8px;';
+                    useBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (fileBrowserCallback) fileBrowserCallback(dir.path);
+                        document.getElementById('fileBrowserModal').style.display = 'none';
+                    };
+                    div.appendChild(useBtn);
+                }
                 list.appendChild(div);
             });
 
@@ -563,6 +578,16 @@
             if (data.ok && data.parent) await loadFileBrowserDir(data.parent);
         });
 
+        document.getElementById('fileBrowserGo').addEventListener('click', () => {
+            loadFileBrowserDir(document.getElementById('fileBrowserPath').value.trim());
+        });
+        document.getElementById('fileBrowserPath').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                loadFileBrowserDir(e.target.value.trim());
+            }
+        });
+
         document.getElementById('fileBrowserCancel').addEventListener('click', () => {
             document.getElementById('fileBrowserModal').style.display = 'none';
         });
@@ -583,7 +608,7 @@
         document.getElementById('browseVideoPlayerPath').addEventListener('click', () => {
             openFileBrowser(dirnameOf(document.getElementById('videoPlayerPath').value), (selectedPath) => {
                 document.getElementById('videoPlayerPath').value = selectedPath;
-            });
+            }, true);
         });
     </script>
 </body>
