@@ -1,5 +1,16 @@
 # Release Notes
 
+## v2.6.5 (2026-10-31)
+
+### ⚡ Improvements
+
+- Search no longer freezes the app on a cold disk: the search index is built in the background and cached on disk (`data/search-index-cache.json`), so after a restart search is ready almost immediately. Search boxes show the indexing progress until it is ready
+
+### 🐛 Fixes
+
+- macOS: the video player can be a `.app` bundle (e.g. `VLC.app`) and can live outside `/Applications` (e.g. on `/Volumes/...`). The file picker path is now editable and `.app` folders have a "Use this app" button (#11)
+- A video player that fails to start returns an error instead of crashing the server
+
 ## v2.6.4 (2026-10-26)
 
 ### 🐛 Fixes
