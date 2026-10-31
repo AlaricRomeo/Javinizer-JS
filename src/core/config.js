@@ -167,7 +167,15 @@ function getLibraryPositionPath() {
   return path.join(process.cwd(), 'data', 'library-position.json');
 }
 
+/**
+ * Get path to the persisted search index (title/genres/actors per NFO)
+ * Lets a restart skip re-reading every NFO before search is usable
+ */
+function getSearchIndexCachePath() {
+  return path.join(process.cwd(), 'data', 'search-index-cache.json');
+}
+
 module.exports = {
-  loadConfig, saveConfig, getScrapePath, getLibraryCachePath, getLibraryPositionPath,
+  loadConfig, saveConfig, getScrapePath, getLibraryCachePath, getLibraryPositionPath, getSearchIndexCachePath,
   getLibraryPaths, isInsideLibrary, getLibraryRootOf, resolveLibraryFolder
 };

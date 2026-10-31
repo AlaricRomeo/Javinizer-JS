@@ -10,6 +10,7 @@
     "about": "About",
     "search": "Search...",
     "searchSyntax": "Operators: AND, OR, NOT or !, parentheses, \"multiple words\". E.g.: solowork AND !planning",
+    "searchIndexing": "Indexing library... {done}/{total}",
     "filterResults": "Filter results ({count})",
     "filterActive": "Filter: \"{query}\" ({count})",
     "filterActiveMovies": "Filter: \"{label} - {count} movie(s)\"",

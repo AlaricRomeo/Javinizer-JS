@@ -185,6 +185,7 @@ async function initializeI18n() {
 function setupEventListeners() {
   const searchInput = document.getElementById('searchInput');
   if (searchInput) {
+    disableUntilSearchIndexReady(searchInput);
     let debounce;
     searchInput.addEventListener('input', (e) => {
       clearTimeout(debounce);

@@ -12,6 +12,7 @@ data/scrape/
 data/actors/
 data/library-cache.json
 data/library-position.json
+data/search-index-cache.json
 data/actors-index.db
 data/update-workdir/
 data/runtime/

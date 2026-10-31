@@ -242,6 +242,29 @@ function initLanguageSelector() {
   window.addEventListener('languageChanged', updateSelectorValue);
 }
 
+// Keeps a search box disabled while the server builds its search index (see
+// GET /item/search-status) — on a cold disk that can take minutes, and the
+// first search used to stall until it was done.
+async function disableUntilSearchIndexReady(input) {
+  input.disabled = true;
+  try {
+    while (true) {
+      const res = await fetch('/item/search-status');
+      const data = await res.json();
+      if (!data.ok || data.ready) break;
+      input.placeholder = window.i18n
+        ? window.i18n.t('nav.searchIndexing', { done: data.done, total: data.total })
+        : `Indexing library... ${data.done}/${data.total}`;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  } catch (err) {
+    console.error('[Search] Index status check failed:', err);
+  }
+  input.disabled = false;
+  const key = input.getAttribute('data-i18n-placeholder');
+  if (key && window.i18n) input.placeholder = window.i18n.t(key);
+}
+
 function initNavbarSearch() {
   const input = document.getElementById('navbarSearch');
   const dropdown = document.getElementById('navbarSearchDropdown');
@@ -388,6 +411,8 @@ function initNavbarSearch() {
     const savedFilterQuery = sessionStorage.getItem(SEARCH_FILTER_STORAGE_KEY);
     if (savedFilterQuery) applyAsFilter(savedFilterQuery, true);
   }
+
+  disableUntilSearchIndexReady(input);
 
   let searchTimeout;
 

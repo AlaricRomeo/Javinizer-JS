@@ -1,4 +1,4 @@
-const { loadConfig, saveConfig, getScrapePath, getLibraryPaths, isInsideLibrary, resolveLibraryFolder } = require("../core/config");
+const { loadConfig, saveConfig, getScrapePath, getLibraryPaths, isInsideLibrary, resolveLibraryFolder, getSearchIndexCachePath } = require("../core/config");
 const { buildItem } = require("../core/buildItem");
 const express = require("express");
 const router = express.Router();
@@ -441,65 +441,192 @@ router.get("/browse", (req, res) => {
 // GET /search (edit mode only: search by ID and NFO title)
 // ─────────────────────────────
 let _searchIndex = null;
+let _searchIndexBuild = null; // in-flight build promise
+let _searchIndexProgress = { done: 0, total: 0 };
+// id -> { mtimeMs, title, genres, actorNames } as read from each NFO —
+// persisted to disk so a restart doesn't need to re-read every NFO.
+let _nfoDataById = null;
 
-function getSearchIndex() {
-  // A partial scan (the incremental per-batch loadLibrary() used elsewhere
-  // for responsiveness) would make this index silently miss whatever hasn't
-  // been scanned yet on a cold cache — searching/filtering would then look
-  // like it found nothing for a movie that's actually there. loadAll()
-  // finishes the scan (near-instant once the disk cache is warm) first.
-  if (!libraryReader.fullyLoaded) libraryReader.loadAll();
-  // Rebuild if library changed
-  if (!_searchIndex || _searchIndex.length !== libraryReader.items.length) {
-    const aliasCache = new Map();
-    _searchIndex = libraryReader.items.map(item => buildSearchEntry(item, aliasCache));
-  }
-  return _searchIndex;
+const yieldToEventLoop = () => new Promise(resolve => setImmediate(resolve));
+
+function loadNfoDataCache() {
+  try {
+    const cache = JSON.parse(fs.readFileSync(getSearchIndexCachePath(), 'utf8'));
+    if (cache && Array.isArray(cache.entries)) return new Map(cache.entries);
+  } catch (_) {}
+  return new Map();
+}
+
+let _saveNfoDataTimer = null;
+function saveNfoDataCache() {
+  clearTimeout(_saveNfoDataTimer);
+  _saveNfoDataTimer = setTimeout(() => {
+    if (!_nfoDataById) return;
+    const cachePath = getSearchIndexCachePath();
+    fs.promises.mkdir(path.dirname(cachePath), { recursive: true })
+      .then(() => fs.promises.writeFile(cachePath, JSON.stringify({ entries: [..._nfoDataById], savedAt: Date.now() }), 'utf8'))
+      .catch(err => console.error('[search-index] Failed to save cache:', err.message));
+  }, 2000);
+}
+
+function isSearchIndexStale() {
+  return !_searchIndex || !libraryReader.fullyLoaded || _searchIndex.length !== libraryReader.items.length;
 }
 
 /**
- * Search index entry for one library item, read straight from its NFO.
+ * Builds the search index in the background without blocking the server:
+ * a cold library scan or reading thousands of NFOs on a cold disk can take
+ * minutes, and doing that synchronously froze every request (the UI looked
+ * hung right after typing the first search). NFO data cached on disk from a
+ * previous run is trusted as-is so a restart is near-instant; it's then
+ * re-checked against each NFO's mtime in the background (revalidateNfoData).
  */
-function buildSearchEntry(item, aliasCache) {
-  const actorDb = require('../../scrapers/actors/actorDb');
-  let title = '';
-  let genres = [];
-  let actors = [];
+function ensureSearchIndex() {
+  if (!isSearchIndexStale()) return Promise.resolve(_searchIndex);
+  if (_searchIndexBuild) return _searchIndexBuild;
+
+  _searchIndexBuild = (async () => {
+    // A partial scan would make the index silently miss whatever hasn't
+    // been scanned yet on a cold cache — finish it first, one batch per tick.
+    while (!libraryReader.fullyLoaded) {
+      libraryReader.loadLibrary();
+      await yieldToEventLoop();
+    }
+
+    const firstBuild = _nfoDataById === null;
+    if (firstBuild) _nfoDataById = loadNfoDataCache();
+
+    const items = libraryReader.items.slice();
+    const aliasCache = new Map();
+    _searchIndexProgress = { done: 0, total: items.length };
+
+    let readAny = false;
+    const CONCURRENCY = 16;
+    for (let i = 0; i < items.length; i += CONCURRENCY) {
+      await Promise.all(items.slice(i, i + CONCURRENCY).map(async item => {
+        if (!_nfoDataById.has(item.id)) {
+          _nfoDataById.set(item.id, await readNfoData(item));
+          readAny = true;
+        }
+      }));
+      _searchIndexProgress.done = Math.min(i + CONCURRENCY, items.length);
+    }
+
+    // Drop entries for items no longer in the library
+    const liveIds = new Set(items.map(item => item.id));
+    for (const id of _nfoDataById.keys()) {
+      if (!liveIds.has(id)) { _nfoDataById.delete(id); readAny = true; }
+    }
+    if (readAny) saveNfoDataCache();
+
+    _searchIndex = items.map(item => toSearchEntry(item, _nfoDataById.get(item.id), aliasCache));
+    if (firstBuild) revalidateNfoData(items).catch(err => console.error('[search-index] Revalidation failed:', err));
+    return _searchIndex;
+  })().finally(() => { _searchIndexBuild = null; });
+
+  return _searchIndexBuild;
+}
+
+/**
+ * Re-reads NFOs changed outside the app since the disk cache was written
+ * (mtime differs) — runs after the index is already usable, so a cold disk
+ * only delays picking up those external edits, not search itself.
+ */
+async function revalidateNfoData(items) {
+  const CONCURRENCY = 8;
+  let changed = false;
+  for (let i = 0; i < items.length; i += CONCURRENCY) {
+    await Promise.all(items.slice(i, i + CONCURRENCY).map(async item => {
+      const cached = _nfoDataById.get(item.id);
+      let mtimeMs;
+      try {
+        mtimeMs = (await fs.promises.stat(item.nfo)).mtimeMs;
+      } catch (_) { return; }
+      if (cached && cached.mtimeMs === mtimeMs) return;
+      _nfoDataById.set(item.id, await readNfoData(item));
+      refreshSearchEntryFromData(item);
+      changed = true;
+    }));
+  }
+  if (changed) saveNfoDataCache();
+}
+
+async function readNfoData(item) {
+  try {
+    const [stat, content] = await Promise.all([
+      fs.promises.stat(item.nfo),
+      fs.promises.readFile(item.nfo, 'utf8')
+    ]);
+    return { mtimeMs: stat.mtimeMs, ...parseNfoData(content) };
+  } catch (_) {
+    return { mtimeMs: 0, title: '', genres: [], actorNames: [] };
+  }
+}
+
+function readNfoDataSync(item) {
   try {
     const content = fs.readFileSync(item.nfo, 'utf8');
-    const titleMatch = content.match(/<title>([\s\S]*?)<\/title>/i);
-    if (titleMatch) title = titleMatch[1].trim();
+    return { mtimeMs: fs.statSync(item.nfo).mtimeMs, ...parseNfoData(content) };
+  } catch (_) {
+    return { mtimeMs: 0, title: '', genres: [], actorNames: [] };
+  }
+}
 
-    genres = [...content.matchAll(/<genre>([\s\S]*?)<\/genre>/gi)]
-      .map(m => m[1].trim())
-      .filter(Boolean);
+function parseNfoData(content) {
+  const titleMatch = content.match(/<title>([\s\S]*?)<\/title>/i);
+  const title = titleMatch ? titleMatch[1].trim() : '';
 
-    const actorNames = (content.match(/<actor>[\s\S]*?<\/actor>/gi) || [])
-      .map(block => {
-        const m = block.match(/<name>([\s\S]*?)<\/name>/i);
-        return m ? m[1].trim() : null;
-      })
-      .filter(Boolean);
+  const genres = [...content.matchAll(/<genre>([\s\S]*?)<\/genre>/gi)]
+    .map(m => m[1].trim())
+    .filter(Boolean);
 
-    // Resolve through the actor index so every known alias is searchable
-    // here, not just whichever name variant happens to be literally
-    // written into this specific movie's own NFO (see actorDb.resolveAliases).
-    // aliasCache memoizes per rebuild — the same actor recurs across many
-    // movies, so this keeps a full-library rebuild from doing one SQLite
-    // round trip per (movie, actor) pair instead of per unique actor.
-    const aliasSet = new Set();
-    actorNames.forEach(n => {
-      const key = n.toLowerCase();
-      let aliases = aliasCache.get(key);
-      if (!aliases) {
-        aliases = actorDb.resolveAliases(n);
-        aliasCache.set(key, aliases);
-      }
-      aliases.forEach(a => aliasSet.add(a));
-    });
-    actors = Array.from(aliasSet);
-  } catch (_) {}
-  return { id: item.id, name: path.basename(item.id), root: path.basename(path.dirname(item.path)), title, genres, actors };
+  const actorNames = (content.match(/<actor>[\s\S]*?<\/actor>/gi) || [])
+    .map(block => {
+      const m = block.match(/<name>([\s\S]*?)<\/name>/i);
+      return m ? m[1].trim() : null;
+    })
+    .filter(Boolean);
+
+  return { title, genres, actorNames };
+}
+
+/**
+ * Search index entry for one library item from its NFO data.
+ */
+function toSearchEntry(item, data, aliasCache) {
+  const actorDb = require('../../scrapers/actors/actorDb');
+  // Resolve through the actor index so every known alias is searchable
+  // here, not just whichever name variant happens to be literally
+  // written into this specific movie's own NFO (see actorDb.resolveAliases).
+  // Done at build time rather than cached on disk, since aliases change as
+  // the actor index does. aliasCache memoizes per rebuild — the same actor
+  // recurs across many movies, so this keeps a full-library rebuild from
+  // doing one SQLite round trip per (movie, actor) pair instead of per
+  // unique actor.
+  const aliasSet = new Set();
+  (data ? data.actorNames : []).forEach(n => {
+    const key = n.toLowerCase();
+    let aliases = aliasCache.get(key);
+    if (!aliases) {
+      try { aliases = actorDb.resolveAliases(n); } catch (_) { aliases = [n]; }
+      aliasCache.set(key, aliases);
+    }
+    aliases.forEach(a => aliasSet.add(a));
+  });
+  return {
+    id: item.id,
+    name: path.basename(item.id),
+    root: path.basename(path.dirname(item.path)),
+    title: data ? data.title : '',
+    genres: data ? data.genres : [],
+    actors: Array.from(aliasSet)
+  };
+}
+
+function refreshSearchEntryFromData(item) {
+  if (!_searchIndex) return;
+  const idx = _searchIndex.findIndex(entry => entry.id === item.id);
+  if (idx !== -1) _searchIndex[idx] = toSearchEntry(item, _nfoDataById.get(item.id), new Map());
 }
 
 /**
@@ -508,9 +635,10 @@ function buildSearchEntry(item, aliasCache) {
  * titles or actors would stay stale until a restart.
  */
 function refreshSearchEntry(item) {
-  if (!_searchIndex) return;
-  const idx = _searchIndex.findIndex(entry => entry.id === item.id);
-  if (idx !== -1) _searchIndex[idx] = buildSearchEntry(item, new Map());
+  if (!_nfoDataById) return;
+  _nfoDataById.set(item.id, readNfoDataSync(item));
+  refreshSearchEntryFromData(item);
+  saveNfoDataCache();
 }
 
 /**
@@ -518,17 +646,28 @@ function refreshSearchEntry(item) {
  * boolean (AND / OR / NOT / ! / parentheses, see src/core/searchQuery.js).
  * Shared by /search (dropdown), /library-search (grid) and /filter (navigation).
  */
-function matchSearchIndex(q) {
-  return getSearchIndex().filter(compileSearchQuery(q));
+async function matchSearchIndex(q) {
+  return (await ensureSearchIndex()).filter(compileSearchQuery(q));
 }
 
-router.get("/search", (req, res) => {
+// GET /search-status — lets the UI keep search boxes disabled until the
+// index is built; also kicks off the build if nothing has started it yet.
+router.get("/search-status", (req, res) => {
+  const ready = !isSearchIndexStale();
+  if (!ready) ensureSearchIndex().catch(err => console.error('[search-index] Build failed:', err));
+  res.json({ ok: true, ready, ..._searchIndexProgress });
+});
+
+router.get("/search", async (req, res) => {
   const q = (req.query.q || '').trim();
   if (q.length < 1) return res.json({ ok: true, results: [], total: 0 });
 
-  const matches = matchSearchIndex(q);
-
-  res.json({ ok: true, results: matches.slice(0, 50), total: matches.length });
+  try {
+    const matches = await matchSearchIndex(q);
+    res.json({ ok: true, results: matches.slice(0, 50), total: matches.length });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
 });
 
 // ─────────────────────────────
@@ -537,7 +676,7 @@ router.get("/search", (req, res) => {
 // query — the search counterpart to the paginated /library-list. Grid view
 // can't filter client-side once browsing is paginated (it no longer holds
 // the whole library), so a search re-queries the server instead; this stays
-// fast even on a huge library because getSearchIndex()'s matching is cheap
+// fast even on a huge library because the search index's matching is cheap
 // (regex over cached NFO text) and buildItem() only runs for the — typically
 // small — set of matches, not the whole library.
 // ─────────────────────────────
@@ -589,7 +728,7 @@ router.get("/library-search", async (req, res) => {
       const q = (req.query.q || '').trim();
       if (!q) return res.json({ ok: true, items: [] });
 
-      const matches = matchSearchIndex(q);
+      const matches = await matchSearchIndex(q);
       const matchIds = new Set(matches.map(m => m.id));
       matchedItems = libraryReader.items.filter(item => matchIds.has(item.id));
     }
@@ -636,7 +775,7 @@ router.post("/filter", async (req, res) => {
       const q = (req.body.q || '').trim();
       if (!q) return res.json(fail('Query required'));
 
-      const matches = matchSearchIndex(q);
+      const matches = await matchSearchIndex(q);
       if (matches.length === 0) return res.json({ ok: true, count: 0, item: null });
       matchIds = matches.map(m => m.id);
     }

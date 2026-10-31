@@ -10,6 +10,7 @@
     "about": "情報",
     "search": "検索...",
     "searchSyntax": "演算子: AND、OR、NOT または !、括弧、\"複数の単語\"。例: solowork AND !planning",
+    "searchIndexing": "ライブラリをインデックス中... {done}/{total}",
     "filterResults": "結果を絞り込む ({count})",
     "clearFilter": "フィルターを解除",
     "filterActive": "フィルター: \"{query}\" ({count})",

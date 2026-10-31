@@ -10,6 +10,7 @@
     "about": "Info",
     "search": "Cerca...",
     "searchSyntax": "Operatori: AND, OR, NOT o !, parentesi, \"più parole\". Es: solowork AND !planning",
+    "searchIndexing": "Indicizzazione libreria... {done}/{total}",
     "filterResults": "Filtra risultati ({count})",
     "filterActive": "Filtro: \"{query}\" ({count})",
     "filterActiveMovies": "Filtro: \"{label} - {count} film\"",
