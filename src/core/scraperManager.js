@@ -36,25 +36,35 @@ const MULTI_SCRAPER_VALUE = '__all__';
 // IDs found anywhere in a filename: "ABP-420", "T28-587", "IBW-1010Z"...
 const HYPHENATED_ID = /(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9]{0,5})-(\d{2,6}[A-Za-z]?)(?![A-Za-z0-9])/;
 // ...or without the hyphen: "abp420" (letters only before the number)
-const COMPACT_ID = /(?<![A-Za-z0-9])([A-Za-z]{2,6})(\d{2,6})(?![A-Za-z0-9])/;
+const COMPACT_ID = /(?<![A-Za-z0-9])([A-Za-z]{2,6})(\d{2,6}[A-Za-z]?)(?![A-Za-z0-9])/;
+// Same, anchored at the start of the first token and followed by its end or a
+// hyphen: "Crpd-299", "Sma751", "TUE-053-720p" (not "hhd800.com@...")
+const LEADING_HYPHENATED_ID = /^([A-Za-z][A-Za-z0-9]{0,5})-(\d{2,6}[A-Za-z]?)(?=$|-)/;
+const LEADING_COMPACT_ID = /^([A-Za-z]{2,6})(\d{2,6}[A-Za-z]?)(?=$|-)/;
 
 /**
- * Movie ID from a video filename.
- * - A filename that starts with something ID-like (letters/digits/hyphens,
- *   with at least one digit) keeps it as-is, up to the first space — any ID
- *   format works there ("ABP-420 1080p.mp4", "010214-514.mp4").
- * - Otherwise the ID is searched anywhere in the name and normalized to
- *   PREFIX-NUMBER: "[site] ABP-420 1080p.mkv", "site.com@ABP-420.mp4",
- *   "[site] abp420.mp4" -> "ABP-420". A hyphenated match wins over a compact
- *   one (in "hhd800.com@ABP-420" the site name "hhd800" is not the ID).
+ * Movie ID from a video filename, normalized to PREFIX-NUMBER when possible.
+ * - The first token (split on spaces/underscores) starting with an ID wins:
+ *   "Crpd-299_restored.mp4" -> "CRPD-299", "Sma751_restored.mp4" -> "SMA-751",
+ *   "TUE-053-720p.mp4" -> "TUE-053".
+ * - A first token that is otherwise ID-like (letters/digits/hyphens, with at
+ *   least one digit) is kept as-is: "010214-514.mp4", "FC2-PPV-123456.mp4".
+ * - Otherwise the ID is searched anywhere in the name: "[site] ABP-420 1080p.mkv",
+ *   "site.com@ABP-420.mp4", "[site] abp420.mp4" -> "ABP-420". A hyphenated match
+ *   wins over a compact one (in "hhd800.com@ABP-420" "hhd800" is not the ID).
  *
  * @param {string} filename - Video filename (with extension)
  * @returns {string} - Movie ID, or '' if none was found
  */
 function extractMovieId(filename) {
   const name = filename.replace(/\.[^.]+$/, '');
-  const firstToken = name.split(' ')[0];
-  if (/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(firstToken) && /\d/.test(firstToken)) {
+  const firstToken = name.split(/[\s_]/)[0];
+
+  const leading = firstToken.match(LEADING_HYPHENATED_ID) || firstToken.match(LEADING_COMPACT_ID);
+  if (leading) {
+    return `${leading[1]}-${leading[2]}`.toUpperCase();
+  }
+  if (/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(firstToken) && /\d/.test(firstToken)) {
     return firstToken;
   }
 
