@@ -1,6 +1,17 @@
 const fs = require("fs");
 const xml2js = require("xml2js");
 
+/**
+ * Formats a date as Kodi's <dateadded> value: "YYYY-MM-DD HH:MM:SS" (local time)
+ * @param {Date} date
+ * @returns {string}
+ */
+function formatNfoDate(date) {
+  const pad = n => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 const ucFirst = str => str ? str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : str;
 
 /**
@@ -10,6 +21,7 @@ const ucFirst = str => str ? str.toLowerCase().replace(/\b\w/g, c => c.toUpperCa
 const fieldMapping = {
   originalTitle: "originaltitle",
   releaseDate: "premiered",
+  dateAdded: "dateadded",
   contentRating: "mpaa",
   genres: "genre",
   tags: "tag",
@@ -121,10 +133,13 @@ async function saveNfoPatch(nfoPath, changes) {
  * @param {object} model - Complete canonical model
  */
 async function saveNfoFull(nfoPath, model) {
-  // backup if already exists
+  // backup if already exists — and keep its <dateadded>: a rescrape must
+  // not reset when the movie was first added to the library
+  let existingDateAdded = "";
   if (fs.existsSync(nfoPath)) {
     const xml = fs.readFileSync(nfoPath, "utf8");
     fs.writeFileSync(nfoPath + ".bak", xml, "utf8");
+    existingDateAdded = (xml.match(/<dateadded>([^<]*)<\/dateadded>/i)?.[1] || "").trim();
   }
 
   const builder = new xml2js.Builder({
@@ -147,6 +162,7 @@ async function saveNfoFull(nfoPath, model) {
   movie.id = [model.id || model.code || ""];
   movie.premiered = [model.releaseDate || ""];
   movie.year = model.releaseDate ? [model.releaseDate.substring(0, 4)] : [""];
+  movie.dateadded = [model.dateAdded || existingDateAdded || formatNfoDate(new Date())];
   movie.director = [model.director || ""];
   movie.studio = [model.studio || ""];
   movie.label = [model.label || ""];
@@ -186,4 +202,4 @@ async function saveNfoFull(nfoPath, model) {
   fs.writeFileSync(nfoPath, newXml, "utf8");
 }
 
-module.exports = { saveNfoPatch, saveNfoFull };
+module.exports = { saveNfoPatch, saveNfoFull, formatNfoDate };

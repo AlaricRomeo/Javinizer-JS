@@ -40,6 +40,7 @@
     "description": "説明",
     "director": "監督",
     "releaseDate": "発売日",
+    "dateAdded": "追加日",
     "runtime": "再生時間（分）",
     "series": "シリーズ",
     "maker": "メーカー",

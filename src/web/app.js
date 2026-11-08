@@ -649,7 +649,7 @@ function clearUI() {
   // Clear all text fields (library paths are handled separately)
   const textFields = [
     "id", "contentId", "title", "alternateTitle", "description",
-    "director", "releaseDate", "runtime", "series", "maker", "label",
+    "director", "releaseDate", "dateAdded", "runtime", "series", "maker", "label",
     "rating", "contentRating",
     "genres", "tags",
     "coverUrl", "screenshotUrl", "trailerUrl"
@@ -1347,6 +1347,18 @@ function renderItem(item) {
   bindField("series", "series");
   bindField("maker", "studio"); // maker maps to studio
   bindField("label", "label");
+
+  // Date added: NFO stores "YYYY-MM-DD HH:MM:SS", datetime-local wants a "T"
+  const dateAddedEl = document.getElementById("dateAdded");
+  if (dateAddedEl) {
+    dateAddedEl.value = (item.dateAdded || "").replace(" ", "T");
+    dateAddedEl.oninput = () => {
+      const v = dateAddedEl.value.replace("T", " ");
+      currentItem.dateAdded = v.length === 16 ? `${v}:00` : v;
+      markFieldDirty("dateAdded", "dateAdded");
+      updateDebugJson();
+    };
+  }
 
   // Rating
   const ratingEl = document.getElementById("rating");

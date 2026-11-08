@@ -29,6 +29,7 @@ function applyI18nBindings() {
   setLabelFor("description", t("fields.description"));
   setLabelFor("director", t("fields.director"));
   setLabelFor("releaseDate", t("fields.releaseDate"));
+  setLabelFor("dateAdded", t("fields.dateAdded"));
   setLabelFor("runtime", t("fields.runtime"));
   setLabelFor("series", t("fields.series"));
   setLabelFor("maker", t("fields.maker"));

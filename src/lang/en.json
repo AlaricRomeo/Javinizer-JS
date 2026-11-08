@@ -76,6 +76,7 @@
     "description": "Description",
     "director": "Director",
     "releaseDate": "Release Date",
+    "dateAdded": "Date Added",
     "runtime": "Runtime (minutes)",
     "series": "Series",
     "maker": "Maker",

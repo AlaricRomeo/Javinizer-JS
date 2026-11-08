@@ -17,6 +17,7 @@ function mapNfoToModel(parsedXml) {
     originalTitle: getValue("originaltitle"),
 
     releaseDate: getValue("premiered"),
+    dateAdded: getValue("dateadded"),
     runtime: movie.runtime ? Number(movie.runtime[0]) : null,
 
     studio: getValue("studio"),
