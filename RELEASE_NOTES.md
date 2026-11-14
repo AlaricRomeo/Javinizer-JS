@@ -1,5 +1,15 @@
 # Release Notes
 
+## v2.7.2 (2026-11-14)
+
+### 🐛 Fixes
+
+- `bin/migrate-actors-folder.js`: when an actor has photos in both `actors/` and an existing `.actors/` (e.g. an old one written by Kodi or another tool), the most recent file now wins instead of the one in `.actors/`
+
+### ✨ New Features
+
+- `bin/migrate-actors-folder.js --prune`: removes photos and NFOs in `.actors/` of actors no longer in the movie cast (they are always reported)
+
 ## v2.7.1 (2026-11-14)
 
 ### 🐛 Fixes
