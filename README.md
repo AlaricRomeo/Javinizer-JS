@@ -12,7 +12,7 @@ Javinizer-js is actively used to manage a real-world library of more than **3,30
 
 Its goal is simple: provide everything needed to manage a JAV collection without turning the setup itself into a project.
 
-**Latest release:** [v2.7.0](https://github.com/AlaricRomeo/Javinizer-JS/releases/latest)
+**Latest release:** [v2.7.1](https://github.com/AlaricRomeo/Javinizer-JS/releases/latest)
 
 **License:** GPL-2.0-only
 
@@ -181,6 +181,27 @@ Generated NFO files are **fully compatible with Jellyfin and Kodi**.
 
 Other media servers supporting local NFO metadata may also work, but are not currently listed as officially tested.
 
+### 👩 Actor photos in Kodi and Jellyfin
+
+Kodi and Jellyfin look for actor photos in different places, so Javinizer-js covers both:
+
+* **Kodi** reads them from a hidden `.actors/` folder inside the movie folder. The file name must be the actor `<name>` from the NFO with every space replaced by `_` (e.g. `Abeno Miku` → `Abeno_Miku.jpg`), and only `.jpg` and `.png` are read. "Copy actors in movie folder" writes exactly this: other formats (e.g. `.webp`) are converted to `.jpg`.
+* **Jellyfin** ignores actor folders entirely and only uses the `<thumb>` of each `<actor>` in the movie NFO. Javinizer-js now writes the actor's **remote photo URL** there, instead of its internal path (e.g. `/actors/abeno-miku.webp`), which no media server can resolve.
+
+Inside Javinizer-js nothing changes: the movie's `.actors/` folder is used first, then the central actor library (including custom photos you uploaded), and the NFO `<thumb>` only as a last resort. A custom photo is therefore shown by Javinizer-js and Kodi, while Jellyfin shows the remote one.
+
+#### Migrating an existing library (up to v2.7.0)
+
+Older versions copied actor photos into `actors/` (no dot) named with spaces, and wrote internal paths in `<thumb>`. Since v2.7.1 only `.actors/` is read. To migrate:
+
+```bash
+node bin/migrate-actors-folder.js                         # dry run: shows what would change
+node bin/migrate-actors-folder.js --path "/lib/ABC-123"   # dry run on a single movie folder
+node bin/migrate-actors-folder.js --apply                 # migrate the whole library
+```
+
+For every movie folder it moves `actors/` to `.actors/`, renames photos and actor NFOs (`Abeno Miku.webp` → `Abeno_Miku.jpg`), converts non-jpg/png photos, replaces internal `<thumb>` paths in the movie NFO with the remote URL when known, and removes `actors/` once empty. It is safe to re-run. After a full `--apply` the actor index is rebuilt; then rescan the library in Kodi / refresh people metadata in Jellyfin.
+
 ---
 
 ## 🗂️ From Unsorted Files to an Organized Library
@@ -212,7 +233,7 @@ A file whose ID isn't recognized is skipped (and logged): rename it so that it s
 * creates the movie folder, named after the **folder pattern** in the settings (placeholders: `{id}`, `{contentid}`, `{title}`, `{alternatetitle}`, `{label}`, `{maker}`, `{year}` — e.g. `{id} [{maker}] - ({year})`);
 * moves the video into it, renamed to `<ID>.<extension>`;
 * writes `<ID>.nfo`, downloads `fanart.jpg` and creates `poster.jpg` from it;
-* optionally copies the actor photos into an `actors/` subfolder.
+* optionally copies the actor photos into a `.actors/` subfolder (Kodi layout, see [Actor photos in Kodi and Jellyfin](#-actor-photos-in-kodi-and-jellyfin)).
 
 ```text
 Unsorted/
@@ -242,7 +263,10 @@ Library/
 │   ├── ABC-001.nfo
 │   ├── ABC-001.mp4
 │   ├── fanart.jpg
-│   └── poster.jpg
+│   ├── poster.jpg
+│   └── .actors/
+│       ├── Abeno_Miku.jpg
+│       └── Abeno_Miku.nfo
 │
 ├── ABC-002/
 │   ├── ABC-002.nfo

@@ -3763,15 +3763,17 @@ router.get("/videos/:folderId", async (req, res) => {
 });
 
 // ─────────────────────────────
-// Helper: copy actor thumbs to a movie folder's actors/ subfolder
+// Helper: copy actor thumbs to a movie folder's .actors/ subfolder (Kodi layout)
 // ─────────────────────────────
 async function copyActorsToFolder(folderPath, actors) {
   const { getActorsCachePath } = require('../../scrapers/actors/cache-helper');
   const { scrapeLocal } = require('../../scrapers/actors/local/run');
   const { actorToNFO } = require('../../scrapers/actors/schema');
   const actorDb = require('../../scrapers/actors/actorDb');
+  const { ACTORS_DIR, actorFileBase } = require('../core/kodiActors');
+  const sharp = require('sharp');
   const actorsPath = getActorsCachePath();
-  const destFolder = path.join(folderPath, 'actors');
+  const destFolder = path.join(folderPath, ACTORS_DIR);
 
   if (!fs.existsSync(destFolder)) fs.mkdirSync(destFolder, { recursive: true });
 
@@ -3779,8 +3781,29 @@ async function copyActorsToFolder(folderPath, actors) {
   const copied = [];
   const skipped = [];
 
+  // Kodi only reads .jpg/.png from .actors: keep png as-is, jpeg -> .jpg,
+  // anything else (webp, gif, ...) is converted to jpg. Removes stale photos
+  // left over under a different extension. Returns the saved extension.
+  const writePhoto = async (source, srcExt, fileBase) => {
+    const raw = String(srcExt || '').toLowerCase();
+    const ext = raw === 'png' ? 'png' : 'jpg';
+    const dest = path.join(destFolder, `${fileBase}.${ext}`);
+    if (raw === 'png' || raw === 'jpg' || raw === 'jpeg') {
+      if (Buffer.isBuffer(source)) fs.writeFileSync(dest, source);
+      else fs.copyFileSync(source, dest);
+    } else {
+      await sharp(source).jpeg({ quality: 92 }).toFile(dest);
+    }
+    extensions.filter(e => e !== ext).forEach(e => {
+      const stale = path.join(destFolder, `${fileBase}.${e}`);
+      if (fs.existsSync(stale)) { try { fs.unlinkSync(stale); } catch (_) {} }
+    });
+    return ext;
+  };
+
   for (const actor of actors) {
     if (!actor.name) continue;
+    const fileBase = actorFileBase(actor.name);
     let found = false;
     let savedExt = null;
 
@@ -3797,16 +3820,13 @@ async function copyActorsToFolder(folderPath, actors) {
     if (ownCacheMatch) {
       const srcPath = path.join(actorsPath, ownCacheMatch[1]);
       if (fs.existsSync(srcPath)) {
-        const ext = path.extname(ownCacheMatch[1]).replace(/^\./, '');
-        // Remove any stale photo left over from a previous copy under a different extension
-        extensions.filter(e => e !== ext).forEach(e => {
-          const stale = path.join(destFolder, `${actor.name}.${e}`);
-          if (fs.existsSync(stale)) { try { fs.unlinkSync(stale); } catch (_) {} }
-        });
-        fs.copyFileSync(srcPath, path.join(destFolder, `${actor.name}.${ext}`));
-        copied.push(actor.name);
-        found = true;
-        savedExt = ext;
+        try {
+          savedExt = await writePhoto(srcPath, path.extname(ownCacheMatch[1]).replace(/^\./, ''), fileBase);
+          copied.push(actor.name);
+          found = true;
+        } catch (err) {
+          console.error(`[copyActorsToFolder] Failed to copy photo for ${actor.name}:`, err.message);
+        }
       }
     }
 
@@ -3816,15 +3836,13 @@ async function copyActorsToFolder(folderPath, actors) {
       // reference if the file no longer exists.
       const source = actorDb.resolvePhotoSource(actorId, { cachePath: actorsPath });
       if (source) {
-        // Remove any stale photo left over from a previous copy under a different extension
-        extensions.filter(e => e !== source.ext).forEach(e => {
-          const stale = path.join(destFolder, `${actor.name}.${e}`);
-          if (fs.existsSync(stale)) { try { fs.unlinkSync(stale); } catch (_) {} }
-        });
-        fs.copyFileSync(source.absolutePath, path.join(destFolder, `${actor.name}.${source.ext}`));
-        copied.push(actor.name);
-        found = true;
-        savedExt = source.ext;
+        try {
+          savedExt = await writePhoto(source.absolutePath, source.ext, fileBase);
+          copied.push(actor.name);
+          found = true;
+        } catch (err) {
+          console.error(`[copyActorsToFolder] Failed to copy photo for ${actor.name}:`, err.message);
+        }
       }
     }
 
@@ -3860,15 +3878,9 @@ async function copyActorsToFolder(folderPath, actors) {
           req2.on('error', reject);
         });
         const ext = (path.extname(imageUrl.pathname) || '.jpg').replace(/^\./, '');
-        // Remove any stale photo left over from a previous copy under a different extension
-        extensions.filter(e => e !== ext).forEach(e => {
-          const stale = path.join(destFolder, `${actor.name}.${e}`);
-          if (fs.existsSync(stale)) { try { fs.unlinkSync(stale); } catch (_) {} }
-        });
-        fs.writeFileSync(path.join(destFolder, `${actor.name}.${ext}`), imageBuffer);
+        savedExt = await writePhoto(imageBuffer, ext, fileBase);
         copied.push(actor.name);
         found = true;
-        savedExt = ext;
       } catch (dlErr) {
         console.error(`[copyActorsToFolder] Failed to download thumb for ${actor.name}:`, dlErr.message);
       }
@@ -3883,8 +3895,8 @@ async function copyActorsToFolder(folderPath, actors) {
     // from movie folders after a cache reset)
     if (found && actorData) {
       try {
-        const nfoActor = savedExt ? { ...actorData, thumbLocal: `${actor.name}.${savedExt}` } : actorData;
-        fs.writeFileSync(path.join(destFolder, `${actor.name}.nfo`), actorToNFO(nfoActor), 'utf-8');
+        const nfoActor = savedExt ? { ...actorData, thumbLocal: `${fileBase}.${savedExt}` } : actorData;
+        fs.writeFileSync(path.join(destFolder, `${fileBase}.nfo`), actorToNFO(nfoActor), 'utf-8');
       } catch (nfoErr) {
         console.error(`[copyActorsToFolder] Failed to write nfo for ${actor.name}:`, nfoErr.message);
       }
@@ -3897,7 +3909,7 @@ async function copyActorsToFolder(folderPath, actors) {
   // (actors removed from the movie, renamed, files from other tools). Not a
   // wipe-and-recreate: a current actor whose copy failed above (e.g. a failed
   // download) keeps the photo/.nfo it already had here.
-  const castNames = new Set(actors.filter(a => a.name).map(a => a.name));
+  const castNames = new Set(actors.filter(a => a.name).map(a => actorFileBase(a.name)));
   for (const entry of fs.readdirSync(destFolder, { withFileTypes: true })) {
     if (!entry.isFile()) continue;
     const dot = entry.name.lastIndexOf('.');

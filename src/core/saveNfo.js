@@ -14,6 +14,31 @@ function formatNfoDate(date) {
 
 const ucFirst = str => str ? str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : str;
 
+const isRemoteUrl = v => typeof v === "string" && /^https?:\/\//i.test(v);
+
+/**
+ * Actor <thumb> written to the movie NFO. Kodi/Jellyfin can't resolve
+ * javinizer-js internal paths (e.g. "/actors/x.webp"), so prefer the actor's
+ * remote URL. javinizer-js itself never relies on this value when it has
+ * better: the UI resolves .actors/ first, then the central actor store, and
+ * only then this URL (see localMediaMapper.js / createActorThumbnail).
+ * Falls back to the original value when no remote URL is known.
+ * @param {{name?: string, thumb?: string, thumbUrl?: string}} actor
+ * @returns {string}
+ */
+function nfoActorThumb(actor) {
+  const thumb = actor.thumb || "";
+  if (isRemoteUrl(thumb)) return thumb;
+  if (isRemoteUrl(actor.thumbUrl)) return actor.thumbUrl;
+  try {
+    const dbActor = actor.name ? require("../../scrapers/actors/actorDb").findActorByName(actor.name) : null;
+    if (dbActor && isRemoteUrl(dbActor.thumbUrl)) return dbActor.thumbUrl;
+  } catch (err) {
+    console.error(`[saveNfo] Actor lookup failed for ${actor.name}:`, err.message);
+  }
+  return thumb;
+}
+
 /**
  * Maps canonical model field names
  * to XML NFO field names (bidirectional)
@@ -59,7 +84,7 @@ function modelFieldToXml(key, value) {
           name: [actor.name || ""],
           altname: [actor.altName || ""],
           role: [actor.role || ""],
-          thumb: [actor.thumb || ""]
+          thumb: [nfoActorThumb(actor)]
         }))
       };
     }
@@ -193,7 +218,7 @@ async function saveNfoFull(nfoPath, model) {
     movie.actor = model.actor.map(a => ({
       name: [a.name || ""],
       altname: [a.altName || ""],
-      thumb: [a.thumb || ""],
+      thumb: [nfoActorThumb(a)],
       role: [a.role || "Actress"]
     }));
   }
@@ -202,4 +227,4 @@ async function saveNfoFull(nfoPath, model) {
   fs.writeFileSync(nfoPath, newXml, "utf8");
 }
 
-module.exports = { saveNfoPatch, saveNfoFull, formatNfoDate };
+module.exports = { saveNfoPatch, saveNfoFull, formatNfoDate, nfoActorThumb };

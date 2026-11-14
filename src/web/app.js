@@ -994,7 +994,7 @@ function createActorThumbnail(thumbUrl, actorName, localThumb, actorId) {
     const img = document.createElement('img');
     img.alt = actorName;
 
-    // Candidate URLs in priority order: this movie's own actors/ folder copy
+    // Candidate URLs in priority order: this movie's own .actors/ folder copy
     // (ground truth for this specific movie, if one exists — resolved server-side
     // in localMediaMapper.js), then the centralized store (/actors/ route:
     // externalPath then internal cache), then the remote thumb URL as a last resort.

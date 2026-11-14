@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { ACTORS_DIR, actorFileBase } = require("./kodiActors");
 
 const VIDEO_EXTENSIONS = ["mp4", "mkv", "avi", "mov", "wmv"];
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
@@ -66,12 +67,12 @@ function enrichModelWithLocalMedia(model, item, actorCache) {
   }
 
   // ACTOR PHOTOS — ground truth for this specific movie
-  // If this movie's own actors/ subfolder already has a photo for an actor
+  // If this movie's own .actors/ subfolder already has a photo for an actor
   // (written by the "copy actors to movie folder" feature), the edit page
   // should show that one first, ahead of whatever the centralized actor
   // store (externalPath/cache) currently resolves to.
   if (model.actor && Array.isArray(model.actor)) {
-    const actorsDir = path.join(item.path, 'actors');
+    const actorsDir = path.join(item.path, ACTORS_DIR);
     const actorFiles = fs.existsSync(actorsDir) ? fs.readdirSync(actorsDir) : [];
 
     // A movie's own NFO never stores the actor's central-index id or
@@ -119,10 +120,11 @@ function enrichModelWithLocalMedia(model, item, actorCache) {
       }
 
       if (actorFiles.length > 0) {
+        const fileBase = actorFileBase(actor.name);
         const matches = actorFiles.filter(f => {
           const dot = f.lastIndexOf('.');
           if (dot === -1) return false;
-          return f.slice(0, dot) === actor.name && IMAGE_EXTENSIONS.includes(f.slice(dot + 1).toLowerCase());
+          return f.slice(0, dot) === fileBase && IMAGE_EXTENSIONS.includes(f.slice(dot + 1).toLowerCase());
         });
         // Stale photos under an old extension can linger alongside a freshly
         // replaced one (see copyActorsToFolder) — readdir order isn't

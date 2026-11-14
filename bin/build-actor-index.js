@@ -7,7 +7,7 @@
  * each .nfo found into the persistent actor index (data/actors-index.db) —
  * including which of the two had a photo file, so photo-priority resolution
  * has real data to work with immediately instead of warming up organically.
- * Also walks every library movie folder's actors/ subfolder to record which
+ * Also walks every library movie folder's .actors/ subfolder to record which
  * movies each actor appears in (actor_movies) — those photos are not used
  * as a resolution source (see resolvePhotoSource()), only their presence
  * as an "appears in" signal.
@@ -23,6 +23,7 @@ const { nfoToActor } = require('../scrapers/actors/schema');
 const { getExternalActorsPath, getActorsCachePath, findLocalPhoto, loadConfig } = require('../scrapers/actors/cache-helper');
 const { getLibraryPaths } = require('../src/core/config');
 const actorDb = require('../scrapers/actors/actorDb');
+const { ACTORS_DIR } = require('../src/core/kodiActors');
 
 function indexDirectory(dirPath, { onPhoto, onActor } = {}) {
   if (!dirPath || !fs.existsSync(dirPath)) return 0;
@@ -89,7 +90,7 @@ function main() {
 
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        const actorsDir = path.join(libraryPath, entry.name, 'actors');
+        const actorsDir = path.join(libraryPath, entry.name, ACTORS_DIR);
         if (!fs.existsSync(actorsDir)) continue;
 
         movieFoldersScanned++;
