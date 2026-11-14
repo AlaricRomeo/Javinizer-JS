@@ -56,6 +56,7 @@ async function scrapeSingle(code) {
       try {
         result = parseHTML(html, code, await fetchWithFlareSolverr(jaUrl));
       } catch (error) {
+        if (error.code === 'RATE_LIMITED') throw error;
         console.error(`[JavLibrary-FS Scrape] Japanese names skipped: ${error.message}`);
       }
     }
@@ -64,6 +65,8 @@ async function scrapeSingle(code) {
     return result;
 
   } catch (error) {
+    // Batch-level stop: the caller marks the remaining codes as failed
+    if (error.code === 'RATE_LIMITED') throw error;
     console.error(`[JavLibrary-FS Scrape] Failed: ${error.message}`);
     // On failure, return minimal object with just code
     return { code };
@@ -101,15 +104,18 @@ async function scrape(codes) {
         const result = await scrapeSingle(code);
         results.push(result);
       } catch (error) {
+        if (error.code === 'RATE_LIMITED') {
+          console.error('[JavLibrary-FS Scrape] Rate limited by the site, stopping the batch. Try again later.');
+          for (let j = i; j < codes.length; j++) {
+            results.push({ code: codes[j], error: error.message });
+          }
+          break;
+        }
         // Don't throw - add error result and continue
         console.error(`[JavLibrary-FS Scrape] Failed: ${error.message}`);
         results.push({ code, error: error.message });
       }
-
-      // Small delay between requests to be respectful
-      if (i < codes.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      // No pause here: fetchWithFlareSolverr() spaces out every page load
     }
 
     console.error(`[JavLibrary-FS Scrape] Batch scrape completed: ${results.length} results`);

@@ -26,6 +26,11 @@ const WATCHDOG_SCRIPT = path.join(__dirname, 'browser-watchdog.js');
 const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours
 const IDLE_MS = 10 * 60 * 1000; // Close the shared browser after 10 min unused
 const _m = 80; // Max operations per session
+// Minimum gap between two page loads (+ random jitter), across processes:
+// bursts (search -> movie -> Japanese page) get us Cloudflare 1015.
+const MIN_GAP_MS = 3000;
+const JITTER_MS = 1500;
+const RATE_LIMIT_WAIT_MS = 10000; // Pause before retrying a 1015-blocked page
 
 /**
  * Clean stale lock files that prevent browser from starting
@@ -119,6 +124,20 @@ function writeState(patch) {
 
 function removeState() {
   try { fs.rmSync(STATE_FILE, { force: true }); } catch (_) {}
+}
+
+/**
+ * Wait until at least MIN_GAP_MS (+ jitter) passed since the last page load,
+ * also one done by a previous scraper process (tracked in the state file).
+ */
+async function throttle() {
+  const last = (readState() || {}).lastFetch || 0;
+  const wait = last + MIN_GAP_MS + Math.random() * JITTER_MS - Date.now();
+  if (wait > 0) {
+    console.error(`[JavLibrary Scrape] Waiting ${(wait / 1000).toFixed(1)}s before next request...`);
+    await new Promise(res => setTimeout(res, wait));
+  }
+  writeState({ lastFetch: Date.now() });
 }
 
 function getExecutablePath() {
@@ -352,6 +371,7 @@ async function initSession() {
   }
 
   console.error('[Browser] Opening javlibrary homepage...');
+  await throttle();
   await sessionPage.goto('https://www.javlibrary.com/en/', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
   if (launched) {
@@ -385,7 +405,7 @@ async function initSession() {
  * @param {string} url - URL to fetch
  * @returns {Promise<string>} HTML content
  */
-async function fetchPage(url) {
+async function fetchPage(url, retried = false) {
   // Reuse the same page/tab from initSession - don't create new ones
   if (!sessionPage || !browser || !browser.isConnected()) {
     console.error('[JavLibrary Scrape] Browser disconnected, reinitializing...');
@@ -400,6 +420,7 @@ async function fetchPage(url) {
   }
 
   try {
+    await throttle();
     console.error(`[JavLibrary Scrape] Fetching ${url}...`);
     await sessionPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
@@ -407,12 +428,19 @@ async function fetchPage(url) {
     if (await detectBlocker(sessionPage) === 'cloudflare') {
       console.error('[JavLibrary Scrape] Cloudflare challenge detected, waiting for user...');
       await askUserToUnblock();
+      await throttle();
       await sessionPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     }
 
-    // Cloudflare 1015: the site banned us for a while. Stop the batch
-    // instead of reading every remaining page as "not found".
+    // Cloudflare 1015: the site banned us for a while. Wait and retry once,
+    // then stop the batch instead of reading every page as "not found".
     if (await detectBlocker(sessionPage) === 'ratelimit') {
+      if (!retried) {
+        console.error(`[JavLibrary Scrape] Rate limited (Cloudflare 1015), retrying in ${RATE_LIMIT_WAIT_MS / 1000}s...`);
+        await new Promise(res => setTimeout(res, RATE_LIMIT_WAIT_MS));
+        writeState({ lastUsed: Date.now() });
+        return await fetchPage(url, true);
+      }
       const e = new Error('Rate limited by JavLibrary (Cloudflare 1015)');
       e.code = 'RATE_LIMITED';
       throw e;

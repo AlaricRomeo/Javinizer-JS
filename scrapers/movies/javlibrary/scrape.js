@@ -131,12 +131,7 @@ async function scrape(codes) {
         console.error(`[JavLibrary Scrape] Failed: ${error.message}`);
         results.push({ code, error: error.message });
       }
-
-      // Pause before the next movie (each one is 2-3 page loads): a batch at
-      // full speed gets the site to rate-limit us (Cloudflare 1015).
-      if (i < codes.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 4000));
-      }
+      // No pause here: fetchPage() spaces out every single page load
     }
 
     console.error(`[JavLibrary Scrape] Batch scrape completed: ${results.length} results`);
