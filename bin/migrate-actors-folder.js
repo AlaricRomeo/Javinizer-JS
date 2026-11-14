@@ -11,6 +11,8 @@
  *  4. movie NFO: actor <thumb> holding a javinizer-js internal path
  *     (e.g. "/actors/x.webp") replaced with the actor's remote URL
  *  5. actors/ removed only if empty afterwards
+ *  6. with --prune: .actors/ files of actors not in the movie NFO cast removed
+ *     (reported in any case)
  * Then rebuilds the actor index (bin/build-actor-index.js).
  *
  * Dry run by default: nothing is changed without --apply.
@@ -19,6 +21,7 @@
  *   node bin/migrate-actors-folder.js                 # dry run, whole library
  *   node bin/migrate-actors-folder.js --apply         # apply changes
  *   node bin/migrate-actors-folder.js --path <movie folder> [--apply]
+ *   node bin/migrate-actors-folder.js --apply --prune # also remove orphans
  */
 
 const fs = require('fs');
@@ -34,10 +37,11 @@ const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
 
 const args = process.argv.slice(2);
 const APPLY = args.includes('--apply');
+const PRUNE = args.includes('--prune');
 const pathIdx = args.indexOf('--path');
 const singlePath = pathIdx !== -1 ? args[pathIdx + 1] : null;
 
-const stats = { folders: 0, photosMoved: 0, photosConverted: 0, nfosMoved: 0, movieNfos: 0, thumbs: 0, legacyRemoved: 0, errors: 0 };
+const stats = { folders: 0, photosMoved: 0, photosConverted: 0, nfosMoved: 0, movieNfos: 0, thumbs: 0, legacyRemoved: 0, orphans: 0, errors: 0 };
 
 const splitName = file => {
   const dot = file.lastIndexOf('.');
@@ -70,8 +74,9 @@ function collect(dir, kind, groups, preferred) {
   }
 }
 
-// .actors/ entries win over actors/; then the most recently written one
-const pickWinner = list => [...list].sort((a, b) => (b.preferred - a.preferred) || (b.mtime - a.mtime))[0];
+// Most recently written file wins (old .actors/ folders from other tools
+// must not override newer javinizer-js copies); ties go to .actors/
+const pickWinner = list => [...list].sort((a, b) => (b.mtime - a.mtime) || (b.preferred - a.preferred))[0];
 
 async function migrateActorsDir(movieDir) {
   const legacyDir = path.join(movieDir, LEGACY_DIR);
@@ -150,6 +155,25 @@ async function migrateActorsDir(movieDir) {
     }
   }
 
+  // Orphans: files of actors no longer in the movie cast
+  const cast = movieCast(movieDir);
+  if (cast) {
+    const targets = new Set([...photos.keys(), ...nfos.keys()]);
+    for (const target of targets) {
+      if (cast.has(target)) continue;
+      const ext = savedExt.get(target);
+      const files = [ext && `${target}.${ext}`, nfos.has(target) && `${target}.nfo`].filter(Boolean);
+      for (const f of files) {
+        stats.orphans++;
+        console.log(`   ${PRUNE && APPLY ? '' : '[keep] '}orphan  ${ACTORS_DIR}/${f}${PRUNE ? '' : ' (use --prune to remove)'}`);
+        if (PRUNE) {
+          changed = true;
+          if (APPLY) { try { fs.unlinkSync(path.join(newDir, f)); } catch (_) {} }
+        }
+      }
+    }
+  }
+
   // Legacy folder cleanup
   if (fs.existsSync(legacyDir)) {
     const left = APPLY ? fs.readdirSync(legacyDir) : fs.readdirSync(legacyDir).filter(f => {
@@ -167,6 +191,21 @@ async function migrateActorsDir(movieDir) {
   }
 
   return changed;
+}
+
+/**
+ * Kodi file bases of the actors in the movie NFO(s), or null if no NFO cast.
+ * @returns {Set<string>|null}
+ */
+function movieCast(movieDir) {
+  const names = new Set();
+  for (const file of fs.readdirSync(movieDir).filter(f => f.toLowerCase().endsWith('.nfo'))) {
+    const content = fs.readFileSync(path.join(movieDir, file), 'utf-8');
+    for (const m of content.matchAll(/<actor>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/actor>/g)) {
+      names.add(actorFileBase(unescapeXml(m[1].trim())));
+    }
+  }
+  return names.size > 0 ? names : null;
 }
 
 function migrateMovieNfos(movieDir) {
@@ -264,6 +303,7 @@ async function main() {
   console.log(`Actor .nfo moved:       ${stats.nfosMoved}`);
   console.log(`Movie NFOs updated:     ${stats.movieNfos} (${stats.thumbs} thumb(s))`);
   console.log(`Legacy actors/ removed: ${stats.legacyRemoved}`);
+  console.log(`Orphan files:           ${stats.orphans}${PRUNE ? (APPLY ? ' (removed)' : ' (would be removed)') : ' (kept, use --prune)'}`);
   console.log(`Errors:                 ${stats.errors}`);
 
   if (!APPLY) {
