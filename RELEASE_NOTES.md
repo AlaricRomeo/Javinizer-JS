@@ -1,5 +1,17 @@
 # Release Notes
 
+## v2.7.0 (2026-11-14)
+
+### ✨ New Features
+
+- New movie scraper: **avwiki**
+- The date a movie was added (`<dateadded>`) is stored in the NFO on the first scrape, kept on rescrape, and shown in the movie form
+
+### 🐛 Fixes
+
+- JavLibrary / JavLibrary-FS: no more Cloudflare 1015 rate limit after ~10 movies. Every page load now waits at least 3s (plus a small random delay) after the previous one, including between the English and Japanese pages of the same movie. On a 1015 the page is retried once after 10s; if it fails again the batch stops. JavLibrary-FS now detects the 1015 page too instead of marking every remaining movie as "not found"
+- Movie ID detection from file names: names like `Crpd-299_restored`, `Sma751_restored` or `TUE-053-720p` are recognised correctly
+
 ## v2.6.5 (2026-10-31)
 
 ### ⚡ Improvements
