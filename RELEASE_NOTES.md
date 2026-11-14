@@ -1,5 +1,16 @@
 # Release Notes
 
+## v2.7.1 (2026-11-14)
+
+### 🐛 Fixes
+
+- Actor photos in Kodi: "Copy actors in movie folder" now writes to `.actors/` (Kodi ignored `actors/`), names photos after the NFO `<name>` with spaces replaced by `_` (e.g. `Abeno_Miku.jpg`) and converts `.webp`/`.gif` to `.jpg`, since Kodi only reads `.jpg`/`.png`. Only `.actors/` is read from now on
+- Actor photos in Jellyfin: the actor `<thumb>` in movie NFOs holds the remote photo URL instead of the internal `/actors/...` path, which Jellyfin can't resolve. Javinizer-js still shows `.actors/` and the central actor library first
+
+### 🛠️ Migration
+
+- New script `bin/migrate-actors-folder.js` migrates existing libraries (`actors/` → `.actors/`, file names, formats, NFO `<thumb>`). Dry run by default, `--apply` to migrate. See README → "Actor photos in Kodi and Jellyfin"
+
 ## v2.7.0 (2026-11-14)
 
 ### ✨ New Features
