@@ -1,5 +1,12 @@
 # Release Notes
 
+## v2.7.3 (2026-11-15)
+
+### 🐛 Fixes
+
+- `bin/migrate-actors-folder.js`: after a full `--apply` it now refreshes only the actor/movie links (`rebuild-actor-movies.js`) instead of re-running `build-actor-index.js`, which could recreate merged actors from stale NFOs and merge real actors into them
+- `bin/build-actor-index.js`: actor NFOs found in movie `.actors/` folders are no longer imported into the actor library; they are only matched by name to existing actors to link movies
+
 ## v2.7.2 (2026-11-14)
 
 ### 🐛 Fixes

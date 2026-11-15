@@ -12,7 +12,7 @@ Javinizer-js is actively used to manage a real-world library of more than **3,30
 
 Its goal is simple: provide everything needed to manage a JAV collection without turning the setup itself into a project.
 
-**Latest release:** [v2.7.2](https://github.com/AlaricRomeo/Javinizer-JS/releases/latest)
+**Latest release:** [v2.7.3](https://github.com/AlaricRomeo/Javinizer-JS/releases/latest)
 
 **License:** GPL-2.0-only
 
@@ -201,7 +201,7 @@ node bin/migrate-actors-folder.js --apply                 # migrate the whole li
 node bin/migrate-actors-folder.js --apply --prune         # also remove photos/NFOs of actors no longer in the cast
 ```
 
-For every movie folder it moves `actors/` to `.actors/`, renames photos and actor NFOs (`Abeno Miku.webp` → `Abeno_Miku.jpg`), converts non-jpg/png photos, replaces internal `<thumb>` paths in the movie NFO with the remote URL when known, and removes `actors/` once empty. When the same actor has photos in both folders (e.g. an old `.actors/` written by another tool), the most recent file wins. Files of actors no longer in the movie cast are reported, and removed with `--prune`. It is safe to re-run. After a full `--apply` the actor index is rebuilt; then rescan the library in Kodi / refresh people metadata in Jellyfin.
+For every movie folder it moves `actors/` to `.actors/`, renames photos and actor NFOs (`Abeno Miku.webp` → `Abeno_Miku.jpg`), converts non-jpg/png photos, replaces internal `<thumb>` paths in the movie NFO with the remote URL when known, and removes `actors/` once empty. When the same actor has photos in both folders (e.g. an old `.actors/` written by another tool), the most recent file wins. Files of actors no longer in the movie cast are reported, and removed with `--prune`. It is safe to re-run. After a full `--apply` the actor/movie links are refreshed (the actor library itself is never modified); then rescan the library in Kodi / refresh people metadata in Jellyfin.
 
 ---
 

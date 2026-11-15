@@ -13,7 +13,8 @@
  *  5. actors/ removed only if empty afterwards
  *  6. with --prune: .actors/ files of actors not in the movie NFO cast removed
  *     (reported in any case)
- * Then rebuilds the actor index (bin/build-actor-index.js).
+ * Then refreshes actor/movie links (bin/rebuild-actor-movies.js). The actor
+ * index itself is never rebuilt: movie-folder actor NFOs are stale copies.
  *
  * Dry run by default: nothing is changed without --apply.
  *
@@ -312,10 +313,10 @@ async function main() {
   }
 
   if (singlePath) {
-    console.log('\nSingle folder mode: actor index not rebuilt (run node bin/build-actor-index.js if needed).');
+    console.log('\nSingle folder mode: actor/movie links not refreshed (run node bin/rebuild-actor-movies.js if needed).');
   } else if (stats.folders > 0) {
-    console.log('\nRebuilding actor index...');
-    spawnSync(process.execPath, [path.join(__dirname, 'build-actor-index.js')], { stdio: 'inherit' });
+    console.log('\nRefreshing actor/movie links...');
+    spawnSync(process.execPath, [path.join(__dirname, 'rebuild-actor-movies.js')], { stdio: 'inherit' });
   }
 }
 

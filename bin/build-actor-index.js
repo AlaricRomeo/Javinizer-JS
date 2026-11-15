@@ -8,11 +8,15 @@
  * including which of the two had a photo file, so photo-priority resolution
  * has real data to work with immediately instead of warming up organically.
  * Also walks every library movie folder's .actors/ subfolder to record which
- * movies each actor appears in (actor_movies) — those photos are not used
- * as a resolution source (see resolvePhotoSource()), only their presence
- * as an "appears in" signal.
+ * movies each actor appears in (actor_movies). Those actor NFOs are stale
+ * snapshots taken when they were copied (old ids, old names), so they are
+ * NEVER upserted: each one is only matched by name to an already indexed
+ * actor and linked — upserting them recreated merged-away actors and
+ * auto-merged real ones into them (setPrimaryName -> mergeActors).
  *
- * Safe to re-run: every write is an upsert.
+ * Meant for a first backfill: re-running it on a curated index re-upserts
+ * every NFO in externalPath/data/actors, including leftovers of past merges.
+ * To refresh movie links only, use bin/rebuild-actor-movies.js.
  *
  * Usage: node bin/build-actor-index.js
  */
@@ -95,12 +99,20 @@ function main() {
 
         movieFoldersScanned++;
         const movieId = path.join(libraryPath, entry.name); // = LibraryReader item id
-        movieActorsIndexed += indexDirectory(actorsDir, {
-          onActor: (id) => actorDb.linkMovie(id, movieId)
-        });
+        for (const file of fs.readdirSync(actorsDir).filter(f => f.endsWith('.nfo'))) {
+          try {
+            const { name } = nfoToActor(fs.readFileSync(path.join(actorsDir, file), 'utf-8'));
+            const known = name && actorDb.findActorByName(name);
+            if (!known) continue;
+            actorDb.linkMovie(known.id, movieId);
+            movieActorsIndexed++;
+          } catch (err) {
+            console.error(`  ⚠️  Failed to read ${path.join(actorsDir, file)}: ${err.message}`);
+          }
+        }
       }
     }
-    console.log(`   Scanned ${movieFoldersScanned} movie folder(s), indexed ${movieActorsIndexed} actor record(s)`);
+    console.log(`   Scanned ${movieFoldersScanned} movie folder(s), linked ${movieActorsIndexed} known actor(s)`);
   } else {
     console.log('\n📁 library movie folders: (libraryPaths not configured or missing)');
   }
