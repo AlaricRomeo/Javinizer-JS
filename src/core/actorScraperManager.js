@@ -106,6 +106,27 @@ function promoteScrapedPhoto(actor) {
 }
 
 /**
+ * Converts a scraper's staging photo to a real .jpg (scrapers save whatever
+ * the site serves, often WebP/PNG, under the URL's extension). Mutates result.
+ */
+async function normalizeScrapedPhoto(result) {
+  if (!result || !isScrapedPhoto(result.thumbLocal)) return;
+  const cachePath = getActorsCachePath();
+  const src = path.join(cachePath, result.thumbLocal);
+  if (!fs.existsSync(src)) return;
+  const jpgName = result.thumbLocal.replace(/\.[^.]+$/, '') + '.jpg';
+  const { imageType, writeJpegFile } = require('./imageType');
+  if (jpgName === result.thumbLocal && imageType(src) === 'jpeg') return;
+  try {
+    await writeJpegFile(src, path.join(cachePath, jpgName));
+    if (jpgName !== result.thumbLocal) fs.unlinkSync(src);
+    result.thumbLocal = jpgName;
+  } catch (err) {
+    console.error(`[ActorScraperManager] Could not convert ${result.thumbLocal} to jpg: ${err.message}`);
+  }
+}
+
+/**
  * Delete staging photos older than 10 minutes: left behind by a scraper
  * that finished after its timeout, when nobody was waiting for its result.
  */
@@ -186,6 +207,7 @@ function executeActorScraper(scraperName, actorName, nameVariants = []) {
         if (final === null) {
           console.error(`[ActorScraperManager] Scraper ${scraperName} returned null for all ${allNames.length} name(s)`);
         } else {
+          await normalizeScrapedPhoto(final);
           console.log(`[ActorScraperManager] Scraper ${scraperName} completed successfully (in-process)`);
         }
 

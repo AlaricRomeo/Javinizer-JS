@@ -1,0 +1,149 @@
+# Kodi Media Center language file
+# Addon Name: Javinizer-JS
+# Addon id: plugin.video.javinizer
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: it_IT\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "#30010"
+msgid "Recently added"
+msgstr "Ultimi aggiunti"
+
+msgctxt "#30011"
+msgid "All movies"
+msgstr "Tutti i film"
+
+msgctxt "#30012"
+msgid "Random"
+msgstr "Casuali"
+
+msgctxt "#30013"
+msgid "Favorite actors"
+msgstr "Attori preferiti"
+
+msgctxt "#30014"
+msgid "All actors"
+msgstr "Tutti gli attori"
+
+msgctxt "#30015"
+msgid "Genres"
+msgstr "Generi"
+
+msgctxt "#30016"
+msgid "Studios"
+msgstr "Studi"
+
+msgctxt "#30017"
+msgid "Search"
+msgstr "Cerca"
+
+msgctxt "#30018"
+msgid "In progress"
+msgstr "In corso"
+
+msgctxt "#30020"
+msgid "Movies of actor..."
+msgstr "Film dell'attore..."
+
+msgctxt "#30021"
+msgid "Choose actor"
+msgstr "Scegli attore"
+
+msgctxt "#30022"
+msgid "Movies of this studio"
+msgstr "Film di questo studio"
+
+msgctxt "#30030"
+msgid "Javinizer-JS password"
+msgstr "Password Javinizer-JS"
+
+msgctxt "#30031"
+msgid "Wrong password"
+msgstr "Password errata"
+
+msgctxt "#30032"
+msgid "Server error: {0}"
+msgstr "Errore server: {0}"
+
+msgctxt "#30033"
+msgid "Library still loading on the server ({0}/{1}), try again shortly"
+msgstr "Libreria ancora in caricamento sul server ({0}/{1}), riprova tra poco"
+
+msgctxt "#30034"
+msgid "Logged out"
+msgstr "Disconnesso"
+
+msgctxt "#30035"
+msgid "Kodi access is disabled: enable the Kodi add-on and set its password in the Javinizer-JS configuration"
+msgstr "Accesso Kodi disattivato: abilita l'add-on Kodi e imposta la password nella configurazione di Javinizer-JS"
+
+msgctxt "#30036"
+msgid "Playback error: {0}"
+msgstr "Errore di riproduzione: {0}"
+
+msgctxt "#30038"
+msgid "No results"
+msgstr "Nessun risultato"
+
+msgctxt "#30040"
+msgid "A new version of the add-on is available ({1}, installed {0}). Update now?"
+msgstr "È disponibile una nuova versione dell'add-on ({1}, installata {0}). Aggiornare ora?"
+
+msgctxt "#30041"
+msgid "Add-on updated to version {0}"
+msgstr "Add-on aggiornato alla versione {0}"
+
+msgctxt "#30042"
+msgid "Add-on update failed: {0}"
+msgstr "Aggiornamento dell'add-on non riuscito: {0}"
+
+msgctxt "#30023"
+msgid "Remove from In progress"
+msgstr "Rimuovi da In corso"
+
+msgctxt "#30043"
+msgid "Welcome! Enter the address of your Javinizer-JS server first, e.g. http://192.168.1.10:4004"
+msgstr "Benvenuto! Inserisci prima l'indirizzo del tuo server Javinizer-JS, ad esempio http://192.168.1.10:4004"
+
+msgctxt "#30044"
+msgid "Cannot reach the server {0} ({1}). Open the settings to check the address?"
+msgstr "Impossibile contattare il server {0} ({1}). Aprire le impostazioni per controllare l'indirizzo?"
+
+msgctxt "#30100"
+msgid "General"
+msgstr "Generale"
+
+msgctxt "#30101"
+msgid "Javinizer-JS server URL"
+msgstr "URL del server Javinizer-JS"
+
+msgctxt "#30102"
+msgid "Remember login"
+msgstr "Ricorda accesso"
+
+msgctxt "#30103"
+msgid "Token"
+msgstr "Token"
+
+msgctxt "#30104"
+msgid "Log out"
+msgstr "Disconnetti"
+
+msgctxt "#30105"
+msgid "Random movies to show"
+msgstr "Film casuali da mostrare"
+
+msgctxt "#30106"
+msgid "Recently added movies to show"
+msgstr "Ultimi aggiunti da mostrare"
+
+msgctxt "#30108"
+msgid "Server"
+msgstr "Server"
+
+msgctxt "#30109"
+msgid "Lists"
+msgstr "Liste"

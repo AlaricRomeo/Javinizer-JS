@@ -1,0 +1,149 @@
+# Kodi Media Center language file
+# Addon Name: Javinizer-JS
+# Addon id: plugin.video.javinizer
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "#30010"
+msgid "Recently added"
+msgstr ""
+
+msgctxt "#30011"
+msgid "All movies"
+msgstr ""
+
+msgctxt "#30012"
+msgid "Random"
+msgstr ""
+
+msgctxt "#30013"
+msgid "Favorite actors"
+msgstr ""
+
+msgctxt "#30014"
+msgid "All actors"
+msgstr ""
+
+msgctxt "#30015"
+msgid "Genres"
+msgstr ""
+
+msgctxt "#30016"
+msgid "Studios"
+msgstr ""
+
+msgctxt "#30017"
+msgid "Search"
+msgstr ""
+
+msgctxt "#30018"
+msgid "In progress"
+msgstr ""
+
+msgctxt "#30020"
+msgid "Movies of actor..."
+msgstr ""
+
+msgctxt "#30021"
+msgid "Choose actor"
+msgstr ""
+
+msgctxt "#30022"
+msgid "Movies of this studio"
+msgstr ""
+
+msgctxt "#30030"
+msgid "Javinizer-JS password"
+msgstr ""
+
+msgctxt "#30031"
+msgid "Wrong password"
+msgstr ""
+
+msgctxt "#30032"
+msgid "Server error: {0}"
+msgstr ""
+
+msgctxt "#30033"
+msgid "Library still loading on the server ({0}/{1}), try again shortly"
+msgstr ""
+
+msgctxt "#30034"
+msgid "Logged out"
+msgstr ""
+
+msgctxt "#30035"
+msgid "Kodi access is disabled: enable the Kodi add-on and set its password in the Javinizer-JS configuration"
+msgstr ""
+
+msgctxt "#30036"
+msgid "Playback error: {0}"
+msgstr ""
+
+msgctxt "#30038"
+msgid "No results"
+msgstr ""
+
+msgctxt "#30040"
+msgid "A new version of the add-on is available ({1}, installed {0}). Update now?"
+msgstr ""
+
+msgctxt "#30041"
+msgid "Add-on updated to version {0}"
+msgstr ""
+
+msgctxt "#30042"
+msgid "Add-on update failed: {0}"
+msgstr ""
+
+msgctxt "#30023"
+msgid "Remove from In progress"
+msgstr ""
+
+msgctxt "#30043"
+msgid "Welcome! Enter the address of your Javinizer-JS server first, e.g. http://192.168.1.10:4004"
+msgstr ""
+
+msgctxt "#30044"
+msgid "Cannot reach the server {0} ({1}). Open the settings to check the address?"
+msgstr ""
+
+msgctxt "#30100"
+msgid "General"
+msgstr ""
+
+msgctxt "#30101"
+msgid "Javinizer-JS server URL"
+msgstr ""
+
+msgctxt "#30102"
+msgid "Remember login"
+msgstr ""
+
+msgctxt "#30103"
+msgid "Token"
+msgstr ""
+
+msgctxt "#30104"
+msgid "Log out"
+msgstr ""
+
+msgctxt "#30105"
+msgid "Random movies to show"
+msgstr ""
+
+msgctxt "#30106"
+msgid "Recently added movies to show"
+msgstr ""
+
+msgctxt "#30108"
+msgid "Server"
+msgstr ""
+
+msgctxt "#30109"
+msgid "Lists"
+msgstr ""

@@ -309,6 +309,12 @@ router.get("/config", (req, res) => {
       })
       : [];
 
+    // Never send the Kodi password hash to the browser, only whether one is set
+    if (config.kodi) {
+      const { passwordHash, ...kodiRest } = config.kodi;
+      config.kodi = { ...kodiRest, hasPassword: !!passwordHash };
+    }
+
     res.json({
       ok: true,
       config,
@@ -542,7 +548,7 @@ async function revalidateNfoData(items) {
       try {
         mtimeMs = (await fs.promises.stat(item.nfo)).mtimeMs;
       } catch (_) { return; }
-      if (cached && cached.mtimeMs === mtimeMs) return;
+      if (cached && cached.mtimeMs === mtimeMs && cached.v === NFO_DATA_VERSION) return;
       _nfoDataById.set(item.id, await readNfoData(item));
       refreshSearchEntryFromData(item);
       changed = true;
@@ -572,9 +578,17 @@ function readNfoDataSync(item) {
   }
 }
 
+// Bump when parseNfoData() gains fields: cached entries from an older
+// version are re-read in the background (see revalidateNfoData).
+const NFO_DATA_VERSION = 2;
+
+function nfoTag(content, tag) {
+  const m = content.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+  return m ? m[1].trim() : '';
+}
+
 function parseNfoData(content) {
-  const titleMatch = content.match(/<title>([\s\S]*?)<\/title>/i);
-  const title = titleMatch ? titleMatch[1].trim() : '';
+  const title = nfoTag(content, 'title');
 
   const genres = [...content.matchAll(/<genre>([\s\S]*?)<\/genre>/gi)]
     .map(m => m[1].trim())
@@ -587,7 +601,24 @@ function parseNfoData(content) {
     })
     .filter(Boolean);
 
-  return { title, genres, actorNames };
+  // Fields below are only used by the Kodi API (src/server/kodiRoutes.js);
+  // the movie's own <thumb> sits before the actors, so strip those first.
+  const head = content.replace(/<actor>[\s\S]*?<\/actor>/gi, '');
+  return {
+    v: NFO_DATA_VERSION,
+    title,
+    genres,
+    actorNames,
+    code: nfoTag(head, 'id'),
+    originalTitle: nfoTag(head, 'originaltitle'),
+    plot: nfoTag(head, 'plot'),
+    premiered: nfoTag(head, 'premiered'),
+    year: nfoTag(head, 'year'),
+    dateAdded: nfoTag(head, 'dateadded'),
+    runtime: nfoTag(head, 'runtime'),
+    studio: nfoTag(head, 'studio'),
+    director: nfoTag(head, 'director')
+  };
 }
 
 /**
@@ -822,7 +853,35 @@ router.post("/config", (req, res) => {
       newConfig.fieldPriorities = currentConfig.fieldPriorities;
     }
 
+    // Kodi API settings: the password arrives in clear only to be hashed
+    // here (empty = keep the current one); a new password revokes every
+    // token already issued to Kodi devices.
+    const kodiAuth = require('../core/kodiAuth');
+    const kodiIn = newConfig.kodi || {};
+    const kodi = { ...(currentConfig.kodi || {}) };
+    if (Array.isArray(kodiIn.pathMap)) {
+      kodi.pathMap = kodiIn.pathMap
+        .filter(m => m && typeof m.from === 'string' && typeof m.to === 'string' && m.from.trim() && m.to.trim())
+        .map(m => ({ from: m.from.trim(), to: m.to.trim() }));
+    }
+    if (typeof kodiIn.password === 'string' && kodiIn.password !== '') {
+      kodi.passwordHash = kodiAuth.hashPassword(kodiIn.password);
+      kodiAuth.revokeAllTokens();
+    }
+    if (typeof kodiIn.enabled === 'boolean') kodi.enabled = kodiIn.enabled;
+    delete kodi.hasPassword;
+    if (Object.keys(kodi).length > 0) newConfig.kodi = kodi;
+    else delete newConfig.kodi;
+
     saveConfig(newConfig);
+
+    if (kodi.enabled && !(currentConfig.kodi && currentConfig.kodi.enabled)) {
+      try {
+        require('../core/kodiAddonZip').buildKodiAddonZip();
+      } catch (err) {
+        console.error('[kodi] Failed to build the add-on zip:', err.message);
+      }
+    }
 
     // 🔁 Reset library cache if libraryPaths or actorsPath changed
     const newRoots = getLibraryPaths(newConfig);
@@ -2922,11 +2981,11 @@ router.post("/actors/save", async (req, res) => {
         // Generate unique temp filename
         const hash = crypto.createHash('md5').update(imageBuffer).digest('hex').substring(0, 8);
         const timestamp = Date.now();
-        const ext = path.extname(imageUrl.pathname) || '.jpg';
-        const tempFilename = `temp_overwrite_${timestamp}_${hash}${ext}`;
+        // Actor photos are always stored as real .jpg (see imageType.js)
+        const tempFilename = `temp_overwrite_${timestamp}_${hash}.jpg`;
         const tempFilePath = path.join(tempPath, tempFilename);
 
-        fs.writeFileSync(tempFilePath, imageBuffer);
+        fs.writeFileSync(tempFilePath, await require('../core/imageType').toJpegBuffer(imageBuffer));
         console.log(`[ActorSave] Downloaded image to temp: ${tempFilename}`);
 
         // Set uploadedFile to the temp path so it will be moved to actors folder
@@ -2953,8 +3012,7 @@ router.post("/actors/save", async (req, res) => {
         const actorsPath = getActorsCachePath();
         if (!fs.existsSync(actorsPath)) fs.mkdirSync(actorsPath, { recursive: true });
 
-        const ext = path.extname(tempFilename);
-        const newFilename = `${actorData.id}${ext}`;
+        const newFilename = `${actorData.id}.jpg`;
         const newPath = path.join(actorsPath, newFilename);
 
         // Remove all existing image files for this actor ID in cache
@@ -2965,7 +3023,7 @@ router.post("/actors/save", async (req, res) => {
 
         const fsPromises = require('fs').promises;
         try {
-          await fsPromises.copyFile(tempPath, newPath);
+          await require('../core/imageType').writeJpegFile(tempPath, newPath);
           await fsPromises.unlink(tempPath);
         } catch (moveErr) {
           console.error('[ActorSave] Error moving temp file:', moveErr);
@@ -3411,7 +3469,14 @@ router.post("/actors/upload-image", upload.single('image'), async (req, res) => 
       return res.json({ ok: false, error: 'No file uploaded' });
     }
 
-    const ext = path.extname(req.file.originalname) || '.jpg';
+    // Actor photos are always stored as real .jpg, whatever was uploaded
+    const ext = '.jpg';
+    let imageBuffer;
+    try {
+      imageBuffer = await require('../core/imageType').toJpegBuffer(req.file.buffer);
+    } catch (convErr) {
+      return res.json({ ok: false, error: `Unsupported image: ${convErr.message}` });
+    }
     const actorName = req.body.actorName || '';
 
     // If actor name provided, save directly to cache (skip temp)
@@ -3436,7 +3501,7 @@ router.post("/actors/upload-image", upload.single('image'), async (req, res) => 
       });
 
       const filename = `${actorId}${ext}`;
-      fs.writeFileSync(path.join(actorsPath, filename), req.file.buffer);
+      fs.writeFileSync(path.join(actorsPath, filename), imageBuffer);
       console.log(`[Upload] Saved directly to cache: ${filename}`);
       require('../../scrapers/actors/actorDb').touchCacheFile(actorId, filename);
 
@@ -3447,9 +3512,9 @@ router.post("/actors/upload-image", upload.single('image'), async (req, res) => 
     const tempDir = path.join(__dirname, '../../data/temp');
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-    const hash = crypto.createHash('md5').update(req.file.buffer).digest('hex').substring(0, 8);
+    const hash = crypto.createHash('md5').update(imageBuffer).digest('hex').substring(0, 8);
     const filename = `temp_${Date.now()}_${hash}${ext}`;
-    fs.writeFileSync(path.join(tempDir, filename), req.file.buffer);
+    fs.writeFileSync(path.join(tempDir, filename), imageBuffer);
 
     cleanupTempDirectory(24);
 
@@ -3785,7 +3850,9 @@ async function copyActorsToFolder(folderPath, actors) {
   // anything else (webp, gif, ...) is converted to jpg. Removes stale photos
   // left over under a different extension. Returns the saved extension.
   const writePhoto = async (source, srcExt, fileBase) => {
-    const raw = String(srcExt || '').toLowerCase();
+    // Real format from the content: scraped photos are often WebP/PNG named .jpg
+    const detected = require('../core/imageType').imageType(source);
+    const raw = detected || String(srcExt || '').toLowerCase();
     const ext = raw === 'png' ? 'png' : 'jpg';
     const dest = path.join(destFolder, `${fileBase}.${ext}`);
     if (raw === 'png' || raw === 'jpg' || raw === 'jpeg') {
@@ -3999,5 +4066,63 @@ router.post("/actors/copy-to-movie", async (req, res) => {
     res.json({ ok: false, error: err.message });
   }
 });
+
+// ─────────────────────────────
+// POST /kodi-enabled {enabled} — the config page's switch, saved on its own
+// so the download button can appear right away (only this field changes)
+// ─────────────────────────────
+router.post("/kodi-enabled", (req, res) => {
+  try {
+    if (typeof req.body.enabled !== 'boolean') return res.json(fail('enabled must be a boolean'));
+    const cfg = loadConfig();
+    cfg.kodi = { ...(cfg.kodi || {}), enabled: req.body.enabled };
+    saveConfig(cfg);
+    if (cfg.kodi.enabled) require('../core/kodiAddonZip').buildKodiAddonZip();
+    res.json({ ok: true, enabled: cfg.kodi.enabled });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// ─────────────────────────────
+// GET /kodi-addon.zip — the Kodi add-on, when enabled in the config
+// ─────────────────────────────
+router.get("/kodi-addon.zip", (req, res) => {
+  const cfg = loadConfig();
+  if (!(cfg.kodi && cfg.kodi.enabled)) return res.status(403).send('Kodi add-on is disabled');
+  try {
+    const { buildKodiAddonZip, ZIP_PATH } = require('../core/kodiAddonZip');
+    if (!fs.existsSync(ZIP_PATH)) buildKodiAddonZip();
+    res.download(ZIP_PATH, path.basename(ZIP_PATH));
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+// ─────────────────────────────
+// GET /kodi-path-preview — playback path Kodi would get for each library
+// root (manual pathMap or Samba auto-detection), shown in the config page
+// ─────────────────────────────
+router.get("/kodi-path-preview", (req, res) => {
+  try {
+    const { resolveKodiPath, hostFromRequest } = require('../core/kodiPaths');
+    const cfg = loadConfig();
+    const host = hostFromRequest(req);
+    const roots = getLibraryPaths(cfg).map(root => ({ root, ...(resolveKodiPath(root, cfg, host) || { path: null, source: null }) }));
+    res.json({ ok: true, roots });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// Read-only library access for the Kodi API (src/server/kodiRoutes.js)
+router.libraryApi = {
+  libraryReader,
+  ensureSearchIndex,
+  isSearchIndexStale,
+  matchSearchIndex,
+  getSearchIndexProgress: () => ({ ..._searchIndexProgress }),
+  getNfoData: id => (_nfoDataById ? _nfoDataById.get(id) : undefined)
+};
 
 module.exports = router;

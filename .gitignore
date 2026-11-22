@@ -16,6 +16,8 @@ data/search-index-cache.json
 data/actors-index.db
 data/update-workdir/
 data/runtime/
+data/kodi-tokens.json
+data/kodi-progress.json
 !data/scrape/.gitkeep
 !data/actors/.gitkeep
 
@@ -66,3 +68,8 @@ docker-compose.override.yml
 
 # Scrapers development directory
 scrapers-dev/
+kodi/plugin.video.javinizer.zip
+# Local backups made by maintenance scripts
+data/*.bak*
+data/*backup*.tar.gz
+data/config.json.clobbered-*

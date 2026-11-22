@@ -14,7 +14,7 @@ const WebSocket = require("ws");
 const itemRoutes = require("./routes");
 
 const app = express();
-const PORT = 4004;
+const PORT = parseInt(process.env.PORT, 10) || 4004;
 
 // Create HTTP server (needed for WebSocket)
 const server = http.createServer(app);
@@ -285,6 +285,9 @@ app.use("/api", (req, res, next) => {
   next();
 }, itemRoutes);
 
+// Read-only API for the Kodi add-on (own password/token auth)
+app.use("/kodi", require("./kodiRoutes"));
+
 // ─────────────────────────────
 // WebSocket connection handling
 // ─────────────────────────────
@@ -380,6 +383,16 @@ server.listen(PORT, () => {
       console.error('[actor-movies] Failed to start rebuild:', err.message);
     }
   }, 60000).unref();
+
+  // Kodi add-on enabled: rebuild its zip so it always matches this version
+  try {
+    const cfg = require('../core/config').loadConfig();
+    if (cfg.kodi && cfg.kodi.enabled) {
+      console.log(`[kodi] Add-on zip written to ${require('../core/kodiAddonZip').buildKodiAddonZip()}`);
+    }
+  } catch (err) {
+    console.error('[kodi] Failed to build the add-on zip:', err.message);
+  }
 
   // Non-blocking: checks GitHub Releases once per server run, cached for
   // GET /item/update/check to serve without hitting the API again.

@@ -205,6 +205,38 @@ For every movie folder it moves `actors/` to `.actors/`, renames photos and acto
 
 ---
 
+## 📺 Kodi Add-on
+
+Javinizer-js ships its own Kodi video add-on, **Javinizer-JS** (`plugin.video.javinizer`, Kodi 20 or newer). It shows your Javinizer-js library inside Kodi without importing anything into Kodi's own library, and plays movies with Kodi's player straight from your network share.
+
+It is a **viewer only**: no scraping and no editing happen in Kodi.
+
+* Lists: **In progress**, **Recently added**, **All movies**, **Random**, **Favorite actors**, **All actors**, **Genres**, **Studios** and **Search** (same search syntax as the web UI)
+* Movie info with plot, cast and actor photos (from the actor library), poster and fanart. Sorting by name, date added, year or duration, with any Kodi view
+* "Movies of [actor]" and "Movies of this studio" from the context menu
+* **In progress** is shared by every Kodi in the house: the add-on reports where you stopped and lists those movies first
+* **Password protected**: Kodi asks for the password on first use; the add-on can remember the login or ask every time
+* **Self-updating**: when the server has a newer add-on version, Kodi offers to install it
+
+### Setup
+
+1. In **Configuration → Kodi add-on**, tick **Enable Kodi add-on**, set a password and save
+2. Click **Download plugin.video.javinizer.zip** and copy the zip where Kodi can reach it
+3. In Kodi: **Add-ons → Install from zip file** (allow "Unknown sources" when asked)
+4. Open the add-on and enter the server address, e.g. `http://192.168.1.10:4004`
+
+### Playback paths
+
+Kodi opens the video files directly, so it needs a path it can reach. When the library is shared with **Samba on the same machine**, Javinizer-js finds the share by itself and gives Kodi `smb://<server>/<share>/...`; the Kodi add-on section shows the detected path for every library folder. For NAS/NFS mounts, Docker or Windows, add manual rules in **Path mapping for playback**, one per line, e.g.:
+
+```text
+/mnt/Jav = smb://192.168.1.10/Jav
+```
+
+The javinizer password protects browsing, not the files: give the share its own user.
+
+---
+
 ## 🗂️ From Unsorted Files to an Organized Library
 
 Like the original Javinizer, Javinizer-js covers both steps: **scraping** (downloading the metadata) and **sorting** (creating a folder per movie, moving and renaming the video). You don't need to prepare the folders yourself.

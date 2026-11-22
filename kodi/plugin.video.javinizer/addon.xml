@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.javinizer" name="Javinizer-JS" version="0.2.1" provider-name="AlaricRomeo">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.pluginsource" library="main.py">
+    <provides>video</provides>
+  </extension>
+  <extension point="xbmc.service" library="service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Browse a Javinizer-JS library</summary>
+    <summary lang="it_IT">Sfoglia una libreria Javinizer-JS</summary>
+    <description lang="en_GB">Read-only viewer for a Javinizer-JS server: browse movies, actors, genres and studios, and play movies with Kodi's player straight from the network share.</description>
+    <description lang="it_IT">Visualizzatore in sola lettura per un server Javinizer-JS: sfoglia film, attori, generi e studi e riproduce i film con il player di Kodi direttamente dalla condivisione di rete.</description>
+    <disclaimer lang="en_GB">Adult content.</disclaimer>
+    <disclaimer lang="it_IT">Contenuti per adulti.</disclaimer>
+    <platform>all</platform>
+    <license>GPL-2.0-only</license>
+    <source>https://github.com/AlaricRomeo/javinizer-js</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>

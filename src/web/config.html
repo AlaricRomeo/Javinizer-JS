@@ -171,6 +171,36 @@
                     <div id="genreRulesApplyResult" style="margin-top: 8px; display: none;"></div>
                 </div>
 
+                <!-- Kodi add-on -->
+                <div class="section">
+                    <div class="section-title" data-i18n="config.kodiSection">📺 Kodi Add-on</div>
+                    <div class="info-text" style="margin-bottom: 20px;" data-i18n="config.kodiHelp"></div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="kodiEnabled" name="kodiEnabled">
+                            <span data-i18n="config.kodiEnabled">Enable Kodi add-on</span>
+                        </label>
+                        <div class="info-text" data-i18n="config.kodiEnabledHelp"></div>
+                        <a id="kodiDownload" href="/item/kodi-addon.zip" download class="save-button"
+                           style="display: none; width: auto; margin-top: 10px; text-decoration: none;"
+                           data-i18n="config.kodiDownload">⬇️ Download plugin.video.javinizer.zip</a>
+                    </div>
+                    <div class="form-group">
+                        <label for="kodiPassword" data-i18n="config.kodiPassword">Password</label>
+                        <input type="password" id="kodiPassword" name="kodiPassword" autocomplete="new-password">
+                        <div class="info-text" id="kodiPasswordStatus"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="kodiPathMap" data-i18n="config.kodiPathMap">Path mapping</label>
+                        <textarea id="kodiPathMap" name="kodiPathMap" rows="3" placeholder="/mnt/library = smb://nas/library"></textarea>
+                        <div class="info-text" data-i18n="config.kodiPathMapHelp"></div>
+                    </div>
+                    <div class="form-group">
+                        <label data-i18n="config.kodiPathPreview">Playback paths</label>
+                        <div id="kodiPathPreview" class="info-text"></div>
+                    </div>
+                </div>
+
                 <!-- Metadata Priorities -->
                 <div class="section">
                     <div class="section-title" data-i18n="config.metadataFieldPriorities">🎯 Metadata Field Priorities</div>
@@ -332,6 +362,21 @@
             // Collect genre rules
             const genreRules = document.getElementById('genreRules').value;
 
+            // Kodi add-on: "server path = Kodi path" per line; empty password = keep current
+            const kodiPathMap = [];
+            for (const line of document.getElementById('kodiPathMap').value.split('\n')) {
+                if (!line.trim()) continue;
+                const eq = line.indexOf('=');
+                const from = eq === -1 ? '' : line.slice(0, eq).trim();
+                const to = eq === -1 ? '' : line.slice(eq + 1).trim();
+                if (!from || !to) {
+                    showMessage(i18n.t('config.kodiPathMapInvalid', { line: line.trim() }), 'error');
+                    return;
+                }
+                kodiPathMap.push({ from, to });
+            }
+            const kodiPassword = document.getElementById('kodiPassword').value;
+
             const newConfig = {
                 libraryPaths: currentConfig.libraryPaths || [],  // Preserve existing library roots
                 mode: currentConfig.mode || 'scrape',  // Preserve current mode
@@ -352,7 +397,8 @@
                         missingFieldsRetryDays: missingFieldsRetryDays
                     }
                 },
-                fieldPriorities: fieldPriorities
+                fieldPriorities: fieldPriorities,
+                kodi: { enabled: document.getElementById('kodiEnabled').checked, pathMap: kodiPathMap, password: kodiPassword }
             };
 
             try {
@@ -364,6 +410,12 @@
 
                 if (response.ok) {
                     showMessage(i18n.t('config.saveSuccess'), 'success');
+                    if (kodiPassword) {
+                        document.getElementById('kodiPassword').value = '';
+                        renderKodiPasswordStatus(true);
+                    }
+                    loadKodiPathPreview();
+                    renderKodiDownload(document.getElementById('kodiEnabled').checked);
                 } else {
                     showMessage(i18n.t('config.saveFailed'), 'error');
                 }
@@ -371,6 +423,63 @@
                 showMessage(i18n.t('config.saveFailed'), 'error');
             }
         });
+
+        // One line per library root: the path Kodi will open and where it comes from
+        async function loadKodiPathPreview() {
+            const container = document.getElementById('kodiPathPreview');
+            container.textContent = '';
+            try {
+                const data = await (await fetch('/item/kodi-path-preview')).json();
+                if (!data.ok) throw new Error(data.error);
+                for (const r of data.roots) {
+                    const line = document.createElement('div');
+                    if (!r.path) {
+                        line.textContent = `${r.root} → ${i18n.t('config.kodiPathNone')}`;
+                        line.style.color = '#e74c3c';
+                    } else {
+                        const source = r.source === 'manual'
+                            ? i18n.t('config.kodiPathSourceManual')
+                            : i18n.t('config.kodiPathSourceSamba', { share: r.share });
+                        line.textContent = `${r.root} → ${r.path} (${source})`;
+                    }
+                    container.appendChild(line);
+                }
+            } catch (_) {
+                container.textContent = i18n.t('config.kodiPathPreviewError');
+            }
+        }
+
+        // The switch is saved immediately (the server builds the zip), so the
+        // download button shows up without a full save + reload
+        async function saveKodiEnabled(event) {
+            const checkbox = event.target;
+            try {
+                const data = await (await fetch('/item/kodi-enabled', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: checkbox.checked })
+                })).json();
+                if (!data.ok) throw new Error(data.error);
+                renderKodiDownload(data.enabled);
+                showMessage(i18n.t('config.saveSuccess'), 'success');
+            } catch (_) {
+                checkbox.checked = !checkbox.checked;
+                showMessage(i18n.t('config.saveFailed'), 'error');
+            }
+        }
+
+        // The zip is (re)built server side only once the add-on is enabled and saved
+        function renderKodiDownload(enabled) {
+            document.getElementById('kodiDownload').style.display = enabled ? 'inline-block' : 'none';
+        }
+
+        function renderKodiPasswordStatus(hasPassword) {
+            document.getElementById('kodiPasswordStatus').textContent =
+                i18n.t(hasPassword ? 'config.kodiPasswordSet' : 'config.kodiPasswordNotSet');
+            // The saved password is never sent back: show that one exists
+            document.getElementById('kodiPassword').placeholder =
+                hasPassword ? i18n.t('config.kodiPasswordPlaceholderSet') : '';
+        }
 
         // Show status message
         function showMessage(message, type) {
@@ -460,6 +569,15 @@
                 document.getElementById('badgeDecensored').checked = badges.decensored !== false;
                 document.getElementById('badgeLeaked').checked = badges.leaked !== false;
                 document.getElementById('genreRules').value = genreRules;
+
+                const kodiCfg = config.kodi || {};
+                document.getElementById('kodiPathMap').value = (kodiCfg.pathMap || [])
+                    .map(m => `${m.from} = ${m.to}`).join('\n');
+                renderKodiPasswordStatus(!!kodiCfg.hasPassword);
+                loadKodiPathPreview();
+                document.getElementById('kodiEnabled').checked = !!kodiCfg.enabled;
+                renderKodiDownload(!!kodiCfg.enabled);
+                document.getElementById('kodiEnabled').addEventListener('change', saveKodiEnabled);
 
                 // Render field priorities
                 renderFieldPriorities();
