@@ -1,5 +1,29 @@
 # Release Notes
 
+## v3.0.0 (2026-11-22)
+
+### ✨ New Features
+
+- **Kodi add-on "Javinizer-JS"**: browse your Javinizer-js library in Kodi and play movies with Kodi's player from the network share. Viewer only: no scraping or editing in Kodi. See README → "Kodi Add-on"
+  - Lists: In progress, Recently added, All movies, Random, Favorite actors, All actors, Genres, Studios, Search
+  - Movie info with cast and actor photos from the actor library, "Movies of [actor]" / "Movies of this studio" in the context menu
+  - "In progress" list shared by every Kodi in the house
+  - Password protected (remember the login or ask every time); access can be revoked by changing the password
+  - The add-on updates itself from the server when a new version is available
+- **Configuration → Kodi add-on**: enable switch (builds the add-on zip automatically, on Linux, macOS and Windows), download button, password, optional path mapping for playback and a preview of the path Kodi will use for each library folder
+- **Automatic playback paths**: when the library is shared with Samba on the same machine, the share is detected and Kodi gets `smb://` paths with no configuration
+
+### ⚡ Improvements
+
+- Scrapers are a little slower but much more reliable: requests to rate-limited sites are spaced out and retried instead of failing a whole batch (see v2.7.0)
+- Actor photos are always stored as real `.jpg` files, whether they come from a scraper, an upload or a URL. Many sites serve WebP/PNG under a `.jpg` name, which browsers accept but Kodi and other media servers can't read
+- Photos copied into movie `.actors/` folders are converted according to their real format, not their extension
+
+### 🐛 Fixes
+
+- Actor photos that were WebP/PNG files named `.jpg` (or the other way round) were not shown by Kodi
+- `sharp` updated to 0.35 and dependency security fixes (`npm audit fix`)
+
 ## v2.7.3 (2026-11-15)
 
 ### 🐛 Fixes
