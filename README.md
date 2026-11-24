@@ -384,6 +384,16 @@ npm install
 npm start
 ```
 
+### Run as a service
+
+To have Javinizer-js always running (e.g. for the Kodi add-on), tick **Configuration → Run as a service → Run Javinizer-JS as a service**. It uses the system's own service manager, without admin rights:
+
+* **Linux**: a systemd user service (`~/.config/systemd/user/javinizer-js.service`), restarted automatically if it crashes. It starts at boot when the system allows "lingering" for your user, otherwise at login
+* **macOS**: a launchd agent (`~/Library/LaunchAgents/com.javinizer-js.plist`), started at login
+* **Windows**: a Task Scheduler task "Javinizer-JS", started hidden at login
+
+The service takes over from the next start of the computer, or right away with **Restart as a service now**. In-app updates restart it through the service. Unticking the option removes the service.
+
 ---
 
 ## 🔄 In-app Updates

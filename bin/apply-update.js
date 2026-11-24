@@ -119,6 +119,16 @@ function replaceApplicationFiles() {
 }
 
 function relaunchServer() {
+  // Started as a service (inherited from the server): restart it the same way,
+  // so the service manager keeps supervising it
+  if (process.env.JAVINIZER_SERVICE === "1") {
+    try {
+      require(path.join(REPO_ROOT, "src/core/serviceManager")).startService();
+      return;
+    } catch (err) {
+      log(`Service restart failed, starting the server directly: ${err.message}`);
+    }
+  }
   const child = spawn(process.execPath, [path.join(REPO_ROOT, "src/server/index.js")], {
     cwd: REPO_ROOT,
     detached: true,

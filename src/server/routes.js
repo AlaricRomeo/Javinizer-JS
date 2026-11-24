@@ -4085,6 +4085,45 @@ router.post("/kodi-enabled", (req, res) => {
 });
 
 // ─────────────────────────────
+// Run as a service (src/core/serviceManager.js): state read from the OS,
+// not stored in config.json
+// ─────────────────────────────
+router.get("/service-status", (req, res) => {
+  try {
+    res.json({ ok: true, ...require('../core/serviceManager').getStatus() });
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+router.post("/service-enabled", (req, res) => {
+  try {
+    if (typeof req.body.enabled !== 'boolean') return res.json(fail('enabled must be a boolean'));
+    const serviceManager = require('../core/serviceManager');
+    const status = req.body.enabled ? serviceManager.install() : serviceManager.uninstall();
+    res.json({ ok: true, ...status });
+  } catch (err) {
+    res.json(fail(err.stderr ? String(err.stderr).trim() || err.message : err.message));
+  }
+});
+
+// Restarts the server through the service (it was started by hand): exits
+// after responding, a detached helper starts the service once the port is free
+router.post("/service-restart", (req, res) => {
+  try {
+    const serviceManager = require('../core/serviceManager');
+    const status = serviceManager.getStatus();
+    if (!status.installed) return res.json(fail('Service is not installed'));
+    if (status.running) return res.json(fail('Already running as a service'));
+    serviceManager.handOverToService();
+    res.json({ ok: true });
+    setTimeout(() => process.exit(0), 500);
+  } catch (err) {
+    res.json(fail(err.message));
+  }
+});
+
+// ─────────────────────────────
 // GET /kodi-addon.zip — the Kodi add-on, when enabled in the config
 // ─────────────────────────────
 router.get("/kodi-addon.zip", (req, res) => {

@@ -171,6 +171,22 @@
                     <div id="genreRulesApplyResult" style="margin-top: 8px; display: none;"></div>
                 </div>
 
+                <!-- Run as a service -->
+                <div class="section">
+                    <div class="section-title" data-i18n="config.serviceSection">🖥️ Run as a service</div>
+                    <div class="info-text" style="margin-bottom: 20px;" data-i18n="config.serviceHelp"></div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="serviceEnabled" name="serviceEnabled">
+                            <span data-i18n="config.serviceEnabled">Run Javinizer-JS as a service</span>
+                        </label>
+                        <div class="info-text" id="serviceStatus"></div>
+                        <button type="button" id="serviceRestart" class="save-button"
+                                style="display: none; width: auto; margin-top: 10px;"
+                                data-i18n="config.serviceRestart">🔄 Restart as a service now</button>
+                    </div>
+                </div>
+
                 <!-- Kodi add-on -->
                 <div class="section">
                     <div class="section-title" data-i18n="config.kodiSection">📺 Kodi Add-on</div>
@@ -468,6 +484,74 @@
             }
         }
 
+        // Service switch: installed/removed immediately, state read from the OS
+        function renderServiceStatus(status) {
+            const checkbox = document.getElementById('serviceEnabled');
+            const statusEl = document.getElementById('serviceStatus');
+            checkbox.checked = !!status.installed;
+            checkbox.disabled = !status.supported;
+            let text = '';
+            if (!status.supported) text = i18n.t('config.serviceUnsupported');
+            else if (status.installed) {
+                text = i18n.t(status.running ? 'config.serviceStatusRunning' : 'config.serviceStatusInstalled');
+                if (status.platform === 'linux' && !status.atBoot) text += ' ' + i18n.t('config.serviceAtLogin');
+            } else if (status.running) text = i18n.t('config.serviceStoppedHint');
+            statusEl.textContent = text;
+            document.getElementById('serviceRestart').style.display =
+                status.installed && !status.running ? 'inline-block' : 'none';
+        }
+
+        async function loadServiceStatus() {
+            try {
+                const data = await (await fetch('/item/service-status')).json();
+                if (data.ok) renderServiceStatus(data);
+            } catch (_) {}
+        }
+
+        async function saveServiceEnabled(event) {
+            const checkbox = event.target;
+            try {
+                const data = await (await fetch('/item/service-enabled', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: checkbox.checked })
+                })).json();
+                if (!data.ok) throw new Error(data.error);
+                renderServiceStatus(data);
+                showMessage(i18n.t('config.saveSuccess'), 'success');
+            } catch (err) {
+                checkbox.checked = !checkbox.checked;
+                showMessage(i18n.t('config.serviceError', { error: err.message }), 'error');
+            }
+        }
+
+        // The server exits and comes back through the service: wait for it
+        async function restartAsService() {
+            const button = document.getElementById('serviceRestart');
+            button.disabled = true;
+            try {
+                const data = await (await fetch('/item/service-restart', { method: 'POST' })).json();
+                if (!data.ok) throw new Error(data.error);
+            } catch (err) {
+                button.disabled = false;
+                return showMessage(i18n.t('config.serviceError', { error: err.message }), 'error');
+            }
+            showMessage(i18n.t('config.serviceRestarting'), 'success');
+            for (let i = 0; i < 30; i++) {
+                await new Promise(r => setTimeout(r, 2000));
+                try {
+                    const status = await (await fetch('/item/service-status')).json();
+                    if (status.ok && status.running) {
+                        renderServiceStatus(status);
+                        button.disabled = false;
+                        return showMessage(i18n.t('config.serviceRestartDone'), 'success');
+                    }
+                } catch (_) { /* server still restarting */ }
+            }
+            button.disabled = false;
+            showMessage(i18n.t('config.serviceRestartTimeout'), 'error');
+        }
+
         // The zip is (re)built server side only once the add-on is enabled and saved
         function renderKodiDownload(enabled) {
             document.getElementById('kodiDownload').style.display = enabled ? 'inline-block' : 'none';
@@ -578,6 +662,9 @@
                 document.getElementById('kodiEnabled').checked = !!kodiCfg.enabled;
                 renderKodiDownload(!!kodiCfg.enabled);
                 document.getElementById('kodiEnabled').addEventListener('change', saveKodiEnabled);
+                loadServiceStatus();
+                document.getElementById('serviceEnabled').addEventListener('change', saveServiceEnabled);
+                document.getElementById('serviceRestart').addEventListener('click', restartAsService);
 
                 // Render field priorities
                 renderFieldPriorities();
