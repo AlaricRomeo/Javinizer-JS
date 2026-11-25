@@ -1,5 +1,15 @@
 # Release Notes
 
+## v3.1.0 (2026-11-25)
+
+### ✨ New Features
+
+- **Run as a service**: new option in Configuration → "Run as a service" to start Javinizer-JS automatically with the computer, so the Kodi add-on always finds it running. Uses the system's own service manager, no admin rights needed: systemd user service on Linux (restarted if it crashes, started at boot when allowed, otherwise at login), launchd agent on macOS, Task Scheduler task at login on Windows. "Restart as a service now" switches a server started by hand to the service; in-app updates restart it through the service. See README → "Run as a service"
+
+### 🐛 Fixes
+
+- Linux, running as a service started at boot: the video player and "Open folder" now open their window on the desktop (they started but had no graphical session)
+
 ## v3.0.0 (2026-11-22)
 
 ### ✨ New Features
