@@ -198,4 +198,26 @@ function handOverToService() {
   child.unref();
 }
 
-module.exports = { getStatus, install, uninstall, startService, handOverToService, isRunningAsService };
+const DESKTOP_VARS = ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "DBUS_SESSION_BUS_ADDRESS"];
+
+/**
+ * Environment for launching desktop apps (video player, file manager).
+ * A service started at boot (systemd lingering) has no graphical session in
+ * its environment, so GUI apps start but can't open a window: take the
+ * session variables from the user's systemd manager, which the desktop
+ * imports at login. Read on every launch, since they change at each login.
+ */
+function desktopEnv() {
+  const env = { ...process.env };
+  if (process.platform !== "linux" || env.DISPLAY || env.WAYLAND_DISPLAY) return env;
+  try {
+    for (const line of run("systemctl", ["--user", "show-environment"]).split("\n")) {
+      const eq = line.indexOf("=");
+      const key = line.slice(0, eq);
+      if (eq > 0 && DESKTOP_VARS.includes(key) && !env[key]) env[key] = line.slice(eq + 1);
+    }
+  } catch (_) {}
+  return env;
+}
+
+module.exports = { getStatus, install, uninstall, startService, handOverToService, isRunningAsService, desktopEnv };

@@ -3654,7 +3654,9 @@ router.post("/play-video", async (req, res) => {
     // Use the original paths (not sanitized) to allow executables in PATH
     const child = spawn(playerExecutable, [videoPath], {
       detached: true,
-      stdio: 'ignore'
+      stdio: 'ignore',
+      // Running as a service: needs the desktop session to open its window
+      env: require('../core/serviceManager').desktopEnv()
     });
 
     // Spawn failures (ENOENT/EACCES) are async: without a listener they crash the server
@@ -3708,8 +3710,10 @@ router.post("/open-folder", async (req, res) => {
 
     const child = spawn(command, [resolvedPath], {
       detached: true,
-      stdio: 'ignore'
+      stdio: 'ignore',
+      env: require('../core/serviceManager').desktopEnv()
     });
+    child.on('error', () => {});
     child.unref();
 
     res.json({ ok: true, message: 'Folder opened successfully' });
