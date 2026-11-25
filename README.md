@@ -227,7 +227,7 @@ It is a **viewer only**: no scraping and no editing happen in Kodi.
 
 ### Playback paths
 
-Kodi opens the video files directly, so it needs a path it can reach. When the library is shared with **Samba on the same machine**, Javinizer-js finds the share by itself and gives Kodi `smb://<server>/<share>/...`; the Kodi add-on section shows the detected path for every library folder. For NAS/NFS mounts, Docker or Windows, add manual rules in **Path mapping for playback**, one per line, e.g.:
+Kodi opens the video files directly, so it needs a path it can reach. When the library folder is shared on the same machine (**Samba** on Linux/macOS, a **shared folder** on Windows), Javinizer-js finds the share by itself and gives Kodi `smb://<server>/<share>/...`; the Kodi add-on section shows the detected path for every library folder. For NAS/NFS mounts or Docker, add manual rules in **Path mapping for playback**, one per line, e.g.:
 
 ```text
 /mnt/Jav = smb://192.168.1.10/Jav
@@ -390,7 +390,7 @@ To have Javinizer-js always running (e.g. for the Kodi add-on), tick **Configura
 
 * **Linux**: a systemd user service (`~/.config/systemd/user/javinizer-js.service`), restarted automatically if it crashes. It starts at boot when the system allows "lingering" for your user, otherwise at login
 * **macOS**: a launchd agent (`~/Library/LaunchAgents/com.javinizer-js.plist`), started at login
-* **Windows**: a Task Scheduler task "Javinizer-JS", started hidden at login
+* **Windows**: a launcher `Javinizer-JS.vbs` in your Startup folder, started hidden at login
 
 The service takes over from the next start of the computer, or right away with **Restart as a service now**. In-app updates restart it through the service. Unticking the option removes the service.
 

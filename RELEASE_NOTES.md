@@ -1,5 +1,12 @@
 # Release Notes
 
+## v3.1.1 (2026-11-25)
+
+### 🐛 Fixes
+
+- Windows, "Run as a service": no admin rights needed any more. The service is now a hidden launcher in the Startup folder (starts at login, no console window) that restarts the server if it crashes; unticking the option removes it. The scheduled task created by v3.1.0 is removed automatically (Windows may ask for confirmation once)
+- Windows: Kodi add-on playback paths detect folders shared with Windows file sharing (automatic `smb://` paths), with case-insensitive path matching
+
 ## v3.1.0 (2026-11-25)
 
 ### ✨ New Features

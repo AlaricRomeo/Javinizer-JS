@@ -9,7 +9,8 @@ const { execFileSync, spawn } = require("child_process");
  *
  * - Linux: systemd user unit (+ lingering, so it also starts before login)
  * - macOS: launchd LaunchAgent (starts at login)
- * - Windows: Task Scheduler task at logon, launching a hidden window
+ * - Windows: launcher in the user's Startup folder (hidden window, at logon;
+ *   Task Scheduler logon tasks need admin rights)
  *
  * Processes started by the service manager get JAVINIZER_SERVICE=1, so the
  * server (and the updater, see bin/apply-update.js) knows how it was started.
@@ -23,8 +24,10 @@ const SERVER_SCRIPT = path.join(REPO_ROOT, "src/server/index.js");
 const LINUX_UNIT = path.join(os.homedir(), ".config/systemd/user", `${NAME}.service`);
 const MAC_LABEL = "com.javinizer-js";
 const MAC_PLIST = path.join(os.homedir(), "Library/LaunchAgents", `${MAC_LABEL}.plist`);
-const WIN_TASK = "Javinizer-JS";
-const WIN_LAUNCHER = path.join(REPO_ROOT, "data", "runtime", "javinizer-service.vbs");
+const WIN_STARTUP_DIR = path.join(process.env.APPDATA || path.join(os.homedir(), "AppData/Roaming"),
+  "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
+const WIN_LAUNCHER = path.join(WIN_STARTUP_DIR, "Javinizer-JS.vbs");
+const WIN_OLD_TASK = "Javinizer-JS"; // v3.1.0 used a scheduled task (admin only)
 
 function run(cmd, args) {
   return execFileSync(cmd, args, { encoding: "utf8", timeout: 15000, stdio: ["ignore", "pipe", "pipe"] });
@@ -105,14 +108,40 @@ function macDomain() {
 
 // ── Windows ─────────────────────────────
 
+/**
+ * Hidden supervisor: restarts the server 5 s after an error exit, stops on a
+ * clean exit (in-app update: the updater starts the launcher again). Gives up
+ * after 5 consecutive failures within a minute of starting (e.g. port in use).
+ */
 function winLauncher() {
   const q = s => s.replace(/"/g, '""');
   return `' Javinizer-JS service launcher (hidden window), created by Configuration
 Set shell = CreateObject("WScript.Shell")
 shell.Environment("Process")("JAVINIZER_SERVICE") = "1"
 shell.CurrentDirectory = "${q(REPO_ROOT)}"
-shell.Run """${q(process.execPath)}"" ""${q(SERVER_SCRIPT)}""", 0, False
+cmd = """${q(process.execPath)}"" ""${q(SERVER_SCRIPT)}"""
+fails = 0
+Do
+  started = Now
+  code = shell.Run(cmd, 0, True)
+  If code = 0 Then Exit Do
+  If DateDiff("s", started, Now) < 60 Then fails = fails + 1 Else fails = 1
+  If fails >= 5 Then Exit Do
+  WScript.Sleep 5000
+Loop
 `;
+}
+
+/**
+ * Removes the v3.1.0 scheduled task. Created as admin, it can only be deleted
+ * as admin: if the plain delete fails, ask once through UAC (not awaited).
+ */
+function winRemoveOldTask() {
+  if (tryRun("schtasks", ["/Delete", "/F", "/TN", WIN_OLD_TASK])) return;
+  if (!tryRun("schtasks", ["/Query", "/TN", WIN_OLD_TASK])) return;
+  spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    `Start-Process schtasks -ArgumentList '/Delete /F /TN "${WIN_OLD_TASK}"' -Verb RunAs -WindowStyle Hidden`],
+  { detached: true, stdio: "ignore", windowsHide: true }).unref();
 }
 
 // ── Public API ─────────────────────────────
@@ -129,7 +158,7 @@ function getStatus() {
   } else if (process.platform === "darwin") {
     status.installed = fs.existsSync(MAC_PLIST);
   } else if (process.platform === "win32") {
-    status.installed = tryRun("schtasks", ["/Query", "/TN", WIN_TASK]);
+    status.installed = fs.existsSync(WIN_LAUNCHER);
   }
   return status;
 }
@@ -148,10 +177,9 @@ function install() {
     fs.writeFileSync(MAC_PLIST, macPlist());
     // RunAtLoad applies at the next login; bootstrap now would start a second server
   } else if (process.platform === "win32") {
-    fs.mkdirSync(path.dirname(WIN_LAUNCHER), { recursive: true });
+    fs.mkdirSync(WIN_STARTUP_DIR, { recursive: true });
     fs.writeFileSync(WIN_LAUNCHER, winLauncher());
-    run("schtasks", ["/Create", "/F", "/TN", WIN_TASK, "/SC", "ONLOGON", "/RL", "LIMITED",
-      "/TR", `wscript.exe "${WIN_LAUNCHER}"`]);
+    winRemoveOldTask(); // no double start
   } else {
     throw new Error(`Unsupported platform: ${process.platform}`);
   }
@@ -168,8 +196,8 @@ function uninstall() {
     // bootout would stop a server running as service: just remove the agent
     fs.rmSync(MAC_PLIST, { force: true });
   } else if (process.platform === "win32") {
-    tryRun("schtasks", ["/Delete", "/F", "/TN", WIN_TASK]);
     fs.rmSync(WIN_LAUNCHER, { force: true });
+    winRemoveOldTask();
   }
   return getStatus();
 }
@@ -181,7 +209,9 @@ function startService() {
     if (!tryRun("launchctl", ["kickstart", `${macDomain()}/${MAC_LABEL}`])) {
       run("launchctl", ["bootstrap", macDomain(), MAC_PLIST]);
     }
-  } else if (process.platform === "win32") run("schtasks", ["/Run", "/TN", WIN_TASK]);
+  } else if (process.platform === "win32") {
+    spawn("wscript.exe", [WIN_LAUNCHER], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+  }
 }
 
 /**

@@ -6,9 +6,9 @@ const { execFileSync } = require("child_process");
  *
  * 1. Manual rules (config.kodi.pathMap) win: needed for NAS/NFS mounts,
  *    Docker, Windows, or shares Kodi reaches under another name.
- * 2. Otherwise, when Samba runs on this same machine, the share containing
- *    the folder is detected (testparm + usershares) and the path becomes
- *    smb://<host Kodi used to reach this server>/<share>/<rest>.
+ * 2. Otherwise the share containing the folder is detected on this machine
+ *    (Linux/macOS: Samba via testparm + usershares; Windows: shared folders)
+ *    and the path becomes smb://<host Kodi used to reach this server>/<share>/<rest>.
  */
 
 const SHARES_TTL_MS = 60000;
@@ -41,18 +41,39 @@ function parseShares(text) {
   return shares;
 }
 
+// Windows shared folders (Win32_Share works without admin rights). Type 0 =
+// disk share; the administrative ones (C$, ADMIN$...) have another type.
+function parseWindowsShares(json) {
+  let list;
+  try {
+    list = JSON.parse(json || "[]");
+  } catch (_) {
+    return [];
+  }
+  return (Array.isArray(list) ? list : [list])
+    .filter(s => s && s.Type === 0 && s.Name && s.Path)
+    .map(s => ({ name: s.Name, path: s.Path.replace(/\\/g, "/").replace(/\/+$/, "") }));
+}
+
 function getSambaShares() {
-  if (process.platform === "win32") return [];
   if (_shares && Date.now() - _sharesAt < SHARES_TTL_MS) return _shares;
-  _shares = [
-    ...parseShares(run("testparm", ["-s"])),
-    ...parseShares(run("net", ["usershare", "info"]))
-  ];
+  _shares = process.platform === "win32"
+    ? parseWindowsShares(run("powershell", ["-NoProfile", "-NonInteractive", "-Command",
+        "Get-CimInstance Win32_Share | Select-Object Name,Path,Type | ConvertTo-Json -Compress"]))
+    : [
+      ...parseShares(run("testparm", ["-s"])),
+      ...parseShares(run("net", ["usershare", "info"]))
+    ];
   _sharesAt = Date.now();
   return _shares;
 }
 
 function isUnder(target, base) {
+  // Windows paths are case-insensitive (D:/Video = d:/video)
+  if (process.platform === "win32") {
+    target = target.toLowerCase();
+    base = base.toLowerCase();
+  }
   return base === "/" || target === base || target.startsWith(base + "/");
 }
 
@@ -95,4 +116,4 @@ function hostFromRequest(req) {
   return host;
 }
 
-module.exports = { resolveKodiPath, hostFromRequest, getSambaShares };
+module.exports = { resolveKodiPath, hostFromRequest, getSambaShares, parseWindowsShares };
